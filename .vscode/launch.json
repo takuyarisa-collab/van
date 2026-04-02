@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "Chrome: game (localhost:5500)",
+      "url": "http://127.0.0.1:5500/",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "serve-static"
+    },
+    {
+      "type": "msedge",
+      "request": "launch",
+      "name": "Edge: game (localhost:5500)",
+      "url": "http://127.0.0.1:5500/",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "serve-static"
+    }
+  ]
+}

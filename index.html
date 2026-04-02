@@ -40,6 +40,8 @@
     (() => {
       const WORLD_W = 540;
       const WORLD_H = 960;
+      /** 1フレーム相当の ms（慣性の旧 0.12 / フレーム と同等の体感になる基準） */
+      const INERTIA_REF_MS = 1000 / 60;
 
       class GameScene extends Phaser.Scene {
         constructor() {
@@ -65,7 +67,16 @@
 
           this.player = this.physics.add.sprite(WORLD_W / 2, WORLD_H / 2, 'player');
           this.player.setCircle(14).setCollideWorldBounds(true);
-          this.player.body.setDrag(220);
+          this.player.body.setDrag(0);
+
+          this._onGlobalPointerUp = () => this.releasePointer();
+          this._onWindowBlur = () => this.releasePointer();
+          window.addEventListener('pointerup', this._onGlobalPointerUp);
+          window.addEventListener('blur', this._onWindowBlur);
+          this.events.once('shutdown', () => {
+            window.removeEventListener('pointerup', this._onGlobalPointerUp);
+            window.removeEventListener('blur', this._onWindowBlur);
+          });
 
           this.bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 120, runChildUpdate: true });
           this.enemies = this.physics.add.group();
@@ -82,6 +93,7 @@
             if (this.state.pointerId === null) this.state.pointerId = pointer.id;
           });
           this.input.on('pointermove', (pointer) => {
+            if (this.state.pointerId === null && pointer.isDown) this.state.pointerId = pointer.id;
             if (pointer.id !== this.state.pointerId) return;
             const dx = pointer.worldX - this.player.x;
             const dy = pointer.worldY - this.player.y;
@@ -92,8 +104,7 @@
           });
           this.input.on('pointerup', (pointer) => {
             if (pointer.id !== this.state.pointerId) return;
-            this.state.pointerId = null;
-            this.state.desiredVel.set(0, 0);
+            this.releasePointer();
           });
 
           this.hud = this.add.text(12, 12, '', {
@@ -114,6 +125,12 @@
           }).setOrigin(0.5).setDepth(20);
 
           this.updateHUD();
+        }
+
+        releasePointer() {
+          if (this.state.pointerId === null) return;
+          this.state.pointerId = null;
+          this.state.desiredVel.set(0, 0);
         }
 
         makeTextures() {
@@ -146,6 +163,7 @@
           if (edge === 3) { x = -20; y = Phaser.Math.Between(0, WORLD_H); }
 
           const enemy = this.enemies.create(x, y, 'enemy');
+          enemy.setCircle(12);
           enemy.hp = 2 + Math.floor(this.state.level * 0.45);
           enemy.speed = 62 + this.state.level * 7;
           enemy.lastHit = 0;
@@ -179,6 +197,7 @@
 
         spawnXp(x, y) {
           const orb = this.xpOrbs.create(x, y, 'xp');
+          orb.setCircle(8);
           orb.value = 1;
         }
 
@@ -230,7 +249,8 @@
 
         update(_, dt) {
           if (!this.player || this.state.gameOver) return;
-          const t = this.state.inertia;
+          const k = this.state.inertia;
+          const t = Math.min(1, 1 - Math.pow(1 - k, dt / INERTIA_REF_MS));
           const vx = Phaser.Math.Linear(this.player.body.velocity.x, this.state.desiredVel.x, t);
           const vy = Phaser.Math.Linear(this.player.body.velocity.y, this.state.desiredVel.y, t);
           this.player.setVelocity(vx, vy);
