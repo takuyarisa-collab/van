@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Static Phaser Prototype</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: #090b12;
+      overflow: hidden;
+      touch-action: none;
+      font-family: system-ui, sans-serif;
+    }
+    body {
+      display: grid;
+      place-items: center;
+    }
+    #game-wrap {
+      width: min(100vw, calc(100vh * 9 / 16));
+      height: min(100vh, calc(100vw * 16 / 9));
+      max-width: 560px;
+      max-height: 1000px;
+      border: 1px solid #2a2f44;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #101425;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <div id="game-wrap"></div>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <script>
+    (() => {
+      const WORLD_W = 540;
+      const WORLD_H = 960;
+
+      class GameScene extends Phaser.Scene {
+        constructor() {
+          super('game');
+        }
+
+        create() {
+          this.makeTextures();
+
+          this.state = {
+            hp: 100,
+            level: 1,
+            xp: 0,
+            xpToNext: 10,
+            fireRate: 320,
+            moveSpeed: 300,
+            inertia: 0.12,
+            pointerId: null,
+            moveVec: new Phaser.Math.Vector2(0, 0),
+            desiredVel: new Phaser.Math.Vector2(0, 0),
+            gameOver: false,
+          };
+
+          this.player = this.physics.add.sprite(WORLD_W / 2, WORLD_H / 2, 'player');
+          this.player.setCircle(14).setCollideWorldBounds(true);
+          this.player.body.setDrag(220);
+
+          this.bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 120, runChildUpdate: true });
+          this.enemies = this.physics.add.group();
+          this.xpOrbs = this.physics.add.group();
+
+          this.physics.add.overlap(this.bullets, this.enemies, this.onBulletHit, null, this);
+          this.physics.add.overlap(this.player, this.xpOrbs, this.onXpPickup, null, this);
+          this.physics.add.overlap(this.player, this.enemies, this.onEnemyTouch, null, this);
+
+          this.spawnTimer = this.time.addEvent({ delay: 900, loop: true, callback: () => this.spawnEnemy() });
+          this.fireTimer = this.time.addEvent({ delay: this.state.fireRate, loop: true, callback: () => this.autoFire() });
+
+          this.input.on('pointerdown', (pointer) => {
+            if (this.state.pointerId === null) this.state.pointerId = pointer.id;
+          });
+          this.input.on('pointermove', (pointer) => {
+            if (pointer.id !== this.state.pointerId) return;
+            const dx = pointer.worldX - this.player.x;
+            const dy = pointer.worldY - this.player.y;
+            const len = Math.hypot(dx, dy) || 1;
+            this.state.moveVec.set(dx / len, dy / len);
+            const m = Math.min(1, len / 140);
+            this.state.desiredVel.set(this.state.moveVec.x * this.state.moveSpeed * m, this.state.moveVec.y * this.state.moveSpeed * m);
+          });
+          this.input.on('pointerup', (pointer) => {
+            if (pointer.id !== this.state.pointerId) return;
+            this.state.pointerId = null;
+            this.state.desiredVel.set(0, 0);
+          });
+
+          this.hud = this.add.text(12, 12, '', {
+            fontFamily: 'system-ui, sans-serif',
+            fontSize: '22px',
+            color: '#e6ecff',
+            stroke: '#000',
+            strokeThickness: 4,
+          }).setScrollFactor(0).setDepth(10);
+
+          this.message = this.add.text(WORLD_W / 2, WORLD_H / 2, '', {
+            fontFamily: 'system-ui, sans-serif',
+            fontSize: '32px',
+            color: '#fff',
+            align: 'center',
+            stroke: '#000',
+            strokeThickness: 6,
+          }).setOrigin(0.5).setDepth(20);
+
+          this.updateHUD();
+        }
+
+        makeTextures() {
+          const g = this.add.graphics();
+          g.fillStyle(0x4fd1c5).fillCircle(16, 16, 16);
+          g.lineStyle(3, 0xdefaf7).strokeCircle(16, 16, 16);
+          g.generateTexture('player', 32, 32);
+          g.clear();
+
+          g.fillStyle(0xff6262).fillCircle(12, 12, 12);
+          g.generateTexture('enemy', 24, 24);
+          g.clear();
+
+          g.fillStyle(0xfff38a).fillCircle(6, 6, 6);
+          g.generateTexture('bullet', 12, 12);
+          g.clear();
+
+          g.fillStyle(0x70f0a7).fillCircle(8, 8, 8);
+          g.generateTexture('xp', 16, 16);
+          g.destroy();
+        }
+
+        spawnEnemy() {
+          if (this.state.gameOver) return;
+          const edge = Phaser.Math.Between(0, 3);
+          let x = 0, y = 0;
+          if (edge === 0) { x = Phaser.Math.Between(0, WORLD_W); y = -20; }
+          if (edge === 1) { x = WORLD_W + 20; y = Phaser.Math.Between(0, WORLD_H); }
+          if (edge === 2) { x = Phaser.Math.Between(0, WORLD_W); y = WORLD_H + 20; }
+          if (edge === 3) { x = -20; y = Phaser.Math.Between(0, WORLD_H); }
+
+          const enemy = this.enemies.create(x, y, 'enemy');
+          enemy.hp = 2 + Math.floor(this.state.level * 0.45);
+          enemy.speed = 62 + this.state.level * 7;
+          enemy.lastHit = 0;
+        }
+
+        autoFire() {
+          if (this.state.gameOver) return;
+          const target = this.getNearestEnemy();
+          if (!target) return;
+
+          const bullet = this.bullets.get(this.player.x, this.player.y, 'bullet');
+          if (!bullet) return;
+
+          bullet.setActive(true).setVisible(true);
+          bullet.body.enable = true;
+          bullet.body.setCircle(6);
+
+          const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, target.x, target.y);
+          const speed = 480;
+          bullet.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+          bullet.lifespan = 700;
+        }
+
+        onBulletHit(bullet, enemy) {
+          bullet.disableBody(true, true);
+          enemy.hp -= 1;
+          if (enemy.hp > 0) return;
+          this.spawnXp(enemy.x, enemy.y);
+          enemy.destroy();
+        }
+
+        spawnXp(x, y) {
+          const orb = this.xpOrbs.create(x, y, 'xp');
+          orb.value = 1;
+        }
+
+        onXpPickup(player, orb) {
+          orb.destroy();
+          this.state.xp += orb.value;
+          while (this.state.xp >= this.state.xpToNext) {
+            this.state.xp -= this.state.xpToNext;
+            this.state.level += 1;
+            this.state.xpToNext = Math.floor(this.state.xpToNext * 1.28);
+            this.state.fireRate = Math.max(140, this.state.fireRate - 8);
+            this.fireTimer.reset({ delay: this.state.fireRate, loop: true, callback: () => this.autoFire() });
+          }
+          this.updateHUD();
+        }
+
+        onEnemyTouch(player, enemy) {
+          if (this.state.gameOver) return;
+          const now = this.time.now;
+          if (now - enemy.lastHit < 450) return;
+          enemy.lastHit = now;
+          this.state.hp = Math.max(0, this.state.hp - 8);
+          this.updateHUD();
+          if (this.state.hp === 0) this.gameOver();
+        }
+
+        getNearestEnemy() {
+          let best = null;
+          let bestDist = Infinity;
+          this.enemies.getChildren().forEach((enemy) => {
+            const d = Phaser.Math.Distance.Squared(this.player.x, this.player.y, enemy.x, enemy.y);
+            if (d < bestDist) {
+              best = enemy;
+              bestDist = d;
+            }
+          });
+          return best;
+        }
+
+        updateHUD() {
+          this.hud.setText(`HP ${this.state.hp}   LV ${this.state.level}   XP ${this.state.xp}/${this.state.xpToNext}`);
+        }
+
+        gameOver() {
+          this.state.gameOver = true;
+          this.message.setText('DEFEATED\nAuto-restarting...');
+          this.time.delayedCall(1200, () => this.scene.restart());
+        }
+
+        update(_, dt) {
+          if (!this.player || this.state.gameOver) return;
+          const t = this.state.inertia;
+          const vx = Phaser.Math.Linear(this.player.body.velocity.x, this.state.desiredVel.x, t);
+          const vy = Phaser.Math.Linear(this.player.body.velocity.y, this.state.desiredVel.y, t);
+          this.player.setVelocity(vx, vy);
+
+          this.enemies.getChildren().forEach((enemy) => {
+            const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
+            enemy.setVelocity(Math.cos(angle) * enemy.speed, Math.sin(angle) * enemy.speed);
+          });
+
+          this.bullets.getChildren().forEach((bullet) => {
+            bullet.lifespan -= dt;
+            if (bullet.lifespan <= 0) bullet.disableBody(true, true);
+          });
+        }
+      }
+
+      new Phaser.Game({
+        type: Phaser.AUTO,
+        parent: 'game-wrap',
+        width: WORLD_W,
+        height: WORLD_H,
+        backgroundColor: '#11172a',
+        physics: {
+          default: 'arcade',
+          arcade: { debug: false },
+        },
+        scale: {
+          mode: Phaser.Scale.FIT,
+          autoCenter: Phaser.Scale.CENTER_BOTH,
+          width: WORLD_W,
+          height: WORLD_H,
+        },
+        scene: [GameScene],
+      });
+    })();
+  </script>
+</body>
+</html>
