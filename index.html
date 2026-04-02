@@ -62,6 +62,7 @@
             level: 1,
             xp: 0,
             xpToNext: 10,
+            energy: 0,
             fireRate: 320,
             moveSpeed: 300,
             inertia: 0.12,
@@ -206,8 +207,13 @@
           bullet.disableBody(true, true);
           enemy.hp -= 1;
           if (enemy.hp > 0) return;
+          this.addEnergyFromKill(enemy);
           this.spawnXp(enemy.x, enemy.y);
           enemy.destroy();
+        }
+
+        addEnergyFromKill(enemy) {
+          this.state.energy += Math.max(1, Math.floor(enemy.speed / 40));
         }
 
         spawnXp(x, y) {
