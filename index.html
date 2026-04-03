@@ -109,7 +109,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-03 23:58';
+      const BUILD_TIMESTAMP = '2026-04-04 00:35';
       const BUILD_COMMIT_SHORT = '4b4fccb';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
 
@@ -137,12 +137,15 @@
             gameOver: false,
             snapBack: {
               minSpeed: 130,
-              nearSpeed: 95,
+              nearSpeed: 82,
               reversalDot: -0.62,
-              nearDot: -0.32,
+              nearDot: -0.14,
               reactionWindowMs: 170,
+              nearReactionWindowMs: 260,
               cooldownMs: 110,
               minInputPower: 0.42,
+              nearMinInputPower: 0.27,
+              nearFlipDot: -0.16,
               lastStrongInputDir: new Phaser.Math.Vector2(0, 0),
               lastStrongInputAt: Number.NEGATIVE_INFINITY,
               lastDetectedAt: Number.NEGATIVE_INFINITY,
@@ -402,11 +405,15 @@
           if (!onCooldown && speed >= snapBackState.minSpeed && reversalDot <= snapBackState.reversalDot && quickReverseInput) {
             outcome = SNAP_BACK_RESULT.SUCCESS_CANDIDATE;
             snapBackState.lastDetectedAt = now;
-          } else if (
-            (speed >= snapBackState.minSpeed && reversalDot <= snapBackState.reversalDot)
-            || (speed >= snapBackState.nearSpeed && reversalDot <= snapBackState.nearDot)
-          ) {
-            outcome = SNAP_BACK_RESULT.NEAR_MISS;
+          } else {
+            const nearSpeedOk = speed >= snapBackState.nearSpeed;
+            const nearReverseOk = reversalDot <= snapBackState.nearDot;
+            const nearFlipOk = flipDot <= snapBackState.nearFlipDot;
+            const nearWindowOk = reactionMs <= snapBackState.nearReactionWindowMs;
+            const nearInputPowerOk = snapBackState.lastInputPower >= snapBackState.nearMinInputPower;
+            if (nearSpeedOk && nearReverseOk && nearFlipOk && nearWindowOk && nearInputPowerOk) {
+              outcome = SNAP_BACK_RESULT.NEAR_MISS;
+            }
           }
 
           const result = {
@@ -511,10 +518,11 @@
           const snapBackState = this.state.snapBack;
           const inputDir = new Phaser.Math.Vector2(nx, ny);
           snapBackState.lastInputPower = movePower;
-          if (movePower < snapBackState.minInputPower) return;
+          if (movePower < snapBackState.nearMinInputPower) return;
           if (Number.isFinite(snapBackState.lastStrongInputAt)) {
             this.evaluateSnapBack(inputDir, now);
           }
+          if (movePower < snapBackState.minInputPower) return;
           snapBackState.lastStrongInputDir.copy(inputDir);
           snapBackState.lastStrongInputAt = now;
         }
