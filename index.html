@@ -109,9 +109,9 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_UPDATED_AT = '2026-04-03 22:34';
+      const BUILD_TIMESTAMP = '2026-04-03 23:58';
       const BUILD_COMMIT_SHORT = '4b4fccb';
-      const BUILD_STAMP = `${APP_VERSION} / ${BUILD_UPDATED_AT}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
+      const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
 
       class GameScene extends Phaser.Scene {
         constructor() {
@@ -481,6 +481,30 @@
               onComplete: () => ring.destroy(),
             });
           }
+
+          const label = this.add.text(
+            this.player.x + inputDir.x * 34,
+            this.player.y + inputDir.y * 34,
+            isSuccess ? 'SNAP' : 'NEAR',
+            {
+              fontFamily: 'system-ui, sans-serif',
+              fontSize: isSuccess ? '24px' : '21px',
+              fontStyle: '700',
+              color: isSuccess ? '#58fff0' : '#ffe27a',
+              stroke: '#000',
+              strokeThickness: 5,
+            },
+          ).setOrigin(0.5).setDepth(this.player.depth + 3);
+          label.setAlpha(isSuccess ? 1 : 0.95);
+
+          this.tweens.add({
+            targets: label,
+            y: label.y - 12,
+            alpha: 0,
+            duration: isSuccess ? 260 : 230,
+            ease: 'Quad.easeOut',
+            onComplete: () => label.destroy(),
+          });
         }
 
         processSnapBackInput(nx, ny, movePower, now) {
