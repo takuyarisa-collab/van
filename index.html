@@ -143,32 +143,7 @@
           this.playerBaseAlpha = this.player.alpha;
           this.playerBaseScale = this.player.scale;
 
-          this.instabilityParticles = null;
-          this.instabilityParticleSystem = null;
-          try {
-            const particleSystem = this.add.particles(VISUAL_ASSETS.xp.textureKey);
-            if (particleSystem && particleSystem.createEmitter) {
-              this.instabilityParticleSystem = particleSystem.setDepth(4);
-              this.instabilityParticles = particleSystem.createEmitter({
-                speed: { min: 18, max: 48 },
-                scale: { start: 0.16, end: 0 },
-                alpha: { start: 0.28, end: 0 },
-                lifespan: 240,
-                frequency: 160,
-                quantity: 1,
-                blendMode: 'ADD',
-                emitZone: {
-                  type: 'edge',
-                  source: new Phaser.Geom.Circle(0, 0, VISUAL_ASSETS.player.hitRadius + 4),
-                  quantity: 20,
-                },
-              });
-              this.instabilityParticles.startFollow(this.player);
-            }
-          } catch (_) {
-            this.instabilityParticles = null;
-            this.instabilityParticleSystem = null;
-          }
+main
 
           this._onGlobalPointerUp = () => this.releasePointer();
           this._onWindowBlur = () => this.releasePointer();
