@@ -40,6 +40,67 @@
     (() => {
       const WORLD_W = 540;
       const WORLD_H = 960;
+      const VISUAL_ASSETS = {
+        player: {
+          textureKey: 'player',
+          hitRadius: 14,
+          generatePlaceholder(g) {
+            g.fillStyle(0x2ec4ff).fillRoundedRect(8, 6, 16, 20, 4);
+            g.fillStyle(0x9be8ff).fillRect(12, 2, 8, 6);
+            g.fillStyle(0xffffff).fillRect(13, 10, 3, 3).fillRect(18, 10, 3, 3);
+            g.fillStyle(0x0f6ea6).fillRect(10, 23, 4, 5).fillRect(18, 23, 4, 5);
+            g.generateTexture(this.textureKey, 32, 32);
+            g.clear();
+          },
+        },
+        enemies: [
+          {
+            type: 'blob',
+            textureKey: 'enemyA',
+            hitRadius: 12,
+            generatePlaceholder(g) {
+              g.fillStyle(0xf05b5b).fillCircle(12, 12, 11);
+              g.fillStyle(0xff9e9e).fillCircle(8, 10, 2).fillCircle(16, 10, 2);
+              g.fillStyle(0x8c1f1f).fillRect(8, 15, 8, 2);
+              g.generateTexture(this.textureKey, 24, 24);
+              g.clear();
+            },
+          },
+          {
+            type: 'drone',
+            textureKey: 'enemyB',
+            hitRadius: 12,
+            generatePlaceholder(g) {
+              g.fillStyle(0x7b5df5).fillRoundedRect(4, 6, 16, 12, 3);
+              g.fillStyle(0xaf9cff).fillRect(8, 9, 8, 3);
+              g.fillStyle(0x3f2ca6).fillRect(2, 10, 3, 4).fillRect(19, 10, 3, 4);
+              g.fillStyle(0xdcd3ff).fillCircle(12, 16, 2);
+              g.generateTexture(this.textureKey, 24, 24);
+              g.clear();
+            },
+          },
+        ],
+        attack: {
+          bullet: {
+            textureKey: 'bullet',
+            hitRadius: 6,
+            generatePlaceholder(g) {
+              g.fillStyle(0xfff38a).fillCircle(6, 6, 6);
+              g.generateTexture(this.textureKey, 12, 12);
+              g.clear();
+            },
+          },
+        },
+        xp: {
+          textureKey: 'xp',
+          hitRadius: 8,
+          generatePlaceholder(g) {
+            g.fillStyle(0x70f0a7).fillCircle(8, 8, 8);
+            g.generateTexture(this.textureKey, 16, 16);
+            g.clear();
+          },
+        },
+      };
       /** 1フレーム相当の ms（慣性の旧 0.12 / フレーム と同等の体感になる基準） */
       const INERTIA_REF_MS = 1000 / 60;
       const APP_VERSION = '0.1.0';
@@ -58,7 +119,7 @@
         }
 
         create() {
-          this.makeTextures();
+          this.buildVisualAssets();
 
           this.state = {
             hp: 100,
@@ -76,8 +137,8 @@
             gameOver: false,
           };
 
-          this.player = this.physics.add.sprite(WORLD_W / 2, WORLD_H / 2, 'player');
-          this.player.setCircle(14).setCollideWorldBounds(true);
+          this.player = this.physics.add.sprite(WORLD_W / 2, WORLD_H / 2, VISUAL_ASSETS.player.textureKey);
+          this.player.setCircle(VISUAL_ASSETS.player.hitRadius).setCollideWorldBounds(true);
           this.player.body.setDrag(0);
 
           this._onGlobalPointerUp = () => this.releasePointer();
@@ -181,38 +242,17 @@
           this.state.desiredVel.set(0, 0);
         }
 
-        makeTextures() {
+        buildVisualAssets() {
           const g = this.add.graphics();
-          // Player: simple lightweight "ship" sprite for clearer facing and silhouette.
-          g.fillStyle(0x2ec4ff).fillRoundedRect(8, 6, 16, 20, 4);
-          g.fillStyle(0x9be8ff).fillRect(12, 2, 8, 6);
-          g.fillStyle(0xffffff).fillRect(13, 10, 3, 3).fillRect(18, 10, 3, 3);
-          g.fillStyle(0x0f6ea6).fillRect(10, 23, 4, 5).fillRect(18, 23, 4, 5);
-          g.generateTexture('player', 32, 32);
-          g.clear();
-
-          // Enemy type A: red "blob"
-          g.fillStyle(0xf05b5b).fillCircle(12, 12, 11);
-          g.fillStyle(0xff9e9e).fillCircle(8, 10, 2).fillCircle(16, 10, 2);
-          g.fillStyle(0x8c1f1f).fillRect(8, 15, 8, 2);
-          g.generateTexture('enemyA', 24, 24);
-          g.clear();
-
-          // Enemy type B: purple "drone"
-          g.fillStyle(0x7b5df5).fillRoundedRect(4, 6, 16, 12, 3);
-          g.fillStyle(0xaf9cff).fillRect(8, 9, 8, 3);
-          g.fillStyle(0x3f2ca6).fillRect(2, 10, 3, 4).fillRect(19, 10, 3, 4);
-          g.fillStyle(0xdcd3ff).fillCircle(12, 16, 2);
-          g.generateTexture('enemyB', 24, 24);
-          g.clear();
-
-          g.fillStyle(0xfff38a).fillCircle(6, 6, 6);
-          g.generateTexture('bullet', 12, 12);
-          g.clear();
-
-          g.fillStyle(0x70f0a7).fillCircle(8, 8, 8);
-          g.generateTexture('xp', 16, 16);
+          VISUAL_ASSETS.player.generatePlaceholder(g);
+          VISUAL_ASSETS.enemies.forEach((enemyVisual) => enemyVisual.generatePlaceholder(g));
+          VISUAL_ASSETS.attack.bullet.generatePlaceholder(g);
+          VISUAL_ASSETS.xp.generatePlaceholder(g);
           g.destroy();
+        }
+
+        getRandomEnemyVisual() {
+          return Phaser.Utils.Array.GetRandom(VISUAL_ASSETS.enemies);
         }
 
         spawnEnemy() {
@@ -224,9 +264,9 @@
           if (edge === 2) { x = Phaser.Math.Between(0, WORLD_W); y = WORLD_H + 20; }
           if (edge === 3) { x = -20; y = Phaser.Math.Between(0, WORLD_H); }
 
-          const enemyTexture = Phaser.Math.Between(0, 1) === 0 ? 'enemyA' : 'enemyB';
-          const enemy = this.enemies.create(x, y, enemyTexture);
-          enemy.setCircle(12);
+          const enemyVisual = this.getRandomEnemyVisual();
+          const enemy = this.enemies.create(x, y, enemyVisual.textureKey);
+          enemy.setCircle(enemyVisual.hitRadius);
           enemy.hp = 2 + Math.floor(this.state.level * 0.45);
           enemy.speed = 62 + this.state.level * 7;
           enemy.lastHit = 0;
@@ -237,12 +277,13 @@
           const target = this.getNearestEnemy();
           if (!target) return;
 
-          const bullet = this.bullets.get(this.player.x, this.player.y, 'bullet');
+          const bulletVisual = VISUAL_ASSETS.attack.bullet;
+          const bullet = this.bullets.get(this.player.x, this.player.y, bulletVisual.textureKey);
           if (!bullet) return;
 
           bullet.setActive(true).setVisible(true);
           bullet.body.enable = true;
-          bullet.body.setCircle(6);
+          bullet.body.setCircle(bulletVisual.hitRadius);
 
           const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, target.x, target.y);
           const speed = 480;
@@ -264,8 +305,8 @@
         }
 
         spawnXp(x, y) {
-          const orb = this.xpOrbs.create(x, y, 'xp');
-          orb.setCircle(8);
+          const orb = this.xpOrbs.create(x, y, VISUAL_ASSETS.xp.textureKey);
+          orb.setCircle(VISUAL_ASSETS.xp.hitRadius);
           orb.value = 1;
         }
 
