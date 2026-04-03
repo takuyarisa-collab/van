@@ -109,7 +109,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-03 12:45';
+      const BUILD_TIMESTAMP = '2026-04-03 19:20';
       const BUILD_COMMIT_SHORT = '4b4fccb';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
 
@@ -373,6 +373,17 @@
           return normalized * normalized;
         }
 
+        getEnergyRiskProfile() {
+          const instability = this.getInstabilityStrength();
+          return {
+            instability,
+            movementDeviationMaxRad: Phaser.Math.Linear(0, 0.1, instability),
+            movementJitterSpeed: Phaser.Math.Linear(0, 22, instability),
+            enemyPressureMultiplier: Phaser.Math.Linear(1, 1.12, instability),
+            accidentalSnapChancePerSecond: Phaser.Math.Linear(0, 0.1, instability),
+          };
+        }
+
         spawnXp(x, y) {
           const orb = this.xpOrbs.create(x, y, VISUAL_ASSETS.xp.textureKey);
           orb.setCircle(VISUAL_ASSETS.xp.hitRadius);
@@ -612,6 +623,21 @@
           snapBackState.lastStrongInputAt = now;
         }
 
+        tryAccidentalSnap(dt, riskProfile) {
+          if (this.state.gameOver) return;
+          if (this.state.pointerId === null) return;
+          if (!Number.isFinite(this.state.snapBack.lastStrongInputAt)) return;
+          if (riskProfile.accidentalSnapChancePerSecond <= 0) return;
+          const chanceThisFrame = riskProfile.accidentalSnapChancePerSecond * (dt / 1000);
+          if (Math.random() >= chanceThisFrame) return;
+          this.triggerSnapBackRelease();
+          this.showSnapBackDebugFlash(
+            SNAP_BACK_RESULT.NEAR_MISS,
+            this.state.snapBack.lastStrongInputDir,
+            this.time.now,
+          );
+        }
+
         gameOver() {
           this.state.gameOver = true;
           this.message.setText('DEFEATED\nAuto-restarting...');
@@ -620,9 +646,27 @@
 
         update(_, dt) {
           if (!this.player || this.state.gameOver) return;
+          const riskProfile = this.getEnergyRiskProfile();
           const desiredSpeed = this.state.desiredVel.length();
-          const desiredDirX = desiredSpeed > 0 ? this.state.desiredVel.x / desiredSpeed : 0;
-          const desiredDirY = desiredSpeed > 0 ? this.state.desiredVel.y / desiredSpeed : 0;
+          let desiredDirX = desiredSpeed > 0 ? this.state.desiredVel.x / desiredSpeed : 0;
+          let desiredDirY = desiredSpeed > 0 ? this.state.desiredVel.y / desiredSpeed : 0;
+          let targetVelX = this.state.desiredVel.x;
+          let targetVelY = this.state.desiredVel.y;
+          if (desiredSpeed > 0 && riskProfile.instability > 0) {
+            const jitterSeed = this.time.now * 0.006;
+            const deviationAngle =
+              (Math.sin(jitterSeed * 1.7 + 0.9) + Math.cos(jitterSeed * 2.6)) * 0.5 * riskProfile.movementDeviationMaxRad;
+            const cos = Math.cos(deviationAngle);
+            const sin = Math.sin(deviationAngle);
+            const rotatedX = desiredDirX * cos - desiredDirY * sin;
+            const rotatedY = desiredDirX * sin + desiredDirY * cos;
+            desiredDirX = rotatedX;
+            desiredDirY = rotatedY;
+            const jitterX = Math.sin(jitterSeed * 3.4 + 1.1) * riskProfile.movementJitterSpeed;
+            const jitterY = Math.cos(jitterSeed * 3.9 + 2.4) * riskProfile.movementJitterSpeed;
+            targetVelX = desiredDirX * desiredSpeed + jitterX;
+            targetVelY = desiredDirY * desiredSpeed + jitterY;
+          }
           const currentSpeedTowardDesired =
             this.player.body.velocity.x * desiredDirX + this.player.body.velocity.y * desiredDirY;
           const isAcceleratingInput = desiredSpeed > 0 && currentSpeedTowardDesired < desiredSpeed;
@@ -630,13 +674,14 @@
             ? Math.min(0.999, this.state.inertia * this.state.accelerationBoost)
             : this.state.inertia;
           const t = Math.min(1, 1 - Math.pow(1 - inertiaK, dt / INERTIA_REF_MS));
-          const vx = Phaser.Math.Linear(this.player.body.velocity.x, this.state.desiredVel.x, t);
-          const vy = Phaser.Math.Linear(this.player.body.velocity.y, this.state.desiredVel.y, t);
+          const vx = Phaser.Math.Linear(this.player.body.velocity.x, targetVelX, t);
+          const vy = Phaser.Math.Linear(this.player.body.velocity.y, targetVelY, t);
           this.player.setVelocity(vx, vy);
 
           this.enemies.getChildren().forEach((enemy) => {
             const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
-            enemy.setVelocity(Math.cos(angle) * enemy.speed, Math.sin(angle) * enemy.speed);
+            const pressuredSpeed = enemy.speed * riskProfile.enemyPressureMultiplier;
+            enemy.setVelocity(Math.cos(angle) * pressuredSpeed, Math.sin(angle) * pressuredSpeed);
           });
 
           this.bullets.getChildren().forEach((bullet) => {
@@ -666,7 +711,9 @@
             orb.setVelocity(nextVx, nextVy);
           });
 
-          const instability = this.getInstabilityStrength();
+          this.tryAccidentalSnap(dt, riskProfile);
+
+          const instability = riskProfile.instability;
           const pulse = this.time.now * 0.012;
           const jitterPower = 1 + instability * 3.2;
           const jitterX = (Math.sin(pulse * 2.1) + Math.sin(pulse * 3.6 + 0.9)) * 0.5 * jitterPower;
