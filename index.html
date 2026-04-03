@@ -130,6 +130,7 @@
             fireRate: 320,
             moveSpeed: 300,
             inertia: 0.12,
+            accelerationBoost: 1.85,
             pointerId: null,
             stickOrigin: new Phaser.Math.Vector2(0, 0),
             stickOffset: new Phaser.Math.Vector2(0, 0),
@@ -535,8 +536,16 @@
 
         update(_, dt) {
           if (!this.player || this.state.gameOver) return;
-          const k = this.state.inertia;
-          const t = Math.min(1, 1 - Math.pow(1 - k, dt / INERTIA_REF_MS));
+          const desiredSpeed = this.state.desiredVel.length();
+          const desiredDirX = desiredSpeed > 0 ? this.state.desiredVel.x / desiredSpeed : 0;
+          const desiredDirY = desiredSpeed > 0 ? this.state.desiredVel.y / desiredSpeed : 0;
+          const currentSpeedTowardDesired =
+            this.player.body.velocity.x * desiredDirX + this.player.body.velocity.y * desiredDirY;
+          const isAcceleratingInput = desiredSpeed > 0 && currentSpeedTowardDesired < desiredSpeed;
+          const inertiaK = isAcceleratingInput
+            ? Math.min(0.999, this.state.inertia * this.state.accelerationBoost)
+            : this.state.inertia;
+          const t = Math.min(1, 1 - Math.pow(1 - inertiaK, dt / INERTIA_REF_MS));
           const vx = Phaser.Math.Linear(this.player.body.velocity.x, this.state.desiredVel.x, t);
           const vy = Phaser.Math.Linear(this.player.body.velocity.y, this.state.desiredVel.y, t);
           this.player.setVelocity(vx, vy);
