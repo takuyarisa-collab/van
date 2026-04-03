@@ -226,11 +226,11 @@ main
             stroke: '#000',
             strokeThickness: 3,
           }).setOrigin(1, 0).setScrollFactor(0).setDepth(10);
-          this.buildText = this.add.text(10, WORLD_H - 8, BUILD_TIMESTAMP, {
+          this.buildText = this.add.text(10, 42, BUILD_TIMESTAMP, {
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
             fontSize: '11px',
             color: '#d6ddff',
-          }).setOrigin(0, 1).setScrollFactor(0).setDepth(10).setAlpha(0.42);
+          }).setOrigin(0, 0).setScrollFactor(0).setDepth(10).setAlpha(0.35);
 
           this.message = this.add.text(WORLD_W / 2, WORLD_H / 2, '', {
             fontFamily: 'system-ui, sans-serif',
