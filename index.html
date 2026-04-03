@@ -143,22 +143,7 @@
           this.playerBaseAlpha = this.player.alpha;
           this.playerBaseScale = this.player.scale;
 
-          this.instabilityParticles = this.add.particles(0, 0, VISUAL_ASSETS.xp.textureKey, {
-            speed: { min: 18, max: 48 },
-            scale: { start: 0.16, end: 0 },
-            alpha: { start: 0.28, end: 0 },
-            lifespan: 240,
-            frequency: 160,
-            quantity: 1,
-            blendMode: 'ADD',
-            follow: this.player,
-            followOffset: { x: 0, y: 0 },
-            emitZone: {
-              type: 'edge',
-              source: new Phaser.Geom.Circle(0, 0, VISUAL_ASSETS.player.hitRadius + 4),
-              quantity: 20,
-            },
-          }).setDepth(4);
+main
 
           this._onGlobalPointerUp = () => this.releasePointer();
           this._onWindowBlur = () => this.releasePointer();
@@ -167,6 +152,11 @@
           this.events.once('shutdown', () => {
             window.removeEventListener('pointerup', this._onGlobalPointerUp);
             window.removeEventListener('blur', this._onWindowBlur);
+            if (this.instabilityParticleSystem) {
+              this.instabilityParticleSystem.destroy();
+              this.instabilityParticleSystem = null;
+              this.instabilityParticles = null;
+            }
           });
 
           this.bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 120, runChildUpdate: true });
