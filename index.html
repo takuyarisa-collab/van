@@ -183,21 +183,55 @@
 
         makeTextures() {
           const g = this.add.graphics();
-          g.fillStyle(0x4fd1c5).fillCircle(16, 16, 16);
-          g.lineStyle(3, 0xdefaf7).strokeCircle(16, 16, 16);
+
+          // Player: smooth ring + cockpit (clean vector style)
+          g.fillStyle(0x4fd1c5).fillCircle(16, 16, 14);
+          g.lineStyle(4, 0xdefaf7).strokeCircle(16, 16, 13);
+          g.fillStyle(0x0d223a).fillCircle(16, 14, 5);
+          g.fillStyle(0xe9fdff).fillCircle(16, 13, 2);
           g.generateTexture('player', 32, 32);
           g.clear();
 
-          g.fillStyle(0xff6262).fillCircle(12, 12, 12);
-          g.generateTexture('enemy', 24, 24);
+          // Enemy: rough blocky style (intentionally inconsistent with player)
+          g.fillStyle(0xff6262);
+          g.fillRect(6, 4, 20, 24);
+          g.fillRect(3, 10, 26, 12);
+          g.fillStyle(0xff9898);
+          g.fillRect(9, 8, 5, 5);
+          g.fillRect(18, 8, 5, 5);
+          g.fillStyle(0x4b1010);
+          g.fillRect(10, 10, 3, 3);
+          g.fillRect(19, 10, 3, 3);
+          g.generateTexture('enemy', 32, 32);
           g.clear();
 
-          g.fillStyle(0xfff38a).fillCircle(6, 6, 6);
-          g.generateTexture('bullet', 12, 12);
+          // Bullet: tiny starburst style with strong contrast
+          g.fillStyle(0xfff38a);
+          g.fillRect(14, 4, 4, 24);
+          g.fillRect(4, 14, 24, 4);
+          g.fillStyle(0xffd84f);
+          g.fillRect(12, 12, 8, 8);
+          g.generateTexture('bullet', 32, 32);
           g.clear();
 
-          g.fillStyle(0x70f0a7).fillCircle(8, 8, 8);
-          g.generateTexture('xp', 16, 16);
+          // XP: gem-like diamond style
+          g.fillStyle(0x70f0a7);
+          g.beginPath();
+          g.moveTo(16, 3);
+          g.lineTo(27, 16);
+          g.lineTo(16, 29);
+          g.lineTo(5, 16);
+          g.closePath();
+          g.fillPath();
+          g.lineStyle(2, 0xc9ffe0);
+          g.beginPath();
+          g.moveTo(16, 5);
+          g.lineTo(25, 16);
+          g.lineTo(16, 27);
+          g.lineTo(7, 16);
+          g.closePath();
+          g.strokePath();
+          g.generateTexture('xp', 32, 32);
           g.destroy();
         }
 
