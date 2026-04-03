@@ -175,6 +175,17 @@
               maxSpeed: 280,
               lerp: 0.28,
             },
+            spawnDirector: {
+              startedAt: 0,
+              rampDurationMs: 4 * 60 * 1000,
+              baseDelayMs: 900,
+              minDelayMs: 340,
+              baseEnemyCap: 18,
+              maxEnemyCap: 52,
+              biasType: null,
+              biasUntil: 0,
+              nextBiasCheckAt: 0,
+            },
           };
 
           this.player = this.physics.add.sprite(WORLD_W / 2, WORLD_H / 2, VISUAL_ASSETS.player.textureKey);
@@ -207,6 +218,8 @@
 
           this.spawnTimer = this.time.addEvent({ delay: 900, loop: true, callback: () => this.spawnEnemy() });
           this.fireTimer = this.time.addEvent({ delay: this.state.fireRate, loop: true, callback: () => this.autoFire() });
+          this.state.spawnDirector.startedAt = this.time.now;
+          this.state.spawnDirector.nextBiasCheckAt = this.time.now + Phaser.Math.Between(5000, 9000);
 
           this.input.on('pointerdown', (pointer) => {
             if (this.state.pointerId !== null) return;
@@ -378,25 +391,106 @@
           }
         }
 
-        chooseEnemyBehaviorType() {
-          const roll = Math.random();
-          if (roll < 0.18) return ENEMY_BEHAVIOR_TYPES.DRIFTER;
-          if (roll < 0.5) return ENEMY_BEHAVIOR_TYPES.SWARM;
+        getSpawnProgress(now = this.time.now) {
+          const spawnDirector = this.state.spawnDirector;
+          const elapsedMs = Math.max(0, now - spawnDirector.startedAt);
+          return Phaser.Math.Clamp(elapsedMs / spawnDirector.rampDurationMs, 0, 1);
+        }
+
+        getEnemyCap(spawnProgress) {
+          const spawnDirector = this.state.spawnDirector;
+          return Math.round(Phaser.Math.Linear(spawnDirector.baseEnemyCap, spawnDirector.maxEnemyCap, spawnProgress));
+        }
+
+        updateSpawnDirector(now = this.time.now) {
+          const spawnDirector = this.state.spawnDirector;
+          const spawnProgress = this.getSpawnProgress(now);
+          const activeEnemies = this.enemies.countActive(true);
+          const enemyCap = this.getEnemyCap(spawnProgress);
+
+          const capPressure = Phaser.Math.Clamp(activeEnemies / Math.max(1, enemyCap), 0, 1);
+          const tensionRelief = Phaser.Math.Linear(1, 1.3, capPressure * capPressure);
+          const targetDelay = Phaser.Math.Linear(
+            spawnDirector.baseDelayMs,
+            spawnDirector.minDelayMs,
+            Math.pow(spawnProgress, 1.15),
+          ) * tensionRelief;
+          this.spawnTimer.delay = Math.round(targetDelay);
+
+          if (now >= spawnDirector.nextBiasCheckAt) {
+            const shouldBias = Math.random() < Phaser.Math.Linear(0.2, 0.55, spawnProgress);
+            if (shouldBias) {
+              spawnDirector.biasType = Math.random() < 0.65
+                ? ENEMY_BEHAVIOR_TYPES.SWARM
+                : ENEMY_BEHAVIOR_TYPES.DRIFTER;
+              spawnDirector.biasUntil = now + Phaser.Math.Between(4500, 8200);
+            } else {
+              spawnDirector.biasType = null;
+              spawnDirector.biasUntil = now;
+            }
+            spawnDirector.nextBiasCheckAt = now + Phaser.Math.Between(7000, 13000);
+          }
+
+          if (spawnDirector.biasType && now >= spawnDirector.biasUntil) {
+            spawnDirector.biasType = null;
+          }
+        }
+
+        chooseEnemyBehaviorType(spawnProgress) {
+          const spawnDirector = this.state.spawnDirector;
+          const behaviorWeights = {
+            [ENEMY_BEHAVIOR_TYPES.CHASER]: Phaser.Math.Linear(0.5, 0.42, spawnProgress),
+            [ENEMY_BEHAVIOR_TYPES.SWARM]: Phaser.Math.Linear(0.32, 0.38, spawnProgress),
+            [ENEMY_BEHAVIOR_TYPES.DRIFTER]: Phaser.Math.Linear(0.18, 0.2, spawnProgress),
+          };
+
+          if (spawnDirector.biasType && this.time.now < spawnDirector.biasUntil) {
+            const biasStrength = Phaser.Math.Linear(0.18, 0.34, spawnProgress);
+            behaviorWeights[spawnDirector.biasType] += biasStrength;
+            behaviorWeights[ENEMY_BEHAVIOR_TYPES.CHASER] = Math.max(
+              0.06,
+              behaviorWeights[ENEMY_BEHAVIOR_TYPES.CHASER] - biasStrength * 0.68,
+            );
+          }
+
+          const totalWeight = Object.values(behaviorWeights).reduce((acc, weight) => acc + weight, 0);
+          let roll = Math.random() * totalWeight;
+          if (roll < behaviorWeights[ENEMY_BEHAVIOR_TYPES.DRIFTER]) return ENEMY_BEHAVIOR_TYPES.DRIFTER;
+          roll -= behaviorWeights[ENEMY_BEHAVIOR_TYPES.DRIFTER];
+          if (roll < behaviorWeights[ENEMY_BEHAVIOR_TYPES.SWARM]) return ENEMY_BEHAVIOR_TYPES.SWARM;
           return ENEMY_BEHAVIOR_TYPES.CHASER;
         }
 
         spawnEnemy() {
           if (this.state.gameOver) return;
-          const { x, y } = this.getEnemySpawnPoint();
-          const behaviorType = this.chooseEnemyBehaviorType();
-          if (behaviorType === ENEMY_BEHAVIOR_TYPES.SWARM) {
-            const swarmCount = Phaser.Math.Between(3, 5);
-            for (let i = 0; i < swarmCount; i += 1) {
-              this.spawnEnemyWithBehavior(x, y, ENEMY_BEHAVIOR_TYPES.SWARM, 20);
+
+          const now = this.time.now;
+          const spawnProgress = this.getSpawnProgress(now);
+          const activeEnemies = this.enemies.countActive(true);
+          const enemyCap = this.getEnemyCap(spawnProgress);
+          if (activeEnemies >= enemyCap) return;
+
+          const extraWaveChance = Phaser.Math.Linear(0.16, 0.58, spawnProgress);
+          const bonusWaveChance = Phaser.Math.Linear(0.02, 0.22, spawnProgress);
+          let spawnWaves = 1;
+          if (Math.random() < extraWaveChance) spawnWaves += 1;
+          if (Math.random() < bonusWaveChance) spawnWaves += 1;
+
+          for (let waveIndex = 0; waveIndex < spawnWaves; waveIndex += 1) {
+            if (this.enemies.countActive(true) >= enemyCap) break;
+            const { x, y } = this.getEnemySpawnPoint();
+            const behaviorType = this.chooseEnemyBehaviorType(spawnProgress);
+            if (behaviorType === ENEMY_BEHAVIOR_TYPES.SWARM) {
+              const maxSwarmCount = Math.round(Phaser.Math.Linear(5, 8, spawnProgress));
+              const swarmCount = Phaser.Math.Between(3, maxSwarmCount);
+              for (let i = 0; i < swarmCount; i += 1) {
+                if (this.enemies.countActive(true) >= enemyCap) break;
+                this.spawnEnemyWithBehavior(x, y, ENEMY_BEHAVIOR_TYPES.SWARM, 20);
+              }
+              continue;
             }
-            return;
+            this.spawnEnemyWithBehavior(x, y, behaviorType);
           }
-          this.spawnEnemyWithBehavior(x, y, behaviorType);
         }
 
         autoFire() {
@@ -729,6 +823,7 @@
 
         update(_, dt) {
           if (!this.player || this.state.gameOver) return;
+          this.updateSpawnDirector(this.time.now);
           const riskProfile = this.getEnergyRiskProfile();
           const desiredSpeed = this.state.desiredVel.length();
           let desiredDirX = desiredSpeed > 0 ? this.state.desiredVel.x / desiredSpeed : 0;
