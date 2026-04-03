@@ -138,11 +138,15 @@
             snapBack: {
               minSpeed: 130,
               nearSpeed: 95,
-              successDot: -0.7,
-              nearDot: -0.35,
-              quickWindowMs: 180,
-              prevInputDir: new Phaser.Math.Vector2(0, 0),
-              prevInputAt: Number.NEGATIVE_INFINITY,
+              reversalDot: -0.62,
+              nearDot: -0.32,
+              reactionWindowMs: 170,
+              cooldownMs: 110,
+              minInputPower: 0.42,
+              lastStrongInputDir: new Phaser.Math.Vector2(0, 0),
+              lastStrongInputAt: Number.NEGATIVE_INFINITY,
+              lastDetectedAt: Number.NEGATIVE_INFINITY,
+              lastInputPower: 0,
               lastResult: null,
               history: [],
             },
@@ -185,7 +189,10 @@
             this.state.stickOrigin.set(pointer.worldX, pointer.worldY);
             this.state.stickOffset.set(0, 0);
             this.state.desiredVel.set(0, 0);
-            this.state.snapBack.prevInputAt = Number.NEGATIVE_INFINITY;
+            this.state.snapBack.lastStrongInputAt = Number.NEGATIVE_INFINITY;
+            this.state.snapBack.lastDetectedAt = Number.NEGATIVE_INFINITY;
+            this.state.snapBack.lastStrongInputDir.set(0, 0);
+            this.state.snapBack.lastInputPower = 0;
           });
           this.input.on('pointermove', (pointer) => {
             if (this.state.pointerId === null && pointer.isDown) {
@@ -209,23 +216,13 @@
             const movePower = Phaser.Math.Clamp((mag - deadZone) / (stickMaxRadius - deadZone), 0, 1);
             if (mag <= deadZone) {
               this.state.desiredVel.set(0, 0);
-              this.state.snapBack.prevInputAt = Number.NEGATIVE_INFINITY;
+              this.state.snapBack.lastInputPower = 0;
               return;
             }
             const nx = dx / mag;
             const ny = dy / mag;
             this.state.desiredVel.set(nx * this.state.moveSpeed * movePower, ny * this.state.moveSpeed * movePower);
-
-            const snapBackState = this.state.snapBack;
-            const inputDir = new Phaser.Math.Vector2(nx, ny);
-            if (Number.isFinite(snapBackState.prevInputAt)) {
-              const inputDeltaDot = snapBackState.prevInputDir.dot(inputDir);
-              if (inputDeltaDot <= 0.5) {
-                this.evaluateSnapBack(inputDir, this.time.now);
-              }
-            }
-            snapBackState.prevInputDir.copy(inputDir);
-            snapBackState.prevInputAt = this.time.now;
+            this.processSnapBackInput(nx, ny, movePower, this.time.now);
           });
           this.input.on('pointerup', (pointer) => {
             if (pointer.id !== this.state.pointerId) return;
@@ -392,16 +389,19 @@
           const speed = Math.hypot(vx, vy);
           const movementDir = speed > 0 ? new Phaser.Math.Vector2(vx / speed, vy / speed) : new Phaser.Math.Vector2(0, 0);
           const reversalDot = speed > 0 ? movementDir.dot(inputDir) : 1;
-          const inputFlipDot = snapBackState.prevInputDir.dot(inputDir);
-          const elapsedSincePrevInput = now - snapBackState.prevInputAt;
-          const quickReverseInput = inputFlipDot <= snapBackState.successDot
-            && elapsedSincePrevInput <= snapBackState.quickWindowMs;
+          const flipDot = snapBackState.lastStrongInputDir.dot(inputDir);
+          const reactionMs = now - snapBackState.lastStrongInputAt;
+          const reversedInput = flipDot <= snapBackState.reversalDot;
+          const withinWindow = reactionMs <= snapBackState.reactionWindowMs;
+          const quickReverseInput = reversedInput && withinWindow;
+          const onCooldown = now - snapBackState.lastDetectedAt < snapBackState.cooldownMs;
 
           let outcome = SNAP_BACK_RESULT.FAIL;
-          if (speed >= snapBackState.minSpeed && reversalDot <= snapBackState.successDot && quickReverseInput) {
+          if (!onCooldown && speed >= snapBackState.minSpeed && reversalDot <= snapBackState.reversalDot && quickReverseInput) {
             outcome = SNAP_BACK_RESULT.SUCCESS_CANDIDATE;
+            snapBackState.lastDetectedAt = now;
           } else if (
-            (speed >= snapBackState.minSpeed && reversalDot <= snapBackState.successDot)
+            (speed >= snapBackState.minSpeed && reversalDot <= snapBackState.reversalDot)
             || (speed >= snapBackState.nearSpeed && reversalDot <= snapBackState.nearDot)
           ) {
             outcome = SNAP_BACK_RESULT.NEAR_MISS;
@@ -412,15 +412,29 @@
             at: now,
             speed,
             reversalDot,
-            inputFlipDot,
-            elapsedSincePrevInput,
+            inputFlipDot: flipDot,
+            elapsedSincePrevInput: reactionMs,
             quickReverseInput,
+            onCooldown,
+            inputPower: snapBackState.lastInputPower,
           };
           snapBackState.lastResult = result;
           snapBackState.history.push(result);
           if (snapBackState.history.length > 24) {
             snapBackState.history.shift();
           }
+        }
+
+        processSnapBackInput(nx, ny, movePower, now) {
+          const snapBackState = this.state.snapBack;
+          const inputDir = new Phaser.Math.Vector2(nx, ny);
+          snapBackState.lastInputPower = movePower;
+          if (movePower < snapBackState.minInputPower) return;
+          if (Number.isFinite(snapBackState.lastStrongInputAt)) {
+            this.evaluateSnapBack(inputDir, now);
+          }
+          snapBackState.lastStrongInputDir.copy(inputDir);
+          snapBackState.lastStrongInputAt = now;
         }
 
         gameOver() {
