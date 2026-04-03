@@ -112,6 +112,11 @@
       const BUILD_TIMESTAMP = '2026-04-03 20:05';
       const BUILD_COMMIT_SHORT = '4b4fccb';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
+      const ENEMY_BEHAVIOR_TYPES = {
+        CHASER: 'chaser',
+        SWARM: 'swarm',
+        DRIFTER: 'drifter',
+      };
 
       class GameScene extends Phaser.Scene {
         constructor() {
@@ -330,21 +335,68 @@
           return Phaser.Utils.Array.GetRandom(VISUAL_ASSETS.enemies);
         }
 
-        spawnEnemy() {
-          if (this.state.gameOver) return;
+        getEnemySpawnPoint() {
           const edge = Phaser.Math.Between(0, 3);
           let x = 0, y = 0;
           if (edge === 0) { x = Phaser.Math.Between(0, WORLD_W); y = -20; }
           if (edge === 1) { x = WORLD_W + 20; y = Phaser.Math.Between(0, WORLD_H); }
           if (edge === 2) { x = Phaser.Math.Between(0, WORLD_W); y = WORLD_H + 20; }
           if (edge === 3) { x = -20; y = Phaser.Math.Between(0, WORLD_H); }
+          return { x, y };
+        }
 
+        spawnEnemyWithBehavior(x, y, behaviorType, spawnScatter = 0) {
           const enemyVisual = this.getRandomEnemyVisual();
-          const enemy = this.enemies.create(x, y, enemyVisual.textureKey);
+          let spawnX = x;
+          let spawnY = y;
+          if (spawnScatter > 0) {
+            spawnX += Phaser.Math.Between(-spawnScatter, spawnScatter);
+            spawnY += Phaser.Math.Between(-spawnScatter, spawnScatter);
+          }
+          const enemy = this.enemies.create(spawnX, spawnY, enemyVisual.textureKey);
           enemy.setCircle(enemyVisual.hitRadius);
+          enemy.setScale(1);
+          enemy.setTint(0xffffff);
+
+          enemy.behaviorType = behaviorType;
           enemy.hp = 2 + Math.floor(this.state.level * 0.45);
           enemy.speed = 62 + this.state.level * 7;
           enemy.lastHit = 0;
+          enemy.driftPhase = Phaser.Math.FloatBetween(0, Math.PI * 2);
+          enemy.driftFrequency = Phaser.Math.FloatBetween(0.006, 0.009);
+          enemy.driftStrength = Phaser.Math.Between(0.28, 0.46);
+
+          if (behaviorType === ENEMY_BEHAVIOR_TYPES.SWARM) {
+            enemy.hp = Math.max(1, enemy.hp - 1);
+            enemy.speed *= 0.9;
+            enemy.setScale(0.72);
+            enemy.setTint(0xffd7a3);
+            enemy.body.setCircle(Math.max(5, enemyVisual.hitRadius * 0.72));
+          } else if (behaviorType === ENEMY_BEHAVIOR_TYPES.DRIFTER) {
+            enemy.speed *= 0.95;
+            enemy.setTint(0xb1f1ff);
+          }
+        }
+
+        chooseEnemyBehaviorType() {
+          const roll = Math.random();
+          if (roll < 0.18) return ENEMY_BEHAVIOR_TYPES.DRIFTER;
+          if (roll < 0.5) return ENEMY_BEHAVIOR_TYPES.SWARM;
+          return ENEMY_BEHAVIOR_TYPES.CHASER;
+        }
+
+        spawnEnemy() {
+          if (this.state.gameOver) return;
+          const { x, y } = this.getEnemySpawnPoint();
+          const behaviorType = this.chooseEnemyBehaviorType();
+          if (behaviorType === ENEMY_BEHAVIOR_TYPES.SWARM) {
+            const swarmCount = Phaser.Math.Between(3, 5);
+            for (let i = 0; i < swarmCount; i += 1) {
+              this.spawnEnemyWithBehavior(x, y, ENEMY_BEHAVIOR_TYPES.SWARM, 20);
+            }
+            return;
+          }
+          this.spawnEnemyWithBehavior(x, y, behaviorType);
         }
 
         autoFire() {
@@ -712,6 +764,18 @@
           this.enemies.getChildren().forEach((enemy) => {
             const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
             const pressuredSpeed = enemy.speed * riskProfile.enemyPressureMultiplier;
+            if (enemy.behaviorType === ENEMY_BEHAVIOR_TYPES.DRIFTER) {
+              const toPlayerX = Math.cos(angle);
+              const toPlayerY = Math.sin(angle);
+              const perpX = -toPlayerY;
+              const perpY = toPlayerX;
+              const driftOscillation = Math.sin(this.time.now * enemy.driftFrequency + enemy.driftPhase) * enemy.driftStrength;
+              const targetX = toPlayerX + perpX * driftOscillation;
+              const targetY = toPlayerY + perpY * driftOscillation;
+              const targetLen = Math.hypot(targetX, targetY) || 1;
+              enemy.setVelocity((targetX / targetLen) * pressuredSpeed, (targetY / targetLen) * pressuredSpeed);
+              return;
+            }
             enemy.setVelocity(Math.cos(angle) * pressuredSpeed, Math.sin(angle) * pressuredSpeed);
           });
 
