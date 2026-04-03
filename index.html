@@ -139,12 +139,12 @@
             snapBack: {
               minSpeed: 130,
               nearSpeed: 82,
-              reversalDot: -0.62,
+              reversalDot: -0.68,
               nearDot: -0.14,
-              reactionWindowMs: 170,
+              reactionWindowMs: 155,
               nearReactionWindowMs: 260,
               cooldownMs: 110,
-              minInputPower: 0.42,
+              minInputPower: 0.55,
               nearMinInputPower: 0.27,
               nearFlipDot: -0.16,
               lastStrongInputDir: new Phaser.Math.Vector2(0, 0),
@@ -461,10 +461,11 @@
           const reversedInput = flipDot <= snapBackState.reversalDot;
           const withinWindow = reactionMs <= snapBackState.reactionWindowMs;
           const quickReverseInput = reversedInput && withinWindow;
+          const inputPowerStrongEnough = snapBackState.lastInputPower >= snapBackState.minInputPower;
           const onCooldown = now - snapBackState.lastDetectedAt < snapBackState.cooldownMs;
 
           let outcome = SNAP_BACK_RESULT.FAIL;
-          if (!onCooldown && speed >= snapBackState.minSpeed && reversalDot <= snapBackState.reversalDot && quickReverseInput) {
+          if (!onCooldown && speed >= snapBackState.minSpeed && reversalDot <= snapBackState.reversalDot && quickReverseInput && inputPowerStrongEnough) {
             outcome = SNAP_BACK_RESULT.SUCCESS_CANDIDATE;
             snapBackState.lastDetectedAt = now;
           } else {
