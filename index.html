@@ -109,7 +109,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 00:35';
+      const BUILD_TIMESTAMP = '2026-04-03 09:20';
       const BUILD_COMMIT_SHORT = '4b4fccb';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
 
@@ -433,7 +433,40 @@
           if (snapBackState.history.length > 24) {
             snapBackState.history.shift();
           }
+          if (result.outcome === SNAP_BACK_RESULT.SUCCESS_CANDIDATE) {
+            this.triggerSnapBackRelease();
+          }
           this.showSnapBackDebugFlash(result.outcome, inputDir, now);
+        }
+
+        triggerSnapBackRelease() {
+          if (this.state.gameOver) return;
+          const releaseRadius = 260;
+          const releaseRadiusSq = releaseRadius * releaseRadius;
+          const enemiesToClear = [];
+          this.enemies.getChildren().forEach((enemy) => {
+            const distSq = Phaser.Math.Distance.Squared(this.player.x, this.player.y, enemy.x, enemy.y);
+            if (distSq <= releaseRadiusSq) {
+              enemiesToClear.push(enemy);
+            }
+          });
+
+          enemiesToClear.forEach((enemy) => {
+            this.addEnergyFromKill(enemy);
+            this.spawnXp(enemy.x, enemy.y);
+            enemy.destroy();
+          });
+
+          const burst = this.add.circle(this.player.x, this.player.y, 28, 0xb8ffff, 0.45).setDepth(this.player.depth + 1);
+          burst.setBlendMode(Phaser.BlendModes.ADD);
+          this.tweens.add({
+            targets: burst,
+            scale: releaseRadius / 28,
+            alpha: 0,
+            duration: 220,
+            ease: 'Cubic.easeOut',
+            onComplete: () => burst.destroy(),
+          });
         }
 
         showSnapBackDebugFlash(outcome, inputDir, now) {
