@@ -140,6 +140,25 @@
           this.player = this.physics.add.sprite(WORLD_W / 2, WORLD_H / 2, VISUAL_ASSETS.player.textureKey);
           this.player.setCircle(VISUAL_ASSETS.player.hitRadius).setCollideWorldBounds(true);
           this.player.body.setDrag(0);
+          this.playerBaseAlpha = this.player.alpha;
+          this.playerBaseScale = this.player.scale;
+
+          this.instabilityParticles = this.add.particles(0, 0, VISUAL_ASSETS.xp.textureKey, {
+            speed: { min: 18, max: 48 },
+            scale: { start: 0.16, end: 0 },
+            alpha: { start: 0.28, end: 0 },
+            lifespan: 240,
+            frequency: 160,
+            quantity: 1,
+            blendMode: 'ADD',
+            follow: this.player,
+            followOffset: { x: 0, y: 0 },
+            emitZone: {
+              type: 'edge',
+              source: new Phaser.Geom.Circle(0, 0, VISUAL_ASSETS.player.hitRadius + 4),
+              quantity: 20,
+            },
+          }).setDepth(4);
 
           this._onGlobalPointerUp = () => this.releasePointer();
           this._onWindowBlur = () => this.releasePointer();
@@ -304,6 +323,11 @@
           this.state.energy += Math.max(1, Math.floor(enemy.speed / 40));
         }
 
+        getInstabilityStrength() {
+          const normalized = Phaser.Math.Clamp(this.state.energy / 220, 0, 1);
+          return normalized * normalized;
+        }
+
         spawnXp(x, y) {
           const orb = this.xpOrbs.create(x, y, VISUAL_ASSETS.xp.textureKey);
           orb.setCircle(VISUAL_ASSETS.xp.hitRadius);
@@ -373,6 +397,34 @@
             bullet.lifespan -= dt;
             if (bullet.lifespan <= 0) bullet.disableBody(true, true);
           });
+
+          const instability = this.getInstabilityStrength();
+          const pulse = this.time.now * 0.012;
+          const jitterPower = 1 + instability * 3.2;
+          const jitterX = (Math.sin(pulse * 2.1) + Math.sin(pulse * 3.6 + 0.9)) * 0.5 * jitterPower;
+          const jitterY = (Math.cos(pulse * 2.8 + 0.4) + Math.sin(pulse * 4.4 + 1.3)) * 0.5 * jitterPower;
+          this.cameras.main.setScroll(jitterX, jitterY);
+          this.cameras.main.setRotation((Math.sin(pulse * 1.4) * 0.0035 + Math.sin(pulse * 3.2) * 0.002) * instability);
+
+          const flicker = 0.9 + 0.1 * Math.sin(pulse * 5.8 + Math.sin(pulse * 2.3));
+          this.player.setAlpha(this.playerBaseAlpha * Phaser.Math.Linear(1, flicker, instability));
+          this.player.setScale(this.playerBaseScale * (1 + Math.sin(pulse * 6.2 + 0.6) * instability * 0.03));
+
+          if (this.instabilityParticles) {
+            this.instabilityParticles.frequency = Phaser.Math.Linear(160, 34, instability);
+            this.instabilityParticles.setSpeed({
+              min: Phaser.Math.Linear(18, 44, instability),
+              max: Phaser.Math.Linear(48, 120, instability),
+            });
+            this.instabilityParticles.setScale(
+              Phaser.Math.Linear(0.16, 0.18, instability),
+              0,
+            );
+            this.instabilityParticles.setAlpha(
+              Phaser.Math.Linear(0.28, 0.35, instability),
+              0,
+            );
+          }
         }
       }
 
