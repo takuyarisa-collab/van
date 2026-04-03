@@ -69,7 +69,8 @@
             moveSpeed: 300,
             inertia: 0.12,
             pointerId: null,
-            moveVec: new Phaser.Math.Vector2(0, 0),
+            stickOrigin: new Phaser.Math.Vector2(0, 0),
+            stickOffset: new Phaser.Math.Vector2(0, 0),
             desiredVel: new Phaser.Math.Vector2(0, 0),
             gameOver: false,
           };
@@ -99,17 +100,39 @@
           this.fireTimer = this.time.addEvent({ delay: this.state.fireRate, loop: true, callback: () => this.autoFire() });
 
           this.input.on('pointerdown', (pointer) => {
-            if (this.state.pointerId === null) this.state.pointerId = pointer.id;
+            if (this.state.pointerId !== null) return;
+            this.state.pointerId = pointer.id;
+            this.state.stickOrigin.set(pointer.worldX, pointer.worldY);
+            this.state.stickOffset.set(0, 0);
+            this.state.desiredVel.set(0, 0);
           });
           this.input.on('pointermove', (pointer) => {
-            if (this.state.pointerId === null && pointer.isDown) this.state.pointerId = pointer.id;
+            if (this.state.pointerId === null && pointer.isDown) {
+              this.state.pointerId = pointer.id;
+              this.state.stickOrigin.set(pointer.worldX, pointer.worldY);
+              this.state.stickOffset.set(0, 0);
+            }
             if (pointer.id !== this.state.pointerId) return;
-            const dx = pointer.worldX - this.player.x;
-            const dy = pointer.worldY - this.player.y;
-            const len = Math.hypot(dx, dy) || 1;
-            this.state.moveVec.set(dx / len, dy / len);
-            const m = Math.min(1, len / 140);
-            this.state.desiredVel.set(this.state.moveVec.x * this.state.moveSpeed * m, this.state.moveVec.y * this.state.moveSpeed * m);
+            const stickMaxRadius = 132;
+            const deadZone = 14;
+            let dx = pointer.worldX - this.state.stickOrigin.x;
+            let dy = pointer.worldY - this.state.stickOrigin.y;
+            const len = Math.hypot(dx, dy);
+            if (len > stickMaxRadius) {
+              const c = stickMaxRadius / len;
+              dx *= c;
+              dy *= c;
+            }
+            this.state.stickOffset.set(dx, dy);
+            const mag = Math.hypot(dx, dy);
+            const movePower = Phaser.Math.Clamp((mag - deadZone) / (stickMaxRadius - deadZone), 0, 1);
+            if (mag <= deadZone) {
+              this.state.desiredVel.set(0, 0);
+              return;
+            }
+            const nx = dx / mag;
+            const ny = dy / mag;
+            this.state.desiredVel.set(nx * this.state.moveSpeed * movePower, ny * this.state.moveSpeed * movePower);
           });
           this.input.on('pointerup', (pointer) => {
             if (pointer.id !== this.state.pointerId) return;
@@ -148,6 +171,7 @@
         releasePointer() {
           if (this.state.pointerId === null) return;
           this.state.pointerId = null;
+          this.state.stickOffset.set(0, 0);
           this.state.desiredVel.set(0, 0);
         }
 
