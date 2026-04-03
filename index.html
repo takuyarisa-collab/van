@@ -103,6 +103,11 @@
       };
       /** 1フレーム相当の ms（慣性の旧 0.12 / フレーム と同等の体感になる基準） */
       const INERTIA_REF_MS = 1000 / 60;
+      const SNAP_BACK_RESULT = {
+        SUCCESS_CANDIDATE: 'success candidate',
+        NEAR_MISS: 'near miss',
+        FAIL: 'fail',
+      };
       const APP_VERSION = '0.1.0';
       const BUILD_UPDATED_AT = '2026-04-03 21:24';
       const BUILD_COMMIT_SHORT = '4b4fccb';
@@ -130,6 +135,17 @@
             stickOffset: new Phaser.Math.Vector2(0, 0),
             desiredVel: new Phaser.Math.Vector2(0, 0),
             gameOver: false,
+            snapBack: {
+              minSpeed: 130,
+              nearSpeed: 95,
+              successDot: -0.7,
+              nearDot: -0.35,
+              quickWindowMs: 180,
+              prevInputDir: new Phaser.Math.Vector2(0, 0),
+              prevInputAt: Number.NEGATIVE_INFINITY,
+              lastResult: null,
+              history: [],
+            },
           };
 
           this.player = this.physics.add.sprite(WORLD_W / 2, WORLD_H / 2, VISUAL_ASSETS.player.textureKey);
@@ -169,6 +185,7 @@
             this.state.stickOrigin.set(pointer.worldX, pointer.worldY);
             this.state.stickOffset.set(0, 0);
             this.state.desiredVel.set(0, 0);
+            this.state.snapBack.prevInputAt = Number.NEGATIVE_INFINITY;
           });
           this.input.on('pointermove', (pointer) => {
             if (this.state.pointerId === null && pointer.isDown) {
@@ -192,11 +209,23 @@
             const movePower = Phaser.Math.Clamp((mag - deadZone) / (stickMaxRadius - deadZone), 0, 1);
             if (mag <= deadZone) {
               this.state.desiredVel.set(0, 0);
+              this.state.snapBack.prevInputAt = Number.NEGATIVE_INFINITY;
               return;
             }
             const nx = dx / mag;
             const ny = dy / mag;
             this.state.desiredVel.set(nx * this.state.moveSpeed * movePower, ny * this.state.moveSpeed * movePower);
+
+            const snapBackState = this.state.snapBack;
+            const inputDir = new Phaser.Math.Vector2(nx, ny);
+            if (Number.isFinite(snapBackState.prevInputAt)) {
+              const inputDeltaDot = snapBackState.prevInputDir.dot(inputDir);
+              if (inputDeltaDot <= 0.5) {
+                this.evaluateSnapBack(inputDir, this.time.now);
+              }
+            }
+            snapBackState.prevInputDir.copy(inputDir);
+            snapBackState.prevInputAt = this.time.now;
           });
           this.input.on('pointerup', (pointer) => {
             if (pointer.id !== this.state.pointerId) return;
@@ -354,6 +383,44 @@
 
         updateHUD() {
           this.hud.setText(`HP ${this.state.hp}   LV ${this.state.level}   XP ${this.state.xp}/${this.state.xpToNext}`);
+        }
+
+        evaluateSnapBack(inputDir, now) {
+          const snapBackState = this.state.snapBack;
+          const vx = this.player.body.velocity.x;
+          const vy = this.player.body.velocity.y;
+          const speed = Math.hypot(vx, vy);
+          const movementDir = speed > 0 ? new Phaser.Math.Vector2(vx / speed, vy / speed) : new Phaser.Math.Vector2(0, 0);
+          const reversalDot = speed > 0 ? movementDir.dot(inputDir) : 1;
+          const inputFlipDot = snapBackState.prevInputDir.dot(inputDir);
+          const elapsedSincePrevInput = now - snapBackState.prevInputAt;
+          const quickReverseInput = inputFlipDot <= snapBackState.successDot
+            && elapsedSincePrevInput <= snapBackState.quickWindowMs;
+
+          let outcome = SNAP_BACK_RESULT.FAIL;
+          if (speed >= snapBackState.minSpeed && reversalDot <= snapBackState.successDot && quickReverseInput) {
+            outcome = SNAP_BACK_RESULT.SUCCESS_CANDIDATE;
+          } else if (
+            (speed >= snapBackState.minSpeed && reversalDot <= snapBackState.successDot)
+            || (speed >= snapBackState.nearSpeed && reversalDot <= snapBackState.nearDot)
+          ) {
+            outcome = SNAP_BACK_RESULT.NEAR_MISS;
+          }
+
+          const result = {
+            outcome,
+            at: now,
+            speed,
+            reversalDot,
+            inputFlipDot,
+            elapsedSincePrevInput,
+            quickReverseInput,
+          };
+          snapBackState.lastResult = result;
+          snapBackState.history.push(result);
+          if (snapBackState.history.length > 24) {
+            snapBackState.history.shift();
+          }
         }
 
         gameOver() {
