@@ -109,7 +109,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-03 12:10';
+      const BUILD_TIMESTAMP = '2026-04-03 12:45';
       const BUILD_COMMIT_SHORT = '4b4fccb';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
 
@@ -155,6 +155,13 @@
               lastFeedbackAt: Number.NEGATIVE_INFINITY,
               feedbackCooldownMs: 70,
               history: [],
+            },
+            xpMagnetBurst: {
+              activeUntil: Number.NEGATIVE_INFINITY,
+              durationMs: 380,
+              radiusMultiplier: 1.95,
+              speedMultiplier: 7.5,
+              lerpMultiplier: 1.8,
             },
           };
 
@@ -273,11 +280,23 @@
         }
 
         getXpMagnetConfig() {
-          return {
+          const baseConfig = {
             radius: 150,
             maxSpeed: 165,
             lerp: 0.12,
           };
+          if (this.time.now >= this.state.xpMagnetBurst.activeUntil) {
+            return baseConfig;
+          }
+          return {
+            radius: baseConfig.radius * this.state.xpMagnetBurst.radiusMultiplier,
+            maxSpeed: baseConfig.maxSpeed * this.state.xpMagnetBurst.speedMultiplier,
+            lerp: Math.min(1, baseConfig.lerp * this.state.xpMagnetBurst.lerpMultiplier),
+          };
+        }
+
+        triggerXpMagnetBurst() {
+          this.state.xpMagnetBurst.activeUntil = this.time.now + this.state.xpMagnetBurst.durationMs;
         }
 
         releasePointer() {
@@ -487,7 +506,7 @@
             this.spawnXp(enemy.x, enemy.y);
             enemy.destroy();
           });
-          this.collectXpWithinRadius(this.player.x, this.player.y, releaseRadius);
+          this.triggerXpMagnetBurst();
 
           const burst = this.add.circle(this.player.x, this.player.y, 28, 0xb8ffff, 0.45).setDepth(this.player.depth + 1);
           burst.setBlendMode(Phaser.BlendModes.ADD);
