@@ -109,7 +109,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-03 19:20';
+      const BUILD_TIMESTAMP = '2026-04-03 20:05';
       const BUILD_COMMIT_SHORT = '4b4fccb';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
 
@@ -162,6 +162,13 @@
               radiusMultiplier: 1.95,
               speedMultiplier: 7.5,
               lerpMultiplier: 1.8,
+            },
+            nearMissMagnetPulse: {
+              activeUntil: Number.NEGATIVE_INFINITY,
+              durationMs: 140,
+              radius: 96,
+              maxSpeed: 280,
+              lerp: 0.28,
             },
           };
 
@@ -297,6 +304,10 @@
 
         triggerXpMagnetBurst() {
           this.state.xpMagnetBurst.activeUntil = this.time.now + this.state.xpMagnetBurst.durationMs;
+        }
+
+        triggerNearMissMagnetPulse() {
+          this.state.nearMissMagnetPulse.activeUntil = this.time.now + this.state.nearMissMagnetPulse.durationMs;
         }
 
         releasePointer() {
@@ -497,6 +508,8 @@
           }
           if (result.outcome === SNAP_BACK_RESULT.SUCCESS_CANDIDATE) {
             this.triggerSnapBackRelease();
+          } else if (result.outcome === SNAP_BACK_RESULT.NEAR_MISS) {
+            this.triggerNearMissMagnetPulse();
           }
           this.showSnapBackDebugFlash(result.outcome, inputDir, now);
         }
@@ -534,9 +547,26 @@
 
         showSnapBackDebugFlash(outcome, inputDir, now) {
           const snapBackState = this.state.snapBack;
-          if (outcome === SNAP_BACK_RESULT.FAIL) return;
           if (now - snapBackState.lastFeedbackAt < snapBackState.feedbackCooldownMs) return;
           snapBackState.lastFeedbackAt = now;
+          if (outcome === SNAP_BACK_RESULT.FAIL) {
+            const failFlash = this.add.circle(
+              this.player.x + inputDir.x * 8,
+              this.player.y + inputDir.y * 8,
+              6,
+              0x6f7f9f,
+              0.12,
+            ).setDepth(this.player.depth + 1);
+            this.tweens.add({
+              targets: failFlash,
+              alpha: 0,
+              scale: 1.12,
+              duration: 60,
+              ease: 'Quad.easeOut',
+              onComplete: () => failFlash.destroy(),
+            });
+            return;
+          }
 
           const isSuccess = outcome === SNAP_BACK_RESULT.SUCCESS_CANDIDATE;
           const color = isSuccess ? 0x8ffcff : 0x8ea9ff;
@@ -691,7 +721,18 @@
           });
 
           const magnetConfig = this.getXpMagnetConfig();
-          const magnetRadiusSq = magnetConfig.radius * magnetConfig.radius;
+          const nearMissPulse = this.state.nearMissMagnetPulse;
+          const hasNearMissPulse =
+            this.time.now < nearMissPulse.activeUntil &&
+            this.time.now >= this.state.xpMagnetBurst.activeUntil;
+          const effectiveMagnetConfig = hasNearMissPulse
+            ? {
+                radius: nearMissPulse.radius,
+                maxSpeed: nearMissPulse.maxSpeed,
+                lerp: nearMissPulse.lerp,
+              }
+            : magnetConfig;
+          const magnetRadiusSq = effectiveMagnetConfig.radius * effectiveMagnetConfig.radius;
           this.xpOrbs.getChildren().forEach((orb) => {
             if (!orb.active) return;
             const dx = this.player.x - orb.x;
@@ -704,11 +745,11 @@
             const dist = Math.max(1, Math.sqrt(distSq));
             const nx = dx / dist;
             const ny = dy / dist;
-            const pullStrength = Phaser.Math.Clamp(1 - dist / magnetConfig.radius, 0.16, 1);
-            const targetVx = nx * magnetConfig.maxSpeed * pullStrength;
-            const targetVy = ny * magnetConfig.maxSpeed * pullStrength;
-            const nextVx = Phaser.Math.Linear(orb.body.velocity.x, targetVx, magnetConfig.lerp);
-            const nextVy = Phaser.Math.Linear(orb.body.velocity.y, targetVy, magnetConfig.lerp);
+            const pullStrength = Phaser.Math.Clamp(1 - dist / effectiveMagnetConfig.radius, 0.16, 1);
+            const targetVx = nx * effectiveMagnetConfig.maxSpeed * pullStrength;
+            const targetVy = ny * effectiveMagnetConfig.maxSpeed * pullStrength;
+            const nextVx = Phaser.Math.Linear(orb.body.velocity.x, targetVx, effectiveMagnetConfig.lerp);
+            const nextVy = Phaser.Math.Linear(orb.body.velocity.y, targetVy, effectiveMagnetConfig.lerp);
             orb.setVelocity(nextVx, nextVy);
           });
 
