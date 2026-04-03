@@ -109,7 +109,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-03 09:20';
+      const BUILD_TIMESTAMP = '2026-04-03 12:10';
       const BUILD_COMMIT_SHORT = '4b4fccb';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
 
@@ -268,6 +268,18 @@
           this.updateHUD();
         }
 
+        getSnapReleaseRadius() {
+          return 260;
+        }
+
+        getXpMagnetConfig() {
+          return {
+            radius: 150,
+            maxSpeed: 165,
+            lerp: 0.12,
+          };
+        }
+
         releasePointer() {
           if (this.state.pointerId === null) return;
           this.state.pointerId = null;
@@ -345,10 +357,16 @@
         spawnXp(x, y) {
           const orb = this.xpOrbs.create(x, y, VISUAL_ASSETS.xp.textureKey);
           orb.setCircle(VISUAL_ASSETS.xp.hitRadius);
+          orb.setVelocity(0, 0);
           orb.value = 1;
         }
 
         onXpPickup(player, orb) {
+          this.collectXpOrb(orb);
+        }
+
+        collectXpOrb(orb) {
+          if (!orb || !orb.active) return;
           orb.destroy();
           this.state.xp += orb.value;
           while (this.state.xp >= this.state.xpToNext) {
@@ -359,6 +377,19 @@
             this.fireTimer.reset({ delay: this.state.fireRate, loop: true, callback: () => this.autoFire() });
           }
           this.updateHUD();
+        }
+
+        collectXpWithinRadius(cx, cy, radius) {
+          const radiusSq = radius * radius;
+          const collected = [];
+          this.xpOrbs.getChildren().forEach((orb) => {
+            if (!orb.active) return;
+            const distSq = Phaser.Math.Distance.Squared(cx, cy, orb.x, orb.y);
+            if (distSq <= radiusSq) {
+              collected.push(orb);
+            }
+          });
+          collected.forEach((orb) => this.collectXpOrb(orb));
         }
 
         onEnemyTouch(player, enemy) {
@@ -441,7 +472,7 @@
 
         triggerSnapBackRelease() {
           if (this.state.gameOver) return;
-          const releaseRadius = 260;
+          const releaseRadius = this.getSnapReleaseRadius();
           const releaseRadiusSq = releaseRadius * releaseRadius;
           const enemiesToClear = [];
           this.enemies.getChildren().forEach((enemy) => {
@@ -456,6 +487,7 @@
             this.spawnXp(enemy.x, enemy.y);
             enemy.destroy();
           });
+          this.collectXpWithinRadius(this.player.x, this.player.y, releaseRadius);
 
           const burst = this.add.circle(this.player.x, this.player.y, 28, 0xb8ffff, 0.45).setDepth(this.player.depth + 1);
           burst.setBlendMode(Phaser.BlendModes.ADD);
@@ -591,6 +623,28 @@
           this.bullets.getChildren().forEach((bullet) => {
             bullet.lifespan -= dt;
             if (bullet.lifespan <= 0) bullet.disableBody(true, true);
+          });
+
+          const magnetConfig = this.getXpMagnetConfig();
+          const magnetRadiusSq = magnetConfig.radius * magnetConfig.radius;
+          this.xpOrbs.getChildren().forEach((orb) => {
+            if (!orb.active) return;
+            const dx = this.player.x - orb.x;
+            const dy = this.player.y - orb.y;
+            const distSq = dx * dx + dy * dy;
+            if (distSq > magnetRadiusSq) {
+              orb.setVelocity(0, 0);
+              return;
+            }
+            const dist = Math.max(1, Math.sqrt(distSq));
+            const nx = dx / dist;
+            const ny = dy / dist;
+            const pullStrength = Phaser.Math.Clamp(1 - dist / magnetConfig.radius, 0.16, 1);
+            const targetVx = nx * magnetConfig.maxSpeed * pullStrength;
+            const targetVy = ny * magnetConfig.maxSpeed * pullStrength;
+            const nextVx = Phaser.Math.Linear(orb.body.velocity.x, targetVx, magnetConfig.lerp);
+            const nextVy = Phaser.Math.Linear(orb.body.velocity.y, targetVy, magnetConfig.lerp);
+            orb.setVelocity(nextVx, nextVy);
           });
 
           const instability = this.getInstabilityStrength();
