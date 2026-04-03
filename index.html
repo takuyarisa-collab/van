@@ -105,13 +105,6 @@
       const INERTIA_REF_MS = 1000 / 60;
       const APP_VERSION = '0.1.0';
       const BUILD_TIMESTAMP = '2026-04-03 00:00:00';
-      /** 末尾 mmddHHMMSS（月・日・時・分・秒 各2桁） */
-      const formatMmddHHMMSS = (d) =>
-        String(d.getMonth() + 1).padStart(2, '0') +
-        String(d.getDate()).padStart(2, '0') +
-        String(d.getHours()).padStart(2, '0') +
-        String(d.getMinutes()).padStart(2, '0') +
-        String(d.getSeconds()).padStart(2, '0');
 
       class GameScene extends Phaser.Scene {
         constructor() {
@@ -216,8 +209,7 @@
             strokeThickness: 4,
           }).setScrollFactor(0).setDepth(10);
 
-          const verNow = new Date();
-          this.versionText = this.add.text(WORLD_W - 12, 12, `Ver ${APP_VERSION} ${formatMmddHHMMSS(verNow)}`, {
+          this.versionText = this.add.text(WORLD_W - 12, 12, `Ver ${APP_VERSION} ${BUILD_TIMESTAMP}`, {
             fontFamily: 'system-ui, sans-serif',
             fontSize: '18px',
             color: '#a8b4e0',
