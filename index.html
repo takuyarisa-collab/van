@@ -104,7 +104,9 @@
       /** 1フレーム相当の ms（慣性の旧 0.12 / フレーム と同等の体感になる基準） */
       const INERTIA_REF_MS = 1000 / 60;
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-03 00:00:00';
+      const BUILD_UPDATED_AT = '2026-04-03 21:24';
+      const BUILD_COMMIT_SHORT = '4b4fccb';
+      const BUILD_STAMP = `${APP_VERSION} / ${BUILD_UPDATED_AT}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
 
       class GameScene extends Phaser.Scene {
         constructor() {
@@ -209,14 +211,14 @@
             strokeThickness: 4,
           }).setScrollFactor(0).setDepth(10);
 
-          this.versionText = this.add.text(WORLD_W - 12, 12, `Ver ${APP_VERSION} ${BUILD_TIMESTAMP}`, {
+          this.versionText = this.add.text(WORLD_W - 12, 12, `Ver ${BUILD_STAMP}`, {
             fontFamily: 'system-ui, sans-serif',
             fontSize: '18px',
             color: '#a8b4e0',
             stroke: '#000',
             strokeThickness: 3,
           }).setOrigin(1, 0).setScrollFactor(0).setDepth(10);
-          this.buildText = this.add.text(10, 42, BUILD_TIMESTAMP, {
+          this.buildText = this.add.text(10, 42, BUILD_STAMP, {
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
             fontSize: '11px',
             color: '#d6ddff',
