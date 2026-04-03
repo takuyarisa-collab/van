@@ -109,7 +109,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_UPDATED_AT = '2026-04-03 21:24';
+      const BUILD_UPDATED_AT = '2026-04-03 22:08';
       const BUILD_COMMIT_SHORT = '4b4fccb';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_UPDATED_AT}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
 
@@ -148,6 +148,8 @@
               lastDetectedAt: Number.NEGATIVE_INFINITY,
               lastInputPower: 0,
               lastResult: null,
+              lastFeedbackAt: Number.NEGATIVE_INFINITY,
+              feedbackCooldownMs: 70,
               history: [],
             },
           };
@@ -423,6 +425,37 @@
           if (snapBackState.history.length > 24) {
             snapBackState.history.shift();
           }
+          this.showSnapBackDebugFlash(result.outcome, inputDir, now);
+        }
+
+        showSnapBackDebugFlash(outcome, inputDir, now) {
+          const snapBackState = this.state.snapBack;
+          if (outcome === SNAP_BACK_RESULT.FAIL) return;
+          if (now - snapBackState.lastFeedbackAt < snapBackState.feedbackCooldownMs) return;
+          snapBackState.lastFeedbackAt = now;
+
+          const isSuccess = outcome === SNAP_BACK_RESULT.SUCCESS_CANDIDATE;
+          const color = isSuccess ? 0x6ff7ff : 0x8ea9ff;
+          const radius = isSuccess ? 20 : 12;
+          const alpha = isSuccess ? 0.34 : 0.2;
+          const offset = isSuccess ? 16 : 12;
+
+          const flash = this.add.circle(
+            this.player.x + inputDir.x * offset,
+            this.player.y + inputDir.y * offset,
+            radius,
+            color,
+            alpha,
+          ).setDepth(this.player.depth + 1);
+
+          this.tweens.add({
+            targets: flash,
+            alpha: 0,
+            scale: isSuccess ? 1.12 : 1.04,
+            duration: isSuccess ? 120 : 90,
+            ease: 'Quad.easeOut',
+            onComplete: () => flash.destroy(),
+          });
         }
 
         processSnapBackInput(nx, ny, movePower, now) {
