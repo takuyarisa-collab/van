@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 11:18';
+      const BUILD_TIMESTAMP = '2026-04-04 11:42';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
@@ -169,11 +169,11 @@
       };
       const XP_AUDIO = {
         sampleRate: 22050,
-        durationSec: 0.041,
-        baseVolume: 0.138,
+        durationSec: 0.072,
+        baseVolume: 0.118,
         overlapDamping: 0.35,
         minVolumeFactor: 0.3,
-        pitchRandomCents: 22,
+        pitchRandomCents: 8,
       };
 
       class GameScene extends Phaser.Scene {
@@ -785,20 +785,19 @@
             const frameCount = Math.max(1, Math.floor(ctx.sampleRate * XP_AUDIO.durationSec));
             const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
             const data = buffer.getChannelData(0);
+            let lastWhite = 0;
             for (let i = 0; i < frameCount; i += 1) {
-              const t = i / ctx.sampleRate;
               const progress = i / frameCount;
-              const attack = Math.sin(Math.min(1, progress / 0.12) * (Math.PI * 0.5));
-              const decay = Math.pow(1 - progress, 4.5);
-              const envelope = attack * decay;
-              const airyNoise = (Math.random() * 2 - 1) * 0.62;
-              const hissA = Math.sin(2 * Math.PI * 2800 * t) * 0.09;
-              const hissB = Math.sin(2 * Math.PI * 3600 * t) * 0.06;
-              const lowBody = Math.sin(2 * Math.PI * 520 * t) * 0.07;
-              const midTone = Math.sin(2 * Math.PI * 940 * t) * 0.05;
-              const upperTone = Math.sin(2 * Math.PI * 1560 * t) * 0.08;
-              const softTransient = Math.sin(2 * Math.PI * 1700 * t) * Math.pow(1 - Math.min(1, progress / 0.22), 2) * 0.032;
-              data[i] = (airyNoise + hissA + hissB + lowBody + midTone + upperTone + softTransient) * envelope * 0.7;
+              const fadeInProgress = Math.min(1, progress / 0.1);
+              const fadeIn = Math.sin(fadeInProgress * (Math.PI * 0.5));
+              const fadeOut = Math.pow(1 - progress, 2.2);
+              const envelope = fadeIn * fadeOut;
+              const white = Math.random() * 2 - 1;
+              const pinkish = lastWhite * 0.85 + white * 0.15;
+              const airy = white - pinkish * 0.72;
+              const brightnessJitter = 0.88 + Math.random() * 0.24;
+              data[i] = airy * brightnessJitter * envelope * 0.56;
+              lastWhite = white;
             }
             this.xpAudioCtx = ctx;
             this.xpPickupBuffer = buffer;
