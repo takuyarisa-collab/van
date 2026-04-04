@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 09:22';
+      const BUILD_TIMESTAMP = '2026-04-04 10:05';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
@@ -169,10 +169,11 @@
       };
       const XP_AUDIO = {
         sampleRate: 22050,
-        durationSec: 0.05,
-        baseVolume: 0.18,
+        durationSec: 0.036,
+        baseVolume: 0.13,
         overlapDamping: 0.35,
-        minVolumeFactor: 0.35,
+        minVolumeFactor: 0.3,
+        pitchRandomCents: 22,
       };
 
       class GameScene extends Phaser.Scene {
@@ -787,10 +788,13 @@
             for (let i = 0; i < frameCount; i += 1) {
               const t = i / ctx.sampleRate;
               const progress = i / frameCount;
-              const envelope = Math.pow(1 - progress, 3.5);
-              const s1 = Math.sin(2 * Math.PI * 980 * t);
-              const s2 = Math.sin(2 * Math.PI * 1470 * t) * 0.45;
-              data[i] = (s1 + s2) * 0.5 * envelope;
+              const rise = Math.min(1, progress / 0.14);
+              const fall = Math.pow(1 - progress, 4.8);
+              const envelope = rise * fall;
+              const airyNoise = (Math.random() * 2 - 1) * 0.7;
+              const toneA = Math.sin(2 * Math.PI * 1180 * t) * 0.32;
+              const toneB = Math.sin(2 * Math.PI * 1680 * t) * 0.18;
+              data[i] = (airyNoise + toneA + toneB) * envelope * 0.72;
             }
             this.xpAudioCtx = ctx;
             this.xpPickupBuffer = buffer;
@@ -815,6 +819,8 @@
             1 / (1 + this.xpPickupVoices * XP_AUDIO.overlapDamping),
           );
           gainNode.gain.value = XP_AUDIO.baseVolume * stackedFactor;
+          const randomCents = Phaser.Math.FloatBetween(-XP_AUDIO.pitchRandomCents, XP_AUDIO.pitchRandomCents);
+          source.detune.value = randomCents;
           source.connect(gainNode);
           gainNode.connect(this.xpAudioCtx.destination);
           this.xpPickupVoices += 1;
