@@ -104,8 +104,10 @@
           textureKey: 'xp',
           hitRadius: 8,
           generatePlaceholder(g) {
-            g.fillStyle(0x70f0a7).fillCircle(8, 8, 8);
-            g.generateTexture(this.textureKey, 16, 16);
+            g.fillStyle(0x9fffc9, 0.22).fillCircle(12, 12, 11);
+            g.fillStyle(0x79f5b1, 0.34).fillCircle(12, 12, 7);
+            g.fillStyle(0xd9ffee, 1).fillCircle(12, 12, 3);
+            g.generateTexture(this.textureKey, 24, 24);
             g.clear();
           },
         },
@@ -118,7 +120,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 07:12';
+      const BUILD_TIMESTAMP = '2026-04-04 08:05';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
@@ -132,6 +134,16 @@
         enemySwarm: 0.82,
         bullet: 1.14,
         xp: 1,
+      };
+      const XP_VISUAL = {
+        pulseSpeed: 0.0074,
+        pulseScale: 0.08,
+        pulseAlpha: 0.22,
+        pullSpeedThreshold: 34,
+        stretchMax: 0.32,
+        glowBoostMax: 0.38,
+        trailSpeedThreshold: 120,
+        trailIntervalMs: 36,
       };
 
       class GameScene extends Phaser.Scene {
@@ -249,6 +261,16 @@
             follow: this.player,
             emitting: false,
           }).setDepth(this.player.depth - 1);
+          this.xpTrailParticles = this.add.particles(0, 0, VISUAL_ASSETS.xp.textureKey, {
+            lifespan: 120,
+            quantity: 1,
+            scale: { start: 0.34, end: 0.02 },
+            alpha: { start: 0.2, end: 0 },
+            speed: { min: 10, max: 26 },
+            blendMode: Phaser.BlendModes.ADD,
+            emitting: false,
+          }).setDepth(this.player.depth - 2);
+          this.lastXpTrailAt = 0;
 
           this._onGlobalPointerUp = () => this.releasePointer();
           this._onWindowBlur = () => this.releasePointer();
@@ -265,6 +287,10 @@
             if (this.playerTrailParticles) {
               this.playerTrailParticles.destroy();
               this.playerTrailParticles = null;
+            }
+            if (this.xpTrailParticles) {
+              this.xpTrailParticles.destroy();
+              this.xpTrailParticles = null;
             }
             if (this.playerHitRing) {
               this.playerHitRing.destroy();
@@ -669,6 +695,10 @@
           orb.setScale(VISUAL_SCALE.xp);
           orb.setCircle(VISUAL_ASSETS.xp.hitRadius);
           orb.setVelocity(0, 0);
+          orb.setBlendMode(Phaser.BlendModes.ADD);
+          orb.baseScale = VISUAL_SCALE.xp;
+          orb.idlePhase = Phaser.Math.FloatBetween(0, Math.PI * 2);
+          orb.driftPhase = Phaser.Math.FloatBetween(0, Math.PI * 2);
           orb.value = 1;
         }
 
@@ -1047,13 +1077,26 @@
               }
             : magnetConfig;
           const magnetRadiusSq = effectiveMagnetConfig.radius * effectiveMagnetConfig.radius;
+          let shouldEmitXpTrail = false;
+          let xpTrailX = this.player.x;
+          let xpTrailY = this.player.y;
           this.xpOrbs.getChildren().forEach((orb) => {
             if (!orb.active) return;
             const dx = this.player.x - orb.x;
             const dy = this.player.y - orb.y;
             const distSq = dx * dx + dy * dy;
+            const baseScale = orb.baseScale || VISUAL_SCALE.xp;
+            const idlePulse = Math.sin(this.time.now * XP_VISUAL.pulseSpeed + (orb.idlePhase || 0));
+            const idleBreathe = Math.cos(this.time.now * 0.0028 + (orb.driftPhase || 0));
+            const idleScale = 1 + idlePulse * XP_VISUAL.pulseScale + idleBreathe * 0.02;
+            let scaleX = baseScale * idleScale;
+            let scaleY = baseScale * idleScale;
+            let alpha = Phaser.Math.Clamp(0.72 + (idlePulse * 0.5 + 0.5) * XP_VISUAL.pulseAlpha, 0.58, 0.98);
+            orb.setRotation(0);
             if (distSq > magnetRadiusSq) {
               orb.setVelocity(0, 0);
+              orb.setScale(scaleX, scaleY);
+              orb.setAlpha(alpha);
               return;
             }
             const dist = Math.max(1, Math.sqrt(distSq));
@@ -1065,7 +1108,31 @@
             const nextVx = Phaser.Math.Linear(orb.body.velocity.x, targetVx, effectiveMagnetConfig.lerp);
             const nextVy = Phaser.Math.Linear(orb.body.velocity.y, targetVy, effectiveMagnetConfig.lerp);
             orb.setVelocity(nextVx, nextVy);
+            const speed = Math.hypot(nextVx, nextVy);
+            if (speed > XP_VISUAL.pullSpeedThreshold) {
+              const pullFactor = Phaser.Math.Clamp(speed / effectiveMagnetConfig.maxSpeed, 0, 1);
+              const stretch = 1 + pullFactor * XP_VISUAL.stretchMax;
+              scaleX *= stretch;
+              scaleY *= 2 - stretch;
+              alpha = Phaser.Math.Clamp(alpha + pullFactor * XP_VISUAL.glowBoostMax, 0.6, 1);
+              orb.setRotation(Math.atan2(nextVy, nextVx));
+              if (speed > XP_VISUAL.trailSpeedThreshold) {
+                shouldEmitXpTrail = true;
+                xpTrailX = orb.x - nx * 4;
+                xpTrailY = orb.y - ny * 4;
+              }
+            }
+            orb.setScale(scaleX, scaleY);
+            orb.setAlpha(alpha);
           });
+          if (
+            shouldEmitXpTrail &&
+            this.xpTrailParticles &&
+            this.time.now - this.lastXpTrailAt >= XP_VISUAL.trailIntervalMs
+          ) {
+            this.lastXpTrailAt = this.time.now;
+            this.xpTrailParticles.emitParticleAt(xpTrailX, xpTrailY, 1);
+          }
 
           this.tryAccidentalSnap(dt, riskProfile);
 
