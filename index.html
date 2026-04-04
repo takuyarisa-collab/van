@@ -118,13 +118,20 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 06:45';
+      const BUILD_TIMESTAMP = '2026-04-04 07:12';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
         CHASER: 'chaser',
         SWARM: 'swarm',
         DRIFTER: 'drifter',
+      };
+      const VISUAL_SCALE = {
+        player: 1.3,
+        enemy: 1.12,
+        enemySwarm: 0.82,
+        bullet: 1.14,
+        xp: 1,
       };
 
       class GameScene extends Phaser.Scene {
@@ -218,6 +225,7 @@
           };
 
           this.player = this.physics.add.sprite(WORLD_W / 2, WORLD_H / 2, VISUAL_ASSETS.player.textureKey);
+          this.player.setScale(VISUAL_SCALE.player);
           this.player.setCircle(VISUAL_ASSETS.player.hitRadius).setCollideWorldBounds(true);
           this.player.body.setDrag(0);
           this.playerHitRing = this.add.circle(
@@ -473,7 +481,7 @@
           }
           const enemy = this.enemies.create(spawnX, spawnY, enemyVisual.textureKey);
           enemy.setCircle(enemyVisual.hitRadius);
-          enemy.setScale(1);
+          enemy.setScale(VISUAL_SCALE.enemy);
           enemy.setTint(0xffffff);
 
           enemy.behaviorType = behaviorType;
@@ -487,7 +495,7 @@
           if (behaviorType === ENEMY_BEHAVIOR_TYPES.SWARM) {
             enemy.hp = Math.max(1, enemy.hp - 1);
             enemy.speed *= 0.9;
-            enemy.setScale(0.72);
+            enemy.setScale(VISUAL_SCALE.enemySwarm);
             enemy.setTint(0xffd7a3);
             enemy.body.setCircle(Math.max(5, enemyVisual.hitRadius * 0.72));
           } else if (behaviorType === ENEMY_BEHAVIOR_TYPES.DRIFTER) {
@@ -608,6 +616,7 @@
           if (!bullet) return;
 
           bullet.setActive(true).setVisible(true);
+          bullet.setScale(VISUAL_SCALE.bullet);
           bullet.body.enable = true;
           bullet.body.setCircle(bulletVisual.hitRadius);
 
@@ -657,6 +666,7 @@
 
         spawnXp(x, y) {
           const orb = this.xpOrbs.create(x, y, VISUAL_ASSETS.xp.textureKey);
+          orb.setScale(VISUAL_SCALE.xp);
           orb.setCircle(VISUAL_ASSETS.xp.hitRadius);
           orb.setVelocity(0, 0);
           orb.value = 1;
