@@ -109,7 +109,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 01:05';
+      const BUILD_TIMESTAMP = '2026-04-04 01:32';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
@@ -180,6 +180,11 @@
               maxSpeed: 720,
               lerp: 0.5,
             },
+            nearMissBurst: {
+              activeUntil: Number.NEGATIVE_INFINITY,
+              durationMs: 125,
+              speedMultiplier: 1.34,
+            },
             nearMissStabilityPulse: {
               activeUntil: Number.NEGATIVE_INFINITY,
               durationMs: 180,
@@ -203,6 +208,18 @@
           this.player.body.setDrag(0);
           this.playerBaseAlpha = this.player.alpha;
           this.playerBaseScale = this.player.scale;
+          this.playerTrailParticles = this.add.particles(0, 0, VISUAL_ASSETS.player.textureKey, {
+            lifespan: 95,
+            quantity: 1,
+            frequency: 24,
+            scale: { start: 0.48, end: 0.08 },
+            alpha: { start: 0.3, end: 0 },
+            speed: { min: 8, max: 30 },
+            tint: [0x95ceff, 0xd5ebff],
+            blendMode: Phaser.BlendModes.ADD,
+            follow: this.player,
+            emitting: false,
+          }).setDepth(this.player.depth - 1);
 
           this._onGlobalPointerUp = () => this.releasePointer();
           this._onWindowBlur = () => this.releasePointer();
@@ -215,6 +232,10 @@
               this.instabilityParticleSystem.destroy();
               this.instabilityParticleSystem = null;
               this.instabilityParticles = null;
+            }
+            if (this.playerTrailParticles) {
+              this.playerTrailParticles.destroy();
+              this.playerTrailParticles = null;
             }
           });
 
@@ -361,6 +382,27 @@
 
         triggerNearMissMagnetPulse() {
           this.state.nearMissMagnetPulse.activeUntil = this.time.now + this.state.nearMissMagnetPulse.durationMs;
+        }
+
+        triggerNearMissBurst(inputDir) {
+          const nearMissBurst = this.state.nearMissBurst;
+          nearMissBurst.activeUntil = this.time.now + nearMissBurst.durationMs;
+          const flash = this.add.circle(
+            this.player.x + inputDir.x * 10,
+            this.player.y + inputDir.y * 10,
+            13,
+            0x9fbdff,
+            0.45,
+          ).setDepth(this.player.depth + 2);
+          flash.setBlendMode(Phaser.BlendModes.ADD);
+          this.tweens.add({
+            targets: flash,
+            alpha: 0,
+            scale: 1.2,
+            duration: 80,
+            ease: 'Quad.easeOut',
+            onComplete: () => flash.destroy(),
+          });
         }
 
         triggerNearMissStabilityPulse() {
@@ -704,6 +746,7 @@
             this.triggerSnapBackRelease();
           } else if (result.outcome === SNAP_BACK_RESULT.NEAR_MISS) {
             this.triggerNearMissMagnetPulse();
+            this.triggerNearMissBurst(inputDir);
             this.triggerNearMissStabilityPulse();
           }
           this.showSnapBackDebugFlash(result.outcome, inputDir, now);
@@ -907,6 +950,12 @@
           let desiredDirY = desiredSpeed > 0 ? this.state.desiredVel.y / desiredSpeed : 0;
           let targetVelX = this.state.desiredVel.x;
           let targetVelY = this.state.desiredVel.y;
+          const nearMissBurst = this.state.nearMissBurst;
+          const hasNearMissBurst = this.time.now < nearMissBurst.activeUntil;
+          if (desiredSpeed > 0 && hasNearMissBurst) {
+            targetVelX *= nearMissBurst.speedMultiplier;
+            targetVelY *= nearMissBurst.speedMultiplier;
+          }
           if (desiredSpeed > 0 && riskProfile.instability > 0) {
             const jitterSeed = this.time.now * 0.006;
             const deviationAngle =
@@ -1002,6 +1051,9 @@
           const flicker = 0.9 + 0.1 * Math.sin(pulse * 5.8 + Math.sin(pulse * 2.3));
           this.player.setAlpha(this.playerBaseAlpha * Phaser.Math.Linear(1, flicker, instability));
           this.player.setScale(this.playerBaseScale * (1 + Math.sin(pulse * 6.2 + 0.6) * instability * 0.03));
+          if (this.playerTrailParticles) {
+            this.playerTrailParticles.emitting = hasNearMissBurst;
+          }
 
           if (this.instabilityParticles) {
             this.instabilityParticles.frequency = Phaser.Math.Linear(160, 34, instability);
