@@ -176,6 +176,20 @@
         tailSec: 0.052,
         minIntervalMs: 70,
       };
+      const PLAYER_TRAIL_VISUAL = {
+        minSpeed: 36,
+        fullSpeed: 360,
+        frequencySlow: 44,
+        frequencyFast: 14,
+        lifespanSlow: 120,
+        lifespanFast: 210,
+        scaleStartSlow: 0.34,
+        scaleStartFast: 0.62,
+        scaleEndSlow: 0.08,
+        scaleEndFast: 0.03,
+        alphaSlow: 0.18,
+        alphaFast: 0.42,
+      };
 
       class GameScene extends Phaser.Scene {
         constructor() {
@@ -281,11 +295,11 @@
           this.playerBaseAlpha = this.player.alpha;
           this.playerBaseScale = this.player.scale;
           this.playerTrailParticles = this.add.particles(0, 0, VISUAL_ASSETS.player.textureKey, {
-            lifespan: 95,
+            lifespan: PLAYER_TRAIL_VISUAL.lifespanSlow,
             quantity: 1,
-            frequency: 24,
-            scale: { start: 0.48, end: 0.08 },
-            alpha: { start: 0.3, end: 0 },
+            frequency: PLAYER_TRAIL_VISUAL.frequencySlow,
+            scale: { start: PLAYER_TRAIL_VISUAL.scaleStartSlow, end: PLAYER_TRAIL_VISUAL.scaleEndSlow },
+            alpha: { start: PLAYER_TRAIL_VISUAL.alphaSlow, end: 0 },
             speed: { min: 8, max: 30 },
             tint: [0x95ceff, 0xd5ebff],
             blendMode: Phaser.BlendModes.ADD,
@@ -1015,6 +1029,49 @@
             ease: 'Cubic.easeOut',
             onComplete: () => burst.destroy(),
           });
+          this.emitSnapRipple(this.player.x, this.player.y, 0xb7ffff, Phaser.Math.Clamp(releaseProfile.energyNorm, 0.35, 1));
+        }
+
+        emitSnapRipple(x, y, color, intensity = 1) {
+          const inner = this.add.circle(x, y, 10, color, 0).setDepth(this.player.depth + 2);
+          inner.setStrokeStyle(Phaser.Math.Linear(2.4, 4, intensity), color, Phaser.Math.Linear(0.75, 0.95, intensity));
+          inner.setBlendMode(Phaser.BlendModes.ADD);
+          const outer = this.add.circle(x, y, 16, color, 0).setDepth(this.player.depth + 1);
+          outer.setStrokeStyle(Phaser.Math.Linear(1.6, 2.8, intensity), color, Phaser.Math.Linear(0.4, 0.6, intensity));
+          outer.setBlendMode(Phaser.BlendModes.ADD);
+
+          this.tweens.add({
+            targets: inner,
+            scale: Phaser.Math.Linear(2.2, 3.1, intensity),
+            alpha: 0,
+            duration: Phaser.Math.Linear(90, 130, intensity),
+            ease: 'Cubic.easeOut',
+            onUpdate: () => {
+              const t = Phaser.Math.Clamp((inner.scaleX - 1) / Math.max(0.0001, Phaser.Math.Linear(1.2, 2.1, intensity)), 0, 1);
+              inner.setStrokeStyle(
+                Phaser.Math.Linear(Phaser.Math.Linear(2.4, 4, intensity), 0, t),
+                color,
+                Phaser.Math.Linear(Phaser.Math.Linear(0.75, 0.95, intensity), 0, t),
+              );
+            },
+            onComplete: () => inner.destroy(),
+          });
+          this.tweens.add({
+            targets: outer,
+            scale: Phaser.Math.Linear(1.7, 2.4, intensity),
+            alpha: 0,
+            duration: Phaser.Math.Linear(110, 150, intensity),
+            ease: 'Quad.easeOut',
+            onUpdate: () => {
+              const t = Phaser.Math.Clamp((outer.scaleX - 1) / Math.max(0.0001, Phaser.Math.Linear(0.7, 1.4, intensity)), 0, 1);
+              outer.setStrokeStyle(
+                Phaser.Math.Linear(Phaser.Math.Linear(1.6, 2.8, intensity), 0, t),
+                color,
+                Phaser.Math.Linear(Phaser.Math.Linear(0.4, 0.6, intensity), 0, t),
+              );
+            },
+            onComplete: () => outer.destroy(),
+          });
         }
 
         showSnapBackDebugFlash(outcome, inputDir, now) {
@@ -1066,6 +1123,12 @@
           });
 
           if (isSuccess) {
+            this.emitSnapRipple(
+              this.player.x + inputDir.x * 18,
+              this.player.y + inputDir.y * 18,
+              0xb8ffff,
+              0.75,
+            );
             const ring = this.add.circle(
               this.player.x + inputDir.x * 24,
               this.player.y + inputDir.y * 24,
@@ -1087,6 +1150,12 @@
               onComplete: () => ring.destroy(),
             });
           } else {
+            this.emitSnapRipple(
+              this.player.x + inputDir.x * 14,
+              this.player.y + inputDir.y * 14,
+              0xb9c8ff,
+              0.4,
+            );
             const nearRing = this.add.circle(
               this.player.x + inputDir.x * 20,
               this.player.y + inputDir.y * 20,
@@ -1222,7 +1291,13 @@
               const targetY = toPlayerY + perpY * driftOscillation;
               const targetLen = Math.hypot(targetX, targetY) || 1;
               enemy.setVelocity((targetX / targetLen) * pressuredSpeed, (targetY / targetLen) * pressuredSpeed);
+              if (Math.random() < 0.045) {
+                this.xpTrailParticles.emitParticleAt(enemy.x, enemy.y, 1);
+              }
               return;
+            }
+            if (enemy.behaviorType === ENEMY_BEHAVIOR_TYPES.SWARM && Math.random() < 0.06) {
+              this.xpTrailParticles.emitParticleAt(enemy.x, enemy.y, 1);
             }
             enemy.setVelocity(Math.cos(angle) * pressuredSpeed, Math.sin(angle) * pressuredSpeed);
           });
@@ -1360,8 +1435,50 @@
             this.playerHitRing.setPosition(this.player.x, this.player.y);
           }
           if (this.playerTrailParticles) {
-            this.playerTrailParticles.emitting = hasNearMissBurst;
+            const playerSpeed = this.player.body.velocity.length();
+            const trailStrength = Phaser.Math.Clamp(
+              (playerSpeed - PLAYER_TRAIL_VISUAL.minSpeed) /
+              Math.max(1, PLAYER_TRAIL_VISUAL.fullSpeed - PLAYER_TRAIL_VISUAL.minSpeed),
+              0,
+              1,
+            );
+            this.playerTrailParticles.emitting = hasNearMissBurst || trailStrength > 0.04;
+            this.playerTrailParticles.frequency = Phaser.Math.Linear(
+              PLAYER_TRAIL_VISUAL.frequencySlow,
+              PLAYER_TRAIL_VISUAL.frequencyFast,
+              trailStrength,
+            );
+            this.playerTrailParticles.setParticleLifespan(
+              Phaser.Math.Linear(PLAYER_TRAIL_VISUAL.lifespanSlow, PLAYER_TRAIL_VISUAL.lifespanFast, trailStrength),
+            );
+            this.playerTrailParticles.particleScaleX = {
+              start: Phaser.Math.Linear(PLAYER_TRAIL_VISUAL.scaleStartSlow, PLAYER_TRAIL_VISUAL.scaleStartFast, trailStrength),
+              end: Phaser.Math.Linear(PLAYER_TRAIL_VISUAL.scaleEndSlow, PLAYER_TRAIL_VISUAL.scaleEndFast, trailStrength),
+            };
+            this.playerTrailParticles.particleScaleY = this.playerTrailParticles.particleScaleX;
+            this.playerTrailParticles.particleAlpha = {
+              start: Phaser.Math.Linear(PLAYER_TRAIL_VISUAL.alphaSlow, PLAYER_TRAIL_VISUAL.alphaFast, trailStrength),
+              end: 0,
+            };
           }
+
+          const enemyPulse = this.time.now * 0.0038;
+          this.enemies.getChildren().forEach((enemy, enemyIndex) => {
+            const seed = enemy.driftPhase || enemyIndex * 0.7;
+            if (enemy.behaviorType === ENEMY_BEHAVIOR_TYPES.SWARM) {
+              const swarmJitter = Math.sin(enemyPulse * 6 + seed * 4.5);
+              enemy.setAlpha(0.8 + swarmJitter * 0.1);
+              enemy.setScale((VISUAL_SCALE.enemySwarm || VISUAL_SCALE.enemy) * (1 + swarmJitter * 0.03));
+            } else if (enemy.behaviorType === ENEMY_BEHAVIOR_TYPES.DRIFTER) {
+              const driftAura = 0.5 + 0.5 * Math.sin(enemyPulse * 2.6 + seed);
+              enemy.setAlpha(0.78 + driftAura * 0.2);
+              enemy.setScale(VISUAL_SCALE.enemy * (1.04 + driftAura * 0.06));
+            } else {
+              const chaserFlicker = 0.5 + 0.5 * Math.sin(enemyPulse * 4.3 + seed * 2);
+              enemy.setAlpha(0.88 + chaserFlicker * 0.1);
+              enemy.setScale(VISUAL_SCALE.enemy * (0.98 + chaserFlicker * 0.04));
+            }
+          });
 
           if (this.instabilityParticles) {
             this.instabilityParticles.frequency = Phaser.Math.Linear(160, 34, instability);
