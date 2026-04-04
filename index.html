@@ -109,7 +109,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 06:20';
+      const BUILD_TIMESTAMP = '2026-04-04 06:45';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
@@ -144,6 +144,7 @@
             snapBack: {
               minSpeed: 130,
               nearSpeed: 82,
+              successEnergyCost: 140,
               reversalDot: -0.71,
               nearDot: -0.14,
               reactionWindowMs: 155,
@@ -712,7 +713,8 @@
           const onCooldown = now - snapBackState.lastDetectedAt < snapBackState.cooldownMs;
 
           let outcome = SNAP_BACK_RESULT.FAIL;
-          if (!onCooldown && speed >= snapBackState.minSpeed && reversalDot <= snapBackState.reversalDot && quickReverseInput && inputPowerStrongEnough) {
+          const hasEnergyForSnap = this.state.energy >= snapBackState.successEnergyCost;
+          if (!onCooldown && hasEnergyForSnap && speed >= snapBackState.minSpeed && reversalDot <= snapBackState.reversalDot && quickReverseInput && inputPowerStrongEnough) {
             outcome = SNAP_BACK_RESULT.SUCCESS_CANDIDATE;
             snapBackState.lastDetectedAt = now;
           } else {
@@ -754,6 +756,7 @@
 
         triggerSnapBackRelease() {
           if (this.state.gameOver) return;
+          if (this.state.energy < this.state.snapBack.successEnergyCost) return;
           const releaseProfile = this.getSnapReleaseProfile();
           const releaseRadius = releaseProfile.radius;
           const releaseRadiusSq = releaseRadius * releaseRadius;
@@ -766,10 +769,10 @@
           });
 
           enemiesToClear.forEach((enemy) => {
-            this.addEnergyFromKill(enemy);
             this.spawnXp(enemy.x, enemy.y);
             enemy.destroy();
           });
+          this.state.energy = Math.max(0, this.state.energy - this.state.snapBack.successEnergyCost);
           this.triggerXpMagnetBurst(releaseProfile.intensity);
           this.triggerReleaseStabilityPulse(releaseProfile.intensity);
 
@@ -927,12 +930,7 @@
           if (riskProfile.accidentalSnapChancePerSecond <= 0) return;
           const chanceThisFrame = riskProfile.accidentalSnapChancePerSecond * (dt / 1000);
           if (Math.random() >= chanceThisFrame) return;
-          this.triggerSnapBackRelease();
-          this.showSnapBackDebugFlash(
-            SNAP_BACK_RESULT.NEAR_MISS,
-            this.state.snapBack.lastStrongInputDir,
-            this.time.now,
-          );
+          // SNAP is input-gated; accidental rolls never auto-trigger a release.
         }
 
         gameOver() {
