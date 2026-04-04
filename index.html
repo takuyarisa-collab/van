@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 11:42';
+      const BUILD_TIMESTAMP = '2026-04-04 12:08';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
@@ -170,7 +170,7 @@
       const XP_AUDIO = {
         sampleRate: 22050,
         durationSec: 0.072,
-        baseVolume: 0.118,
+        baseVolume: 0.132,
         overlapDamping: 0.35,
         minVolumeFactor: 0.3,
         pitchRandomCents: 8,
@@ -788,7 +788,7 @@
             let lastWhite = 0;
             for (let i = 0; i < frameCount; i += 1) {
               const progress = i / frameCount;
-              const fadeInProgress = Math.min(1, progress / 0.1);
+              const fadeInProgress = Math.min(1, progress / 0.04);
               const fadeIn = Math.sin(fadeInProgress * (Math.PI * 0.5));
               const fadeOut = Math.pow(1 - progress, 2.2);
               const envelope = fadeIn * fadeOut;
@@ -796,7 +796,8 @@
               const pinkish = lastWhite * 0.85 + white * 0.15;
               const airy = white - pinkish * 0.72;
               const brightnessJitter = 0.88 + Math.random() * 0.24;
-              data[i] = airy * brightnessJitter * envelope * 0.56;
+              const subtleTone = Math.sin(2 * Math.PI * 980 * progress * XP_AUDIO.durationSec);
+              data[i] = ((airy * brightnessJitter * 0.56) + (subtleTone * 0.06)) * envelope;
               lastWhite = white;
             }
             this.xpAudioCtx = ctx;
@@ -817,6 +818,11 @@
           const source = this.xpAudioCtx.createBufferSource();
           source.buffer = this.xpPickupBuffer;
           const gainNode = this.xpAudioCtx.createGain();
+          const midPresence = this.xpAudioCtx.createBiquadFilter();
+          midPresence.type = 'peaking';
+          midPresence.frequency.value = 980;
+          midPresence.Q.value = 0.9;
+          midPresence.gain.value = 1.8;
           const stackedFactor = Math.max(
             XP_AUDIO.minVolumeFactor,
             1 / (1 + this.xpPickupVoices * XP_AUDIO.overlapDamping),
@@ -824,7 +830,8 @@
           gainNode.gain.value = XP_AUDIO.baseVolume * stackedFactor;
           const randomCents = Phaser.Math.FloatBetween(-XP_AUDIO.pitchRandomCents, XP_AUDIO.pitchRandomCents);
           source.detune.value = randomCents;
-          source.connect(gainNode);
+          source.connect(midPresence);
+          midPresence.connect(gainNode);
           gainNode.connect(this.xpAudioCtx.destination);
           this.xpPickupVoices += 1;
           source.onended = () => {
