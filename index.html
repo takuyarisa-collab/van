@@ -109,7 +109,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 00:30';
+      const BUILD_TIMESTAMP = '2026-04-04 01:05';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
@@ -175,10 +175,10 @@
             },
             nearMissMagnetPulse: {
               activeUntil: Number.NEGATIVE_INFINITY,
-              durationMs: 155,
-              radius: 102,
-              maxSpeed: 320,
-              lerp: 0.31,
+              durationMs: 170,
+              radius: 188,
+              maxSpeed: 720,
+              lerp: 0.5,
             },
             nearMissStabilityPulse: {
               activeUntil: Number.NEGATIVE_INFINITY,
@@ -767,10 +767,10 @@
 
           const isSuccess = outcome === SNAP_BACK_RESULT.SUCCESS_CANDIDATE;
           const color = isSuccess ? 0x8ffcff : 0x8ea9ff;
-          const radius = isSuccess ? 38 : 11;
-          const alpha = isSuccess ? 0.55 : 0.2;
-          const offset = isSuccess ? 22 : 12;
-          const duration = isSuccess ? 150 : 85;
+          const radius = isSuccess ? 38 : 16;
+          const alpha = isSuccess ? 0.55 : 0.3;
+          const offset = isSuccess ? 22 : 15;
+          const duration = isSuccess ? 150 : 95;
 
           const flash = this.add.circle(
             this.player.x + inputDir.x * offset,
@@ -810,6 +810,32 @@
                 ring.setStrokeStyle(Phaser.Math.Linear(4, 0, ring.scaleX - 1), 0xb8ffff, Phaser.Math.Linear(0.95, 0, ring.scaleX - 1));
               },
               onComplete: () => ring.destroy(),
+            });
+          } else {
+            const nearRing = this.add.circle(
+              this.player.x + inputDir.x * 20,
+              this.player.y + inputDir.y * 20,
+              12,
+              color,
+              0,
+            ).setDepth(this.player.depth + 2);
+            nearRing.setStrokeStyle(2.5, 0xb9c8ff, 0.85);
+            nearRing.setBlendMode(Phaser.BlendModes.ADD);
+            this.tweens.add({
+              targets: nearRing,
+              scale: 1.45,
+              alpha: 0,
+              duration: 110,
+              ease: 'Cubic.easeOut',
+              onUpdate: () => {
+                const ringProgress = Phaser.Math.Clamp((nearRing.scaleX - 1) / 0.45, 0, 1);
+                nearRing.setStrokeStyle(
+                  Phaser.Math.Linear(2.5, 0, ringProgress),
+                  0xb9c8ff,
+                  Phaser.Math.Linear(0.85, 0, ringProgress),
+                );
+              },
+              onComplete: () => nearRing.destroy(),
             });
           }
 
