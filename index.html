@@ -129,7 +129,8 @@
         SNAP: 'snap',
         STABILITY: 'stability',
       };
-      const ACTIVE_BUILD_DIRECTION = BUILD_DIRECTION.SNAP;
+      const DOUBLE_TAP_TOGGLE_WINDOW_MS = 250;
+      let activeBuildDirection = BUILD_DIRECTION.SNAP;
       const BUILD_DIRECTION_TUNING = {
         [BUILD_DIRECTION.SNAP]: {
           playerTrail: {
@@ -233,7 +234,7 @@
         alphaSlow: 0.18,
         alphaFast: 0.42,
       };
-      const ACTIVE_BUILD_TUNING = BUILD_DIRECTION_TUNING[ACTIVE_BUILD_DIRECTION] || BUILD_DIRECTION_TUNING[BUILD_DIRECTION.SNAP];
+      const getActiveBuildTuning = () => BUILD_DIRECTION_TUNING[activeBuildDirection] || BUILD_DIRECTION_TUNING[BUILD_DIRECTION.SNAP];
 
       class GameScene extends Phaser.Scene {
         constructor() {
@@ -246,6 +247,7 @@
 
         create() {
           this.buildVisualAssets();
+          this.lastTapAt = Number.NEGATIVE_INFINITY;
 
           this.state = {
             hp: 100,
@@ -416,6 +418,7 @@
           this.state.spawnDirector.nextBiasCheckAt = this.time.now + Phaser.Math.Between(5000, 9000);
 
           this.input.on('pointerdown', (pointer) => {
+            this.handleBuildToggleTap();
             this.resumeSnapAudio();
             if (this.state.pointerId !== null) return;
             this.state.pointerId = pointer.id;
@@ -482,6 +485,11 @@
             fontSize: '11px',
             color: '#d6ddff',
           }).setOrigin(0, 0).setScrollFactor(0).setDepth(10).setAlpha(0.35);
+          this.buildDirectionText = this.add.text(WORLD_W - 10, 40, this.getBuildDirectionLabel(), {
+            fontFamily: 'system-ui, sans-serif',
+            fontSize: '13px',
+            color: '#d6ddff',
+          }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setAlpha(0.4);
 
           this.message = this.add.text(WORLD_W / 2, WORLD_H / 2, '', {
             fontFamily: 'system-ui, sans-serif',
@@ -493,6 +501,29 @@
           }).setOrigin(0.5).setDepth(20);
 
           this.updateHUD();
+        }
+
+        getBuildDirectionLabel() {
+          return activeBuildDirection === BUILD_DIRECTION.SNAP ? 'SNAP' : 'STABILITY';
+        }
+
+        toggleBuildDirection() {
+          activeBuildDirection = activeBuildDirection === BUILD_DIRECTION.SNAP
+            ? BUILD_DIRECTION.STABILITY
+            : BUILD_DIRECTION.SNAP;
+          if (this.buildDirectionText) {
+            this.buildDirectionText.setText(this.getBuildDirectionLabel());
+          }
+        }
+
+        handleBuildToggleTap() {
+          const now = this.time.now;
+          if (now - this.lastTapAt <= DOUBLE_TAP_TOGGLE_WINDOW_MS) {
+            this.toggleBuildDirection();
+            this.lastTapAt = Number.NEGATIVE_INFINITY;
+            return;
+          }
+          this.lastTapAt = now;
         }
 
         getEnergyNormalized() {
@@ -509,7 +540,7 @@
         }
 
         getXpMagnetConfig() {
-          const buildXpTuning = ACTIVE_BUILD_TUNING.xpAttraction;
+          const buildXpTuning = getActiveBuildTuning().xpAttraction;
           const baseConfig = {
             radius: 150 * buildXpTuning.radiusScale,
             maxSpeed: 165,
@@ -1078,7 +1109,7 @@
         }
 
         emitSnapRipple(x, y, color, intensity = 1) {
-          const rippleTuning = ACTIVE_BUILD_TUNING.snapRipple;
+          const rippleTuning = getActiveBuildTuning().snapRipple;
           const tunedIntensity = Phaser.Math.Clamp(intensity, 0, 1);
           const inner = this.add.circle(x, y, 10, color, 0).setDepth(this.player.depth + 2);
           inner.setStrokeStyle(
@@ -1448,7 +1479,7 @@
               XP_VISUAL.trailBaseIntervalMs,
               XP_VISUAL.trailPullIntervalMs,
               xpTrailStrength,
-            ) * ACTIVE_BUILD_TUNING.xpAttraction.trailIntervalScale
+            ) * getActiveBuildTuning().xpAttraction.trailIntervalScale
           ) {
             this.lastXpTrailAt = this.time.now;
             const trailSpeed = Math.hypot(xpTrailVx, xpTrailVy) || 1;
@@ -1466,7 +1497,7 @@
             this.xpTrailParticles.particleScaleY = trailScaleOp;
             this.xpTrailParticles.particleAlpha = {
               start: Phaser.Math.Clamp(
-                Phaser.Math.Linear(XP_VISUAL.trailAlphaMin, XP_VISUAL.trailAlphaMax, trailMotion) * ACTIVE_BUILD_TUNING.xpAttraction.trailAlphaScale,
+                Phaser.Math.Linear(XP_VISUAL.trailAlphaMin, XP_VISUAL.trailAlphaMax, trailMotion) * getActiveBuildTuning().xpAttraction.trailAlphaScale,
                 0,
                 1,
               ),
@@ -1481,7 +1512,7 @@
             };
             this.xpTrailParticles.emitParticleAt(xpTrailX, xpTrailY, 1);
             if (xpTrailStrength > 0.28) {
-              const tailParticles = Math.max(1, Math.round((1 + Math.round(trailMotion * 2)) * ACTIVE_BUILD_TUNING.xpAttraction.trailTailScale));
+              const tailParticles = Math.max(1, Math.round((1 + Math.round(trailMotion * 2)) * getActiveBuildTuning().xpAttraction.trailTailScale));
               for (let i = 1; i <= tailParticles; i += 1) {
                 const tailBack = Phaser.Math.Linear(XP_VISUAL.trailBackOffsetMin, XP_VISUAL.trailBackOffsetMax, i / (tailParticles + 0.35));
                 this.xpTrailParticles.emitParticleAt(xpTrailX - dirX * tailBack, xpTrailY - dirY * tailBack, 1);
@@ -1506,7 +1537,7 @@
             this.playerHitRing.setPosition(this.player.x, this.player.y);
           }
           if (this.playerTrailParticles) {
-            const playerTrailTuning = ACTIVE_BUILD_TUNING.playerTrail;
+            const playerTrailTuning = getActiveBuildTuning().playerTrail;
             const playerSpeed = this.player.body.velocity.length();
             const trailStrength = Phaser.Math.Clamp(
               (playerSpeed - PLAYER_TRAIL_VISUAL.minSpeed) /
