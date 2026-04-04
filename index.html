@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 10:05';
+      const BUILD_TIMESTAMP = '2026-04-04 10:32';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
@@ -170,7 +170,7 @@
       const XP_AUDIO = {
         sampleRate: 22050,
         durationSec: 0.036,
-        baseVolume: 0.13,
+        baseVolume: 0.145,
         overlapDamping: 0.35,
         minVolumeFactor: 0.3,
         pitchRandomCents: 22,
@@ -788,13 +788,15 @@
             for (let i = 0; i < frameCount; i += 1) {
               const t = i / ctx.sampleRate;
               const progress = i / frameCount;
-              const rise = Math.min(1, progress / 0.14);
-              const fall = Math.pow(1 - progress, 4.8);
-              const envelope = rise * fall;
-              const airyNoise = (Math.random() * 2 - 1) * 0.7;
-              const toneA = Math.sin(2 * Math.PI * 1180 * t) * 0.32;
-              const toneB = Math.sin(2 * Math.PI * 1680 * t) * 0.18;
-              data[i] = (airyNoise + toneA + toneB) * envelope * 0.72;
+              const attack = Math.min(1, progress / 0.065);
+              const decay = Math.pow(1 - progress, 5.2);
+              const envelope = attack * decay;
+              const airyNoise = (Math.random() * 2 - 1) * 0.56;
+              const midTone = Math.sin(2 * Math.PI * 860 * t) * 0.2;
+              const toneA = Math.sin(2 * Math.PI * 1260 * t) * 0.3;
+              const toneB = Math.sin(2 * Math.PI * 1780 * t) * 0.14;
+              const transient = Math.sin(2 * Math.PI * 2100 * t) * Math.pow(1 - Math.min(1, progress / 0.18), 2) * 0.12;
+              data[i] = (airyNoise + midTone + toneA + toneB + transient) * envelope * 0.76;
             }
             this.xpAudioCtx = ctx;
             this.xpPickupBuffer = buffer;
