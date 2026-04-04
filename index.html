@@ -40,18 +40,27 @@
     (() => {
       const WORLD_W = 540;
       const WORLD_H = 960;
+      const PLAYER_SPRITE_SVG = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+          <defs>
+            <linearGradient id="body" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#73d8ff"/>
+              <stop offset="100%" stop-color="#1f8fe2"/>
+            </linearGradient>
+          </defs>
+          <circle cx="24" cy="24" r="15" fill="#0b2a4b" opacity="0.35"/>
+          <path d="M24 6 L36 18 L31 38 L17 38 L12 18 Z" fill="url(#body)" stroke="#d7f6ff" stroke-width="2"/>
+          <rect x="21" y="15" width="6" height="10" rx="2" fill="#e9fbff"/>
+          <circle cx="19" cy="27" r="2.2" fill="#e9fbff"/>
+          <circle cx="29" cy="27" r="2.2" fill="#e9fbff"/>
+          <path d="M18 33 Q24 36 30 33" stroke="#0f5f9b" stroke-width="2.2" fill="none"/>
+        </svg>
+      `.trim();
+      const PLAYER_SPRITE_DATA_URI = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(PLAYER_SPRITE_SVG)}`;
       const VISUAL_ASSETS = {
         player: {
-          textureKey: 'player',
+          textureKey: 'playerSprite',
           hitRadius: 14,
-          generatePlaceholder(g) {
-            g.fillStyle(0x2ec4ff).fillRoundedRect(8, 6, 16, 20, 4);
-            g.fillStyle(0x9be8ff).fillRect(12, 2, 8, 6);
-            g.fillStyle(0xffffff).fillRect(13, 10, 3, 3).fillRect(18, 10, 3, 3);
-            g.fillStyle(0x0f6ea6).fillRect(10, 23, 4, 5).fillRect(18, 23, 4, 5);
-            g.generateTexture(this.textureKey, 32, 32);
-            g.clear();
-          },
         },
         enemies: [
           {
@@ -121,6 +130,10 @@
       class GameScene extends Phaser.Scene {
         constructor() {
           super('game');
+        }
+
+        preload() {
+          this.load.image(VISUAL_ASSETS.player.textureKey, PLAYER_SPRITE_DATA_URI);
         }
 
         create() {
@@ -207,6 +220,13 @@
           this.player = this.physics.add.sprite(WORLD_W / 2, WORLD_H / 2, VISUAL_ASSETS.player.textureKey);
           this.player.setCircle(VISUAL_ASSETS.player.hitRadius).setCollideWorldBounds(true);
           this.player.body.setDrag(0);
+          this.playerHitRing = this.add.circle(
+            this.player.x,
+            this.player.y,
+            VISUAL_ASSETS.player.hitRadius,
+            0x89cdff,
+            0.11,
+          ).setStrokeStyle(1.5, 0xb7e3ff, 0.34).setDepth(this.player.depth + 1);
           this.playerBaseAlpha = this.player.alpha;
           this.playerBaseScale = this.player.scale;
           this.playerTrailParticles = this.add.particles(0, 0, VISUAL_ASSETS.player.textureKey, {
@@ -237,6 +257,10 @@
             if (this.playerTrailParticles) {
               this.playerTrailParticles.destroy();
               this.playerTrailParticles = null;
+            }
+            if (this.playerHitRing) {
+              this.playerHitRing.destroy();
+              this.playerHitRing = null;
             }
           });
 
@@ -419,7 +443,6 @@
 
         buildVisualAssets() {
           const g = this.add.graphics();
-          VISUAL_ASSETS.player.generatePlaceholder(g);
           VISUAL_ASSETS.enemies.forEach((enemyVisual) => enemyVisual.generatePlaceholder(g));
           VISUAL_ASSETS.attack.bullet.generatePlaceholder(g);
           VISUAL_ASSETS.xp.generatePlaceholder(g);
@@ -1047,6 +1070,9 @@
           const flicker = 0.9 + 0.1 * Math.sin(pulse * 5.8 + Math.sin(pulse * 2.3));
           this.player.setAlpha(this.playerBaseAlpha * Phaser.Math.Linear(1, flicker, instability));
           this.player.setScale(this.playerBaseScale * (1 + Math.sin(pulse * 6.2 + 0.6) * instability * 0.03));
+          if (this.playerHitRing) {
+            this.playerHitRing.setPosition(this.player.x, this.player.y);
+          }
           if (this.playerTrailParticles) {
             this.playerTrailParticles.emitting = hasNearMissBurst;
           }
