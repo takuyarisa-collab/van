@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 12:22';
+      const BUILD_TIMESTAMP = '2026-04-04 12:40';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
@@ -169,11 +169,14 @@
       };
       const XP_AUDIO = {
         sampleRate: 22050,
-        durationSec: 0.072,
-        baseVolume: 0.11,
-        overlapDamping: 0.35,
-        minVolumeFactor: 0.3,
-        pitchRandomCents: 8,
+        loopDurationSec: 2.4,
+        baseVolume: 0.12,
+        nearXpBoost: 0.2,
+        maxNearbyXpForBoost: 10,
+        fadeTimeSec: 0.22,
+        updateSmoothingSec: 0.12,
+        lowpassHz: 1300,
+        highpassHz: 120,
       };
 
       class GameScene extends Phaser.Scene {
@@ -310,7 +313,7 @@
             emitting: false,
           }).setDepth(this.player.depth + 2);
           this.lastXpTrailAt = 0;
-          this.initXpPickupAudio();
+          this.initXpAmbientAudio();
 
           this._onGlobalPointerUp = () => this.releasePointer();
           this._onWindowBlur = () => this.releasePointer();
@@ -340,7 +343,7 @@
               this.playerHitRing.destroy();
               this.playerHitRing = null;
             }
-            this.disposeXpPickupAudio();
+            this.disposeXpAmbientAudio();
           });
 
           this.bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 120, runChildUpdate: true });
@@ -357,7 +360,7 @@
           this.state.spawnDirector.nextBiasCheckAt = this.time.now + Phaser.Math.Between(5000, 9000);
 
           this.input.on('pointerdown', (pointer) => {
-            this.resumeXpPickupAudio();
+            this.resumeXpAmbientAudio();
             if (this.state.pointerId !== null) return;
             this.state.pointerId = pointer.id;
             this.state.stickOrigin.set(pointer.worldX, pointer.worldY);
@@ -771,75 +774,94 @@
           if (this.xpPickupParticles) {
             this.xpPickupParticles.emitParticleAt(x, y, 1);
           }
-          this.playXpPickupSound();
         }
 
-        initXpPickupAudio() {
+        initXpAmbientAudio() {
           this.xpAudioCtx = null;
-          this.xpPickupBuffer = null;
-          this.xpPickupVoices = 0;
+          this.xpAmbientSource = null;
+          this.xpAmbientGain = null;
           const AudioCtx = window.AudioContext || window.webkitAudioContext;
           if (!AudioCtx) return;
           try {
             const ctx = new AudioCtx({ sampleRate: XP_AUDIO.sampleRate, latencyHint: 'interactive' });
-            const frameCount = Math.max(1, Math.floor(ctx.sampleRate * XP_AUDIO.durationSec));
+            const frameCount = Math.max(1, Math.floor(ctx.sampleRate * XP_AUDIO.loopDurationSec));
             const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
             const data = buffer.getChannelData(0);
-            let lastWhite = 0;
+            const crossfadeCount = Math.max(8, Math.floor(frameCount * 0.08));
+            let pink = 0;
+            let brown = 0;
             for (let i = 0; i < frameCount; i += 1) {
-              const progress = i / frameCount;
-              const fadeInProgress = Math.min(1, progress / 0.035);
-              const fadeIn = Math.sin(fadeInProgress * (Math.PI * 0.5));
-              const fadeOut = Math.pow(1 - progress, 2.2);
-              const envelope = fadeIn * fadeOut;
               const white = Math.random() * 2 - 1;
-              const pinkish = lastWhite * 0.85 + white * 0.15;
-              const airy = white - pinkish * 0.78;
-              const brightnessJitter = 0.9 + Math.random() * 0.18;
-              data[i] = airy * brightnessJitter * 0.5 * envelope;
-              lastWhite = white;
+              pink = pink * 0.965 + white * 0.035;
+              brown = Phaser.Math.Clamp(brown + white * 0.014, -1, 1);
+              data[i] = (pink * 0.68 + brown * 0.32) * 0.62;
+            }
+            for (let i = 0; i < crossfadeCount; i += 1) {
+              const t = i / crossfadeCount;
+              const a = Math.sin((1 - t) * Math.PI * 0.5);
+              const b = Math.sin(t * Math.PI * 0.5);
+              const head = data[i];
+              const tailIndex = frameCount - crossfadeCount + i;
+              const tail = data[tailIndex];
+              const blended = head * a + tail * b;
+              data[i] = blended;
+              data[tailIndex] = blended;
             }
             this.xpAudioCtx = ctx;
-            this.xpPickupBuffer = buffer;
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
+            source.loop = true;
+            const highpass = ctx.createBiquadFilter();
+            highpass.type = 'highpass';
+            highpass.frequency.value = XP_AUDIO.highpassHz;
+            highpass.Q.value = 0.6;
+            const lowpass = ctx.createBiquadFilter();
+            lowpass.type = 'lowpass';
+            lowpass.frequency.value = XP_AUDIO.lowpassHz;
+            lowpass.Q.value = 0.7;
+            const gainNode = ctx.createGain();
+            gainNode.gain.value = 0;
+            source.connect(highpass);
+            highpass.connect(lowpass);
+            lowpass.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            source.start(0);
+            this.xpAmbientSource = source;
+            this.xpAmbientGain = gainNode;
           } catch (err) {
             this.xpAudioCtx = null;
-            this.xpPickupBuffer = null;
+            this.xpAmbientSource = null;
+            this.xpAmbientGain = null;
           }
         }
 
-        resumeXpPickupAudio() {
+        resumeXpAmbientAudio() {
           if (!this.xpAudioCtx || this.xpAudioCtx.state !== 'suspended') return;
           this.xpAudioCtx.resume().catch(() => {});
         }
 
-        playXpPickupSound() {
-          if (!this.xpAudioCtx || !this.xpPickupBuffer || this.xpAudioCtx.state !== 'running') return;
-          const source = this.xpAudioCtx.createBufferSource();
-          source.buffer = this.xpPickupBuffer;
-          const gainNode = this.xpAudioCtx.createGain();
-          const stackedFactor = Math.max(
-            XP_AUDIO.minVolumeFactor,
-            1 / (1 + this.xpPickupVoices * XP_AUDIO.overlapDamping),
-          );
-          gainNode.gain.value = XP_AUDIO.baseVolume * stackedFactor;
-          const randomCents = Phaser.Math.FloatBetween(-XP_AUDIO.pitchRandomCents, XP_AUDIO.pitchRandomCents);
-          source.detune.value = randomCents;
-          source.connect(gainNode);
-          gainNode.connect(this.xpAudioCtx.destination);
-          this.xpPickupVoices += 1;
-          source.onended = () => {
-            this.xpPickupVoices = Math.max(0, this.xpPickupVoices - 1);
-          };
-          source.start(0);
+        updateXpAmbientSound(attractionStrength, nearbyCount) {
+          if (!this.xpAudioCtx || !this.xpAmbientGain || this.xpAudioCtx.state !== 'running') return;
+          const now = this.xpAudioCtx.currentTime;
+          const countBoost = Phaser.Math.Clamp(nearbyCount / XP_AUDIO.maxNearbyXpForBoost, 0, 1) * XP_AUDIO.nearXpBoost;
+          const targetVolume = Phaser.Math.Clamp((attractionStrength + countBoost) * XP_AUDIO.baseVolume, 0, XP_AUDIO.baseVolume);
+          const gain = this.xpAmbientGain.gain;
+          gain.cancelScheduledValues(now);
+          gain.setValueAtTime(gain.value, now);
+          gain.setTargetAtTime(targetVolume, now, targetVolume > gain.value ? XP_AUDIO.fadeTimeSec : XP_AUDIO.updateSmoothingSec);
         }
 
-        disposeXpPickupAudio() {
+        disposeXpAmbientAudio() {
+          if (this.xpAmbientSource) {
+            this.xpAmbientSource.stop();
+            this.xpAmbientSource.disconnect();
+          }
+          this.xpAmbientSource = null;
+          this.xpAmbientGain = null;
           if (this.xpAudioCtx) {
             this.xpAudioCtx.close().catch(() => {});
           }
           this.xpAudioCtx = null;
-          this.xpPickupBuffer = null;
-          this.xpPickupVoices = 0;
         }
 
         collectXpWithinRadius(cx, cy, radius) {
@@ -1117,6 +1139,7 @@
         }
 
         gameOver() {
+          this.updateXpAmbientSound(0, 0);
           this.state.gameOver = true;
           this.message.setText('DEFEATED\nAuto-restarting...');
           this.time.delayedCall(1200, () => this.scene.restart());
@@ -1205,6 +1228,8 @@
           let xpTrailStrength = 0;
           let xpTrailVx = 0;
           let xpTrailVy = 0;
+          let attractedXpCount = 0;
+          let attractionStrengthAccumulator = 0;
           this.xpOrbs.getChildren().forEach((orb) => {
             if (!orb.active) return;
             const dx = this.player.x - orb.x;
@@ -1228,6 +1253,8 @@
             const nx = dx / dist;
             const ny = dy / dist;
             const pullStrength = Phaser.Math.Clamp(1 - dist / effectiveMagnetConfig.radius, 0.16, 1);
+            attractedXpCount += 1;
+            attractionStrengthAccumulator += pullStrength;
             const targetVx = nx * effectiveMagnetConfig.maxSpeed * pullStrength;
             const targetVy = ny * effectiveMagnetConfig.maxSpeed * pullStrength;
             const nextVx = Phaser.Math.Linear(orb.body.velocity.x, targetVx, effectiveMagnetConfig.lerp);
@@ -1257,6 +1284,8 @@
             orb.setScale(scaleX, scaleY);
             orb.setAlpha(alpha);
           });
+          const normalizedAttractionStrength = Phaser.Math.Clamp(attractionStrengthAccumulator / Math.max(1, attractedXpCount * 0.85), 0, 1);
+          this.updateXpAmbientSound(normalizedAttractionStrength, attractedXpCount);
           if (
             shouldEmitXpTrail &&
             this.xpTrailParticles &&
