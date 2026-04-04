@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 08:58';
+      const BUILD_TIMESTAMP = '2026-04-04 09:22';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
@@ -160,6 +160,19 @@
         trailScaleMax: 0.62,
         trailSpeedMin: 18,
         trailSpeedMax: 72,
+      };
+      const XP_PICKUP_FEEDBACK = {
+        pulseLifespanMs: 120,
+        pulseScaleStart: 0.34,
+        pulseScaleEnd: 1.12,
+        pulseAlphaStart: 0.42,
+      };
+      const XP_AUDIO = {
+        sampleRate: 22050,
+        durationSec: 0.05,
+        baseVolume: 0.18,
+        overlapDamping: 0.35,
+        minVolumeFactor: 0.35,
       };
 
       class GameScene extends Phaser.Scene {
@@ -286,7 +299,17 @@
             blendMode: Phaser.BlendModes.ADD,
             emitting: false,
           }).setDepth(this.player.depth - 2);
+          this.xpPickupParticles = this.add.particles(0, 0, VISUAL_ASSETS.xp.textureKey, {
+            lifespan: XP_PICKUP_FEEDBACK.pulseLifespanMs,
+            quantity: 1,
+            scale: { start: XP_PICKUP_FEEDBACK.pulseScaleStart, end: XP_PICKUP_FEEDBACK.pulseScaleEnd },
+            alpha: { start: XP_PICKUP_FEEDBACK.pulseAlphaStart, end: 0 },
+            speed: { min: 0, max: 0 },
+            blendMode: Phaser.BlendModes.ADD,
+            emitting: false,
+          }).setDepth(this.player.depth + 2);
           this.lastXpTrailAt = 0;
+          this.initXpPickupAudio();
 
           this._onGlobalPointerUp = () => this.releasePointer();
           this._onWindowBlur = () => this.releasePointer();
@@ -308,10 +331,15 @@
               this.xpTrailParticles.destroy();
               this.xpTrailParticles = null;
             }
+            if (this.xpPickupParticles) {
+              this.xpPickupParticles.destroy();
+              this.xpPickupParticles = null;
+            }
             if (this.playerHitRing) {
               this.playerHitRing.destroy();
               this.playerHitRing = null;
             }
+            this.disposeXpPickupAudio();
           });
 
           this.bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 120, runChildUpdate: true });
@@ -328,6 +356,7 @@
           this.state.spawnDirector.nextBiasCheckAt = this.time.now + Phaser.Math.Between(5000, 9000);
 
           this.input.on('pointerdown', (pointer) => {
+            this.resumeXpPickupAudio();
             if (this.state.pointerId !== null) return;
             this.state.pointerId = pointer.id;
             this.state.stickOrigin.set(pointer.worldX, pointer.worldY);
@@ -724,6 +753,7 @@
 
         collectXpOrb(orb) {
           if (!orb || !orb.active) return;
+          this.triggerXpPickupFeedback(orb.x, orb.y);
           orb.destroy();
           this.state.xp += orb.value;
           while (this.state.xp >= this.state.xpToNext) {
@@ -734,6 +764,73 @@
             this.fireTimer.reset({ delay: this.state.fireRate, loop: true, callback: () => this.autoFire() });
           }
           this.updateHUD();
+        }
+
+        triggerXpPickupFeedback(x, y) {
+          if (this.xpPickupParticles) {
+            this.xpPickupParticles.emitParticleAt(x, y, 1);
+          }
+          this.playXpPickupSound();
+        }
+
+        initXpPickupAudio() {
+          this.xpAudioCtx = null;
+          this.xpPickupBuffer = null;
+          this.xpPickupVoices = 0;
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtx) return;
+          try {
+            const ctx = new AudioCtx({ sampleRate: XP_AUDIO.sampleRate, latencyHint: 'interactive' });
+            const frameCount = Math.max(1, Math.floor(ctx.sampleRate * XP_AUDIO.durationSec));
+            const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < frameCount; i += 1) {
+              const t = i / ctx.sampleRate;
+              const progress = i / frameCount;
+              const envelope = Math.pow(1 - progress, 3.5);
+              const s1 = Math.sin(2 * Math.PI * 980 * t);
+              const s2 = Math.sin(2 * Math.PI * 1470 * t) * 0.45;
+              data[i] = (s1 + s2) * 0.5 * envelope;
+            }
+            this.xpAudioCtx = ctx;
+            this.xpPickupBuffer = buffer;
+          } catch (err) {
+            this.xpAudioCtx = null;
+            this.xpPickupBuffer = null;
+          }
+        }
+
+        resumeXpPickupAudio() {
+          if (!this.xpAudioCtx || this.xpAudioCtx.state !== 'suspended') return;
+          this.xpAudioCtx.resume().catch(() => {});
+        }
+
+        playXpPickupSound() {
+          if (!this.xpAudioCtx || !this.xpPickupBuffer || this.xpAudioCtx.state !== 'running') return;
+          const source = this.xpAudioCtx.createBufferSource();
+          source.buffer = this.xpPickupBuffer;
+          const gainNode = this.xpAudioCtx.createGain();
+          const stackedFactor = Math.max(
+            XP_AUDIO.minVolumeFactor,
+            1 / (1 + this.xpPickupVoices * XP_AUDIO.overlapDamping),
+          );
+          gainNode.gain.value = XP_AUDIO.baseVolume * stackedFactor;
+          source.connect(gainNode);
+          gainNode.connect(this.xpAudioCtx.destination);
+          this.xpPickupVoices += 1;
+          source.onended = () => {
+            this.xpPickupVoices = Math.max(0, this.xpPickupVoices - 1);
+          };
+          source.start(0);
+        }
+
+        disposeXpPickupAudio() {
+          if (this.xpAudioCtx) {
+            this.xpAudioCtx.close().catch(() => {});
+          }
+          this.xpAudioCtx = null;
+          this.xpPickupBuffer = null;
+          this.xpPickupVoices = 0;
         }
 
         collectXpWithinRadius(cx, cy, radius) {
