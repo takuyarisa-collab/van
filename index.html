@@ -109,7 +109,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 00:00';
+      const BUILD_TIMESTAMP = '2026-04-04 00:30';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
@@ -175,10 +175,15 @@
             },
             nearMissMagnetPulse: {
               activeUntil: Number.NEGATIVE_INFINITY,
-              durationMs: 140,
-              radius: 96,
-              maxSpeed: 280,
-              lerp: 0.28,
+              durationMs: 155,
+              radius: 102,
+              maxSpeed: 320,
+              lerp: 0.31,
+            },
+            nearMissStabilityPulse: {
+              activeUntil: Number.NEGATIVE_INFINITY,
+              durationMs: 180,
+              instabilityMultiplier: 0.86,
             },
             spawnDirector: {
               startedAt: 0,
@@ -356,6 +361,10 @@
 
         triggerNearMissMagnetPulse() {
           this.state.nearMissMagnetPulse.activeUntil = this.time.now + this.state.nearMissMagnetPulse.durationMs;
+        }
+
+        triggerNearMissStabilityPulse() {
+          this.state.nearMissStabilityPulse.activeUntil = this.time.now + this.state.nearMissStabilityPulse.durationMs;
         }
 
         releasePointer() {
@@ -562,6 +571,10 @@
           if (this.time.now < stabilityPulse.activeUntil) {
             instability *= stabilityPulse.instabilityMultiplier;
           }
+          const nearMissStabilityPulse = this.state.nearMissStabilityPulse;
+          if (this.time.now < nearMissStabilityPulse.activeUntil) {
+            instability *= nearMissStabilityPulse.instabilityMultiplier;
+          }
           return instability;
         }
 
@@ -691,6 +704,7 @@
             this.triggerSnapBackRelease();
           } else if (result.outcome === SNAP_BACK_RESULT.NEAR_MISS) {
             this.triggerNearMissMagnetPulse();
+            this.triggerNearMissStabilityPulse();
           }
           this.showSnapBackDebugFlash(result.outcome, inputDir, now);
         }
