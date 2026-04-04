@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <link rel="icon" href="data:," />
   <title>Static Phaser Prototype</title>
   <style>
     :root { color-scheme: dark; }
@@ -1166,18 +1167,20 @@
               1,
             );
             const dynamicTrailScale = Phaser.Math.Linear(XP_VISUAL.trailScaleMin, XP_VISUAL.trailScaleMax, trailMotion);
-            this.xpTrailParticles.setScale({ start: dynamicTrailScale, end: 0.01 });
-            this.xpTrailParticles.setAlpha({
+            const trailScaleOp = { start: dynamicTrailScale, end: 0.01 };
+            this.xpTrailParticles.particleScaleX = trailScaleOp;
+            this.xpTrailParticles.particleScaleY = trailScaleOp;
+            this.xpTrailParticles.particleAlpha = {
               start: Phaser.Math.Linear(XP_VISUAL.trailAlphaMin, XP_VISUAL.trailAlphaMax, trailMotion),
               end: 0,
-            });
-            this.xpTrailParticles.setLifespan(
+            };
+            this.xpTrailParticles.setParticleLifespan(
               Phaser.Math.Linear(XP_VISUAL.trailLifespanMin, XP_VISUAL.trailLifespanMax, trailMotion),
             );
-            this.xpTrailParticles.setSpeed({
+            this.xpTrailParticles.speed = {
               min: Phaser.Math.Linear(XP_VISUAL.trailSpeedMin, XP_VISUAL.trailSpeedMax * 0.55, trailMotion),
               max: Phaser.Math.Linear(XP_VISUAL.trailSpeedMin * 1.5, XP_VISUAL.trailSpeedMax, trailMotion),
-            });
+            };
             this.xpTrailParticles.emitParticleAt(xpTrailX, xpTrailY, 1);
             if (xpTrailStrength > 0.28) {
               const tailParticles = 1 + Math.round(trailMotion * 2);
@@ -1210,18 +1213,13 @@
 
           if (this.instabilityParticles) {
             this.instabilityParticles.frequency = Phaser.Math.Linear(160, 34, instability);
-            this.instabilityParticles.setSpeed({
+            this.instabilityParticles.speed = {
               min: Phaser.Math.Linear(18, 44, instability),
               max: Phaser.Math.Linear(48, 120, instability),
-            });
-            this.instabilityParticles.setScale(
-              Phaser.Math.Linear(0.16, 0.18, instability),
-              0,
-            );
-            this.instabilityParticles.setAlpha(
-              Phaser.Math.Linear(0.28, 0.35, instability),
-              0,
-            );
+            };
+            const instS = Phaser.Math.Linear(0.16, 0.18, instability);
+            this.instabilityParticles.setParticleScale(instS, instS);
+            this.instabilityParticles.particleAlpha = Phaser.Math.Linear(0.28, 0.35, instability);
           }
         }
       }
