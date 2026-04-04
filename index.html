@@ -121,7 +121,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 08:39';
+      const BUILD_TIMESTAMP = '2026-04-04 09:12';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
@@ -143,11 +143,20 @@
         pullSpeedThreshold: 28,
         stretchMax: 0.38,
         glowBoostMax: 0.46,
-        trailSpeedThreshold: 90,
-        trailBaseIntervalMs: 34,
-        trailPullIntervalMs: 16,
-        trailOffsetMin: 5,
-        trailOffsetMax: 16,
+        trailSpeedThreshold: 126,
+        trailDenseThreshold: 280,
+        trailBaseIntervalMs: 96,
+        trailPullIntervalMs: 22,
+        trailOffsetMin: 8,
+        trailOffsetMax: 24,
+        trailBackOffsetMin: 16,
+        trailBackOffsetMax: 36,
+        trailLifespan: 320,
+        trailAlpha: 0.42,
+        trailScaleStart: 0.5,
+        trailScaleEnd: 0.03,
+        trailSpeedMin: 26,
+        trailSpeedMax: 68,
       };
 
       class GameScene extends Phaser.Scene {
@@ -266,11 +275,11 @@
             emitting: false,
           }).setDepth(this.player.depth - 1);
           this.xpTrailParticles = this.add.particles(0, 0, VISUAL_ASSETS.xp.textureKey, {
-            lifespan: 190,
+            lifespan: XP_VISUAL.trailLifespan,
             quantity: 1,
-            scale: { start: 0.42, end: 0.01 },
-            alpha: { start: 0.32, end: 0 },
-            speed: { min: 14, max: 44 },
+            scale: { start: XP_VISUAL.trailScaleStart, end: XP_VISUAL.trailScaleEnd },
+            alpha: { start: XP_VISUAL.trailAlpha, end: 0 },
+            speed: { min: XP_VISUAL.trailSpeedMin, max: XP_VISUAL.trailSpeedMax },
             blendMode: Phaser.BlendModes.ADD,
             emitting: false,
           }).setDepth(this.player.depth - 2);
@@ -1145,13 +1154,16 @@
             this.time.now - this.lastXpTrailAt >= Phaser.Math.Linear(XP_VISUAL.trailBaseIntervalMs, XP_VISUAL.trailPullIntervalMs, xpTrailStrength)
           ) {
             this.lastXpTrailAt = this.time.now;
+            const trailSpeed = Math.hypot(xpTrailVx, xpTrailVy) || 1;
+            const dirX = xpTrailVx / trailSpeed;
+            const dirY = xpTrailVy / trailSpeed;
             this.xpTrailParticles.emitParticleAt(xpTrailX, xpTrailY, 1);
-            if (xpTrailStrength > 0.3) {
-              const trailSpeed = Math.hypot(xpTrailVx, xpTrailVy) || 1;
-              const dirX = xpTrailVx / trailSpeed;
-              const dirY = xpTrailVy / trailSpeed;
-              const tailBack = Phaser.Math.Linear(6, 14, xpTrailStrength);
+            if (xpTrailStrength > 0.28) {
+              const tailBack = Phaser.Math.Linear(XP_VISUAL.trailBackOffsetMin, XP_VISUAL.trailBackOffsetMax, xpTrailStrength);
               this.xpTrailParticles.emitParticleAt(xpTrailX - dirX * tailBack, xpTrailY - dirY * tailBack, 1);
+              if (trailSpeed > XP_VISUAL.trailDenseThreshold) {
+                this.xpTrailParticles.emitParticleAt(xpTrailX - dirX * tailBack * 1.35, xpTrailY - dirY * tailBack * 1.35, 1);
+              }
             }
           }
 
