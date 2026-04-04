@@ -109,8 +109,8 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-03 20:05';
-      const BUILD_COMMIT_SHORT = '4b4fccb';
+      const BUILD_TIMESTAMP = '2026-04-04 00:00';
+      const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
         CHASER: 'chaser',
@@ -167,6 +167,11 @@
               radiusMultiplier: 1.95,
               speedMultiplier: 7.5,
               lerpMultiplier: 1.8,
+            },
+            releaseStabilityPulse: {
+              activeUntil: Number.NEGATIVE_INFINITY,
+              durationMs: 280,
+              instabilityMultiplier: 0.45,
             },
             nearMissMagnetPulse: {
               activeUntil: Number.NEGATIVE_INFINITY,
@@ -300,8 +305,17 @@
           this.updateHUD();
         }
 
-        getSnapReleaseRadius() {
-          return 260;
+        getEnergyNormalized() {
+          return Phaser.Math.Clamp(this.state.energy / 220, 0, 1);
+        }
+
+        getSnapReleaseProfile() {
+          const energyNorm = this.getEnergyNormalized();
+          return {
+            energyNorm,
+            radius: Phaser.Math.Linear(190, 350, energyNorm),
+            intensity: Phaser.Math.Linear(0.85, 1.45, energyNorm),
+          };
         }
 
         getXpMagnetConfig() {
@@ -320,8 +334,24 @@
           };
         }
 
-        triggerXpMagnetBurst() {
-          this.state.xpMagnetBurst.activeUntil = this.time.now + this.state.xpMagnetBurst.durationMs;
+        triggerXpMagnetBurst(releaseIntensity = 1) {
+          const magnetBurst = this.state.xpMagnetBurst;
+          const shortAfterEffectMs = Phaser.Math.Clamp(
+            magnetBurst.durationMs * Phaser.Math.Linear(1.06, 1.22, Phaser.Math.Clamp(releaseIntensity - 0.85, 0, 1)),
+            magnetBurst.durationMs,
+            magnetBurst.durationMs + 90,
+          );
+          magnetBurst.activeUntil = this.time.now + shortAfterEffectMs;
+        }
+
+        triggerReleaseStabilityPulse(releaseIntensity = 1) {
+          const stabilityPulse = this.state.releaseStabilityPulse;
+          const duration = Phaser.Math.Clamp(
+            stabilityPulse.durationMs * Phaser.Math.Linear(0.92, 1.16, Phaser.Math.Clamp(releaseIntensity - 0.85, 0, 1)),
+            220,
+            360,
+          );
+          stabilityPulse.activeUntil = this.time.now + duration;
         }
 
         triggerNearMissMagnetPulse() {
@@ -526,8 +556,13 @@
         }
 
         getInstabilityStrength() {
-          const normalized = Phaser.Math.Clamp(this.state.energy / 220, 0, 1);
-          return normalized * normalized;
+          const normalized = this.getEnergyNormalized();
+          let instability = normalized * normalized;
+          const stabilityPulse = this.state.releaseStabilityPulse;
+          if (this.time.now < stabilityPulse.activeUntil) {
+            instability *= stabilityPulse.instabilityMultiplier;
+          }
+          return instability;
         }
 
         getEnergyRiskProfile() {
@@ -662,7 +697,8 @@
 
         triggerSnapBackRelease() {
           if (this.state.gameOver) return;
-          const releaseRadius = this.getSnapReleaseRadius();
+          const releaseProfile = this.getSnapReleaseProfile();
+          const releaseRadius = releaseProfile.radius;
           const releaseRadiusSq = releaseRadius * releaseRadius;
           const enemiesToClear = [];
           this.enemies.getChildren().forEach((enemy) => {
@@ -677,7 +713,8 @@
             this.spawnXp(enemy.x, enemy.y);
             enemy.destroy();
           });
-          this.triggerXpMagnetBurst();
+          this.triggerXpMagnetBurst(releaseProfile.intensity);
+          this.triggerReleaseStabilityPulse(releaseProfile.intensity);
 
           const burst = this.add.circle(this.player.x, this.player.y, 28, 0xb8ffff, 0.45).setDepth(this.player.depth + 1);
           burst.setBlendMode(Phaser.BlendModes.ADD);
@@ -685,7 +722,7 @@
             targets: burst,
             scale: releaseRadius / 28,
             alpha: 0,
-            duration: 220,
+            duration: Math.round(Phaser.Math.Linear(180, 260, releaseProfile.energyNorm)),
             ease: 'Cubic.easeOut',
             onComplete: () => burst.destroy(),
           });
