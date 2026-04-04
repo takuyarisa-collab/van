@@ -109,7 +109,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 09:18';
+      const BUILD_TIMESTAMP = '2026-04-04 01:32';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const ENEMY_BEHAVIOR_TYPES = {
@@ -209,13 +209,13 @@
           this.playerBaseAlpha = this.player.alpha;
           this.playerBaseScale = this.player.scale;
           this.playerTrailParticles = this.add.particles(0, 0, VISUAL_ASSETS.player.textureKey, {
-            lifespan: 118,
-            quantity: 2,
-            frequency: 18,
-            scale: { start: 0.56, end: 0.1 },
-            alpha: { start: 0.42, end: 0 },
-            speed: { min: 12, max: 40 },
-            tint: [0xffb07a, 0xffe5ae],
+            lifespan: 95,
+            quantity: 1,
+            frequency: 24,
+            scale: { start: 0.48, end: 0.08 },
+            alpha: { start: 0.3, end: 0 },
+            speed: { min: 8, max: 30 },
+            tint: [0x95ceff, 0xd5ebff],
             blendMode: Phaser.BlendModes.ADD,
             follow: this.player,
             emitting: false,
@@ -390,16 +390,16 @@
           const flash = this.add.circle(
             this.player.x + inputDir.x * 10,
             this.player.y + inputDir.y * 10,
-            21,
-            0xff9f62,
-            0.56,
+            13,
+            0x9fbdff,
+            0.45,
           ).setDepth(this.player.depth + 2);
           flash.setBlendMode(Phaser.BlendModes.ADD);
           this.tweens.add({
             targets: flash,
             alpha: 0,
-            scale: 1.42,
-            duration: 90,
+            scale: 1.2,
+            duration: 80,
             ease: 'Quad.easeOut',
             onComplete: () => flash.destroy(),
           });
@@ -809,11 +809,11 @@
           }
 
           const isSuccess = outcome === SNAP_BACK_RESULT.SUCCESS_CANDIDATE;
-          const color = isSuccess ? 0x8ffcff : 0xffa04f;
-          const radius = isSuccess ? 38 : 24;
-          const alpha = isSuccess ? 0.55 : 0.42;
-          const offset = isSuccess ? 22 : 16;
-          const duration = isSuccess ? 150 : 105;
+          const color = isSuccess ? 0x8ffcff : 0x8ea9ff;
+          const radius = isSuccess ? 38 : 16;
+          const alpha = isSuccess ? 0.55 : 0.3;
+          const offset = isSuccess ? 22 : 15;
+          const duration = isSuccess ? 150 : 95;
 
           const flash = this.add.circle(
             this.player.x + inputDir.x * offset,
@@ -858,24 +858,24 @@
             const nearRing = this.add.circle(
               this.player.x + inputDir.x * 20,
               this.player.y + inputDir.y * 20,
-              15,
+              12,
               color,
               0,
             ).setDepth(this.player.depth + 2);
-            nearRing.setStrokeStyle(2.7, 0xffcc8c, 0.88);
+            nearRing.setStrokeStyle(2.5, 0xb9c8ff, 0.85);
             nearRing.setBlendMode(Phaser.BlendModes.ADD);
             this.tweens.add({
               targets: nearRing,
-              scale: 1.62,
+              scale: 1.45,
               alpha: 0,
-              duration: 118,
+              duration: 110,
               ease: 'Cubic.easeOut',
               onUpdate: () => {
-                const ringProgress = Phaser.Math.Clamp((nearRing.scaleX - 1) / 0.62, 0, 1);
+                const ringProgress = Phaser.Math.Clamp((nearRing.scaleX - 1) / 0.45, 0, 1);
                 nearRing.setStrokeStyle(
-                  Phaser.Math.Linear(2.7, 0, ringProgress),
-                  0xffcc8c,
-                  Phaser.Math.Linear(0.88, 0, ringProgress),
+                  Phaser.Math.Linear(2.5, 0, ringProgress),
+                  0xb9c8ff,
+                  Phaser.Math.Linear(0.85, 0, ringProgress),
                 );
               },
               onComplete: () => nearRing.destroy(),
@@ -890,7 +890,7 @@
               fontFamily: 'system-ui, sans-serif',
               fontSize: isSuccess ? '24px' : '21px',
               fontStyle: '700',
-              color: isSuccess ? '#58fff0' : '#ffbf66',
+              color: isSuccess ? '#58fff0' : '#ffe27a',
               stroke: '#000',
               strokeThickness: 5,
             },
@@ -1053,18 +1053,6 @@
           this.player.setScale(this.playerBaseScale * (1 + Math.sin(pulse * 6.2 + 0.6) * instability * 0.03));
           if (this.playerTrailParticles) {
             this.playerTrailParticles.emitting = hasNearMissBurst;
-            this.playerTrailParticles.setPosition(this.player.x, this.player.y);
-            this.playerTrailParticles.setSpeed({
-              min: hasNearMissBurst ? 18 : 12,
-              max: hasNearMissBurst ? 58 : 40,
-            });
-            this.playerTrailParticles.setLifespan(hasNearMissBurst ? 130 : 118);
-            this.playerTrailParticles.setScale(
-              hasNearMissBurst ? { start: 0.62, end: 0.1 } : { start: 0.56, end: 0.1 },
-            );
-            this.playerTrailParticles.setAlpha(
-              hasNearMissBurst ? { start: 0.5, end: 0 } : { start: 0.42, end: 0 },
-            );
           }
 
           if (this.instabilityParticles) {
