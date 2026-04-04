@@ -169,9 +169,11 @@
       };
       const SNAP_AUDIO = {
         sampleRate: 32000,
-        peakVolume: 0.2,
-        attackSec: 0.006,
-        decaySec: 0.13,
+        peakVolume: 0.24,
+        durationSec: 0.1,
+        pullSec: 0.018,
+        burstSec: 0.03,
+        tailSec: 0.052,
         minIntervalMs: 70,
       };
 
@@ -775,12 +777,15 @@
         initSnapAudio() {
           this.snapAudioCtx = null;
           this.snapAudioLastAt = Number.NEGATIVE_INFINITY;
+          this.snapNoiseBuffer = null;
           const AudioCtx = window.AudioContext || window.webkitAudioContext;
           if (!AudioCtx) return;
           try {
             this.snapAudioCtx = new AudioCtx({ sampleRate: SNAP_AUDIO.sampleRate, latencyHint: 'interactive' });
+            this.snapNoiseBuffer = this.createSnapNoiseBuffer(this.snapAudioCtx);
           } catch (err) {
             this.snapAudioCtx = null;
+            this.snapNoiseBuffer = null;
           }
         }
 
@@ -789,58 +794,87 @@
           this.snapAudioCtx.resume().catch(() => {});
         }
 
+        createSnapNoiseBuffer(ctx) {
+          const frameCount = Math.max(1, Math.floor(ctx.sampleRate * 0.2));
+          const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
+          const channel = buffer.getChannelData(0);
+          for (let i = 0; i < frameCount; i += 1) {
+            channel[i] = Math.random() * 2 - 1;
+          }
+          return buffer;
+        }
+
         playSnapSuccessSound() {
-          if (!this.snapAudioCtx || this.snapAudioCtx.state !== 'running') return;
+          if (!this.snapAudioCtx || this.snapAudioCtx.state !== 'running' || !this.snapNoiseBuffer) return;
           if (this.time.now - this.snapAudioLastAt < SNAP_AUDIO.minIntervalMs) return;
           this.snapAudioLastAt = this.time.now;
           const ctx = this.snapAudioCtx;
           const now = ctx.currentTime;
-          const decayEnd = now + SNAP_AUDIO.decaySec;
+          const pullEnd = now + SNAP_AUDIO.pullSec;
+          const burstEnd = pullEnd + SNAP_AUDIO.burstSec;
+          const end = now + SNAP_AUDIO.durationSec;
           const out = ctx.createGain();
-          const amp = ctx.createGain();
-          const toneA = ctx.createOscillator();
-          const toneB = ctx.createOscillator();
-          const band = ctx.createBiquadFilter();
-          const low = ctx.createBiquadFilter();
+          const source = ctx.createBufferSource();
+          const stage = ctx.createGain();
+          const burstGain = ctx.createGain();
+          const bodyFilter = ctx.createBiquadFilter();
+          const airFilter = ctx.createBiquadFilter();
+          const tailFilter = ctx.createBiquadFilter();
 
-          toneA.type = 'triangle';
-          toneA.frequency.setValueAtTime(720, now);
-          toneA.frequency.exponentialRampToValueAtTime(180, decayEnd);
-
-          toneB.type = 'sawtooth';
-          toneB.frequency.setValueAtTime(420, now);
-          toneB.frequency.exponentialRampToValueAtTime(130, decayEnd);
-          toneB.detune.setValueAtTime(-8, now);
-
-          band.type = 'bandpass';
-          band.frequency.value = 980;
-          band.Q.value = 1.05;
-          low.type = 'lowpass';
-          low.frequency.value = 2400;
-          low.Q.value = 0.72;
+          source.buffer = this.snapNoiseBuffer;
+          source.playbackRate.setValueAtTime(1.22, now);
+          source.playbackRate.exponentialRampToValueAtTime(0.82, end);
 
           out.gain.setValueAtTime(SNAP_AUDIO.peakVolume, now);
-          amp.gain.setValueAtTime(0.0001, now);
-          amp.gain.exponentialRampToValueAtTime(1, now + SNAP_AUDIO.attackSec);
-          amp.gain.exponentialRampToValueAtTime(0.0001, decayEnd);
+          out.gain.exponentialRampToValueAtTime(0.0001, end);
 
-          toneA.connect(amp);
-          toneB.connect(amp);
-          amp.connect(band);
-          band.connect(low);
-          low.connect(out);
+          stage.gain.setValueAtTime(0.0001, now);
+          stage.gain.exponentialRampToValueAtTime(0.32, pullEnd);
+          stage.gain.linearRampToValueAtTime(1.0, burstEnd);
+          stage.gain.exponentialRampToValueAtTime(0.0001, end);
+
+          burstGain.gain.setValueAtTime(0.82, now);
+          burstGain.gain.linearRampToValueAtTime(0.9, pullEnd);
+          burstGain.gain.exponentialRampToValueAtTime(1.35, pullEnd + 0.01);
+          burstGain.gain.exponentialRampToValueAtTime(0.48, burstEnd);
+          burstGain.gain.exponentialRampToValueAtTime(0.14, end);
+
+          bodyFilter.type = 'bandpass';
+          bodyFilter.frequency.setValueAtTime(640, now);
+          bodyFilter.frequency.exponentialRampToValueAtTime(1480, pullEnd);
+          bodyFilter.frequency.exponentialRampToValueAtTime(760, end);
+          bodyFilter.Q.setValueAtTime(1.35, now);
+          bodyFilter.Q.linearRampToValueAtTime(0.7, end);
+
+          airFilter.type = 'highpass';
+          airFilter.frequency.setValueAtTime(240, now);
+          airFilter.frequency.exponentialRampToValueAtTime(560, burstEnd);
+          airFilter.frequency.exponentialRampToValueAtTime(320, end);
+          airFilter.Q.setValueAtTime(0.45, now);
+
+          tailFilter.type = 'lowpass';
+          tailFilter.frequency.setValueAtTime(4200, now);
+          tailFilter.frequency.exponentialRampToValueAtTime(2100, burstEnd);
+          tailFilter.frequency.exponentialRampToValueAtTime(980, end);
+          tailFilter.Q.setValueAtTime(0.62, now);
+
+          source.connect(stage);
+          stage.connect(burstGain);
+          burstGain.connect(bodyFilter);
+          bodyFilter.connect(airFilter);
+          airFilter.connect(tailFilter);
+          tailFilter.connect(out);
           out.connect(ctx.destination);
 
-          toneA.start(now);
-          toneB.start(now);
-          toneA.stop(decayEnd + 0.02);
-          toneB.stop(decayEnd + 0.02);
-          toneA.onended = () => {
-            toneA.disconnect();
-            toneB.disconnect();
-            amp.disconnect();
-            band.disconnect();
-            low.disconnect();
+          source.start(now);
+          source.stop(end + 0.02);
+          source.onended = () => {
+            source.disconnect();
+            stage.disconnect();
+            burstGain.disconnect();
+            bodyFilter.disconnect();
+            airFilter.disconnect();
+            tailFilter.disconnect();
             out.disconnect();
           };
         }
@@ -850,6 +884,7 @@
             this.snapAudioCtx.close().catch(() => {});
           }
           this.snapAudioCtx = null;
+          this.snapNoiseBuffer = null;
         }
 
         collectXpWithinRadius(cx, cy, radius) {
