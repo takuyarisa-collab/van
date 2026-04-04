@@ -340,8 +340,8 @@
           const energyNorm = this.getEnergyNormalized();
           return {
             energyNorm,
-            radius: Phaser.Math.Linear(190, 350, energyNorm),
-            intensity: Phaser.Math.Linear(0.85, 1.45, energyNorm),
+            radius: Phaser.Math.Linear(150, 350, energyNorm),
+            intensity: Phaser.Math.Linear(0.65, 1.45, energyNorm),
           };
         }
 
@@ -713,8 +713,7 @@
           const onCooldown = now - snapBackState.lastDetectedAt < snapBackState.cooldownMs;
 
           let outcome = SNAP_BACK_RESULT.FAIL;
-          const hasEnergyForSnap = this.state.energy >= snapBackState.successEnergyCost;
-          if (!onCooldown && hasEnergyForSnap && speed >= snapBackState.minSpeed && reversalDot <= snapBackState.reversalDot && quickReverseInput && inputPowerStrongEnough) {
+          if (!onCooldown && speed >= snapBackState.minSpeed && reversalDot <= snapBackState.reversalDot && quickReverseInput && inputPowerStrongEnough) {
             outcome = SNAP_BACK_RESULT.SUCCESS_CANDIDATE;
             snapBackState.lastDetectedAt = now;
           } else {
@@ -756,7 +755,6 @@
 
         triggerSnapBackRelease() {
           if (this.state.gameOver) return;
-          if (this.state.energy < this.state.snapBack.successEnergyCost) return;
           const releaseProfile = this.getSnapReleaseProfile();
           const releaseRadius = releaseProfile.radius;
           const releaseRadiusSq = releaseRadius * releaseRadius;
