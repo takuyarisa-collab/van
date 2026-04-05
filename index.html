@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-05 15:02';
+      const BUILD_TIMESTAMP = '2026-04-05 15:24';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -217,16 +217,11 @@
         damage: 1,
       };
       const NEAR_ATTACK_SLASH_VISUAL = {
-        textureKey: 'nearSlashCore',
-        length: 236,
-        mainWidth: 12,
-        forwardOffset: 112,
-        mainDurationMs: 120,
-        afterimages: [
-          { delayMs: 26, widthScale: 0.95, alpha: 0.52, durationMs: 150, lengthScale: 0.99, offsetScale: 0.97 },
-          { delayMs: 52, widthScale: 0.9, alpha: 0.38, durationMs: 180, lengthScale: 0.97, offsetScale: 0.94 },
-          { delayMs: 78, widthScale: 0.86, alpha: 0.26, durationMs: 210, lengthScale: 0.95, offsetScale: 0.91 },
-        ],
+        length: NEAR_ATTACK_PROFILE.range,
+        width: 6,
+        color: 0xf8fbff,
+        alpha: 0.95,
+        durationMs: 180,
       };
       const SNAP_AUDIO = {
         sampleRate: 32000,
@@ -687,31 +682,6 @@
           VISUAL_ASSETS.enemies.forEach((enemyVisual) => enemyVisual.generatePlaceholder(g));
           VISUAL_ASSETS.attack.bullet.generatePlaceholder(g);
           VISUAL_ASSETS.xp.generatePlaceholder(g);
-          const slashBaseWidth = 320;
-          const slashBaseHeight = 96;
-          if (this.textures.exists(NEAR_ATTACK_SLASH_VISUAL.textureKey)) {
-            this.textures.remove(NEAR_ATTACK_SLASH_VISUAL.textureKey);
-          }
-          const slashTexture = this.textures.createCanvas(NEAR_ATTACK_SLASH_VISUAL.textureKey, slashBaseWidth, slashBaseHeight);
-          const ctx = slashTexture.getContext();
-          ctx.clearRect(0, 0, slashBaseWidth, slashBaseHeight);
-          const gradient = ctx.createLinearGradient(0, 0, slashBaseWidth, 0);
-          gradient.addColorStop(0, 'rgba(215, 212, 255, 0)');
-          gradient.addColorStop(0.1, 'rgba(215, 212, 255, 0.7)');
-          gradient.addColorStop(0.5, 'rgba(255, 255, 255, 1)');
-          gradient.addColorStop(0.9, 'rgba(215, 212, 255, 0.7)');
-          gradient.addColorStop(1, 'rgba(215, 212, 255, 0)');
-          ctx.fillStyle = gradient;
-          ctx.beginPath();
-          ctx.moveTo(18, slashBaseHeight * 0.5);
-          ctx.lineTo(64, slashBaseHeight * 0.36);
-          ctx.lineTo(slashBaseWidth - 56, slashBaseHeight * 0.3);
-          ctx.lineTo(slashBaseWidth - 14, slashBaseHeight * 0.5);
-          ctx.lineTo(slashBaseWidth - 56, slashBaseHeight * 0.7);
-          ctx.lineTo(64, slashBaseHeight * 0.64);
-          ctx.closePath();
-          ctx.fill();
-          slashTexture.refresh();
           g.clear();
           g.destroy();
         }
@@ -901,50 +871,26 @@
 
         emitNearAttackSlashFlash(nearEvent) {
           const visual = NEAR_ATTACK_SLASH_VISUAL;
-          const slashCenterX = nearEvent.originX + nearEvent.dirX * visual.forwardOffset;
-          const slashCenterY = nearEvent.originY + nearEvent.dirY * visual.forwardOffset;
           const angle = Math.atan2(nearEvent.dirY, nearEvent.dirX);
-
-          const slashMain = this.add.image(slashCenterX, slashCenterY, visual.textureKey)
-            .setDepth(this.player.depth + 3);
-          slashMain.setDisplaySize(visual.length, visual.mainWidth);
-          slashMain.setAlpha(0.96);
-          slashMain.setTint(0xf3efff);
-          slashMain.setBlendMode(Phaser.BlendModes.NORMAL);
+          const slashMain = this.add.rectangle(
+            nearEvent.originX,
+            nearEvent.originY,
+            visual.length,
+            visual.width,
+            visual.color,
+            visual.alpha,
+          ).setDepth(this.player.depth + 3);
+          slashMain.setOrigin(0, 0.5);
           slashMain.setRotation(angle);
 
           this.tweens.add({
             targets: slashMain,
             alpha: 0,
-            duration: visual.mainDurationMs,
+            duration: visual.durationMs,
             ease: 'Quad.easeOut',
             onComplete: () => {
               slashMain.destroy();
             },
-          });
-
-          visual.afterimages.forEach((afterimage, index) => {
-            this.time.delayedCall(afterimage.delayMs, () => {
-              if (!this.scene.isActive()) return;
-              const trailX = nearEvent.originX + nearEvent.dirX * visual.forwardOffset * afterimage.offsetScale;
-              const trailY = nearEvent.originY + nearEvent.dirY * visual.forwardOffset * afterimage.offsetScale;
-              const slashAfterimage = this.add.image(trailX, trailY, visual.textureKey)
-                .setDepth(this.player.depth + 2 - index * 0.05);
-              slashAfterimage.setDisplaySize(visual.length * afterimage.lengthScale, visual.mainWidth * afterimage.widthScale);
-              slashAfterimage.setAlpha(afterimage.alpha);
-              slashAfterimage.setTint(0xb8c5ff);
-              slashAfterimage.setBlendMode(Phaser.BlendModes.NORMAL);
-              slashAfterimage.setRotation(angle);
-              this.tweens.add({
-                targets: slashAfterimage,
-                alpha: 0,
-                duration: afterimage.durationMs,
-                ease: 'Quad.easeOut',
-                onComplete: () => {
-                  slashAfterimage.destroy();
-                },
-              });
-            });
           });
         }
 
