@@ -217,10 +217,9 @@
         damage: 1,
       };
       const NEAR_ATTACK_SLASH_VISUAL = {
-        length: 104,
-        widthOuter: 16,
-        widthInner: 7,
-        forwardOffset: 58,
+        length: 208,
+        width: 10,
+        forwardOffset: 110,
         durationMs: 175,
       };
       const SNAP_AUDIO = {
@@ -875,36 +874,23 @@
           const slashCenterX = this.player.x + cos * visual.forwardOffset;
           const slashCenterY = this.player.y + sin * visual.forwardOffset;
 
-          const outer = this.add.rectangle(
+          const slash = this.add.rectangle(
             slashCenterX,
             slashCenterY,
             visual.length,
-            visual.widthOuter,
-            0xff84df,
-            0.34,
-          ).setDepth(this.player.depth + 2);
-          outer.setRotation(angle);
-          outer.setBlendMode(Phaser.BlendModes.ADD);
-
-          const inner = this.add.rectangle(
-            slashCenterX,
-            slashCenterY,
-            visual.length,
-            visual.widthInner,
-            0xfff3ff,
-            0.95,
+            visual.width,
+            0xffc7f4,
+            0.78,
           ).setDepth(this.player.depth + 3);
-          inner.setRotation(angle);
-          inner.setBlendMode(Phaser.BlendModes.ADD);
+          slash.setRotation(angle);
 
           this.tweens.add({
-            targets: [outer, inner],
+            targets: slash,
             alpha: 0,
             duration: visual.durationMs,
             ease: 'Quad.easeOut',
             onComplete: () => {
-              outer.destroy();
-              inner.destroy();
+              slash.destroy();
             },
           });
         }
