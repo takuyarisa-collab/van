@@ -230,6 +230,7 @@
         steerDurationMs: 110,
         minSteerSpeed: 58,
       };
+      const DEBUG_NEAR_ATTACK_HITBOX = false;
       const SNAP_AUDIO = {
         sampleRate: 32000,
         peakVolume: 0.24,
@@ -428,9 +429,8 @@
               this.playerHitRing.destroy();
               this.playerHitRing = null;
             }
-            if (this.activeNearAttack?.rect) {
-              this.activeNearAttack.rect.destroy();
-            }
+            this.activeNearAttack?.hitRect?.destroy();
+            this.activeNearAttack?.laserVisual?.destroy();
             this.activeNearAttack = null;
             this.disposeSnapAudio();
           });
@@ -881,22 +881,47 @@
           enemy.destroy();
         }
 
+        getNearAttackTransform(nearEvent) {
+          const visual = NEAR_ATTACK_VISUAL;
+          const halfLength = visual.length * 0.5;
+          return {
+            length: visual.length,
+            width: visual.width,
+            angle: nearEvent.angle,
+            centerX: nearEvent.originX + nearEvent.dirX * halfLength,
+            centerY: nearEvent.originY + nearEvent.dirY * halfLength,
+          };
+        }
+
+        applyNearAttackTransform(gameObject, nearEvent) {
+          const transform = this.getNearAttackTransform(nearEvent);
+          gameObject.setPosition(transform.centerX, transform.centerY);
+          gameObject.setRotation(transform.angle);
+        }
+
         emitNearAttackRectangle(nearEvent) {
           const visual = NEAR_ATTACK_VISUAL;
-          const nearRect = this.add.rectangle(
-            nearEvent.originX,
-            nearEvent.originY,
-            visual.length,
-            visual.width,
-            visual.color,
-            visual.alpha,
-          ).setDepth(this.player.depth + 3);
-          nearRect.setOrigin(0, 0.5);
-          nearRect.setStrokeStyle(visual.edgeWidth, visual.edgeColor, visual.edgeAlpha);
-          nearRect.setFillStyle(visual.color, visual.alpha);
-          nearRect.setBlendMode(Phaser.BlendModes.ADD);
-          nearRect.setRotation(nearEvent.angle);
-          return nearRect;
+          const hitRect = this.add.rectangle(0, 0, visual.length, visual.width, 0xffffff, 1)
+            .setDepth(this.player.depth + 2);
+          hitRect.setOrigin(0.5, 0.5);
+          hitRect.setFillStyle(0xffffff, 0);
+          if (DEBUG_NEAR_ATTACK_HITBOX) {
+            hitRect.setStrokeStyle(1, 0x00ff66, 0.9);
+          }
+          this.applyNearAttackTransform(hitRect, nearEvent);
+          return hitRect;
+        }
+
+        emitNearAttackLaserVisual(nearEvent) {
+          const visual = NEAR_ATTACK_VISUAL;
+          const laserRect = this.add.rectangle(0, 0, visual.length, visual.width, visual.color, visual.alpha)
+            .setDepth(this.player.depth + 3);
+          laserRect.setOrigin(0.5, 0.5);
+          laserRect.setStrokeStyle(visual.edgeWidth, visual.edgeColor, visual.edgeAlpha);
+          laserRect.setFillStyle(visual.color, visual.alpha);
+          laserRect.setBlendMode(Phaser.BlendModes.ADD);
+          this.applyNearAttackTransform(laserRect, nearEvent);
+          return laserRect;
         }
 
         getNearAttackDirection(preferredInputDir) {
@@ -936,7 +961,8 @@
           const attack = this.activeNearAttack;
           if (!attack) return;
           if (now >= attack.endAt) {
-            attack.rect?.destroy();
+            attack.hitRect?.destroy();
+            attack.laserVisual?.destroy();
             this.activeNearAttack = null;
             return;
           }
@@ -965,9 +991,8 @@
             }
           }
 
-          if (attack.rect) {
-            attack.rect.setRotation(attack.angle);
-          }
+          if (attack.hitRect) this.applyNearAttackTransform(attack.hitRect, attack);
+          if (attack.laserVisual) this.applyNearAttackTransform(attack.laserVisual, attack);
           this.applyNearAttackDamage(attack);
         }
 
@@ -999,9 +1024,8 @@
 
         triggerNearAttack(inputDir) {
           const dir = this.getNearAttackDirection(inputDir);
-          if (this.activeNearAttack?.rect) {
-            this.activeNearAttack.rect.destroy();
-          }
+          this.activeNearAttack?.hitRect?.destroy();
+          this.activeNearAttack?.laserVisual?.destroy();
           const nearEvent = {
             originX: this.player.x,
             originY: this.player.y,
@@ -1009,7 +1033,8 @@
             dirY: dir.y,
             angle: Math.atan2(dir.y, dir.x),
           };
-          nearEvent.rect = this.emitNearAttackRectangle(nearEvent);
+          nearEvent.hitRect = this.emitNearAttackRectangle(nearEvent);
+          nearEvent.laserVisual = this.emitNearAttackLaserVisual(nearEvent);
           nearEvent.startedAt = this.time.now;
           nearEvent.endAt = nearEvent.startedAt + NEAR_ATTACK_VISUAL.durationMs;
           nearEvent.steerEndAt = nearEvent.startedAt + NEAR_ATTACK_VISUAL.steerDurationMs;
