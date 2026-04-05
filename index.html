@@ -219,10 +219,14 @@
       const NEAR_ATTACK_VISUAL = {
         length: NEAR_ATTACK_PROFILE.range,
         width: NEAR_ATTACK_PROFILE.width,
-        color: 0xdce7ff,
-        alpha: 0.9,
+        color: 0xcfe6ff,
+        alpha: 0.86,
+        edgeColor: 0xf3fbff,
+        edgeAlpha: 0.62,
+        edgeWidth: 2,
         durationMs: 260,
-        steerLerp: 0.12,
+        steerLerp: 0.15,
+        maxSteerStepRad: 0.12,
         steerDurationMs: 110,
         minSteerSpeed: 58,
       };
@@ -888,6 +892,9 @@
             visual.alpha,
           ).setDepth(this.player.depth + 3);
           nearRect.setOrigin(0, 0.5);
+          nearRect.setStrokeStyle(visual.edgeWidth, visual.edgeColor, visual.edgeAlpha);
+          nearRect.setFillStyle(visual.color, visual.alpha);
+          nearRect.setBlendMode(Phaser.BlendModes.ADD);
           nearRect.setRotation(nearEvent.angle);
           return nearRect;
         }
@@ -945,8 +952,13 @@
                 1,
               );
               const delta = Phaser.Math.Angle.Wrap(targetAngle - attack.angle);
+              const steerStep = Phaser.Math.Clamp(
+                delta * NEAR_ATTACK_VISUAL.steerLerp * followWeight,
+                -NEAR_ATTACK_VISUAL.maxSteerStepRad,
+                NEAR_ATTACK_VISUAL.maxSteerStepRad,
+              );
               attack.angle = Phaser.Math.Angle.Wrap(
-                attack.angle + delta * NEAR_ATTACK_VISUAL.steerLerp * followWeight,
+                attack.angle + steerStep,
               );
               attack.dirX = Math.cos(attack.angle);
               attack.dirY = Math.sin(attack.angle);
