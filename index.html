@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-04 13:25';
+      const BUILD_TIMESTAMP = '2026-04-05 09:40';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -299,15 +299,21 @@
             },
             nearMissMagnetPulse: {
               activeUntil: Number.NEGATIVE_INFINITY,
-              durationMs: 190,
-              radius: 212,
-              maxSpeed: 790,
-              lerp: 0.54,
+              durationMs: 160,
+              radius: 178,
+              maxSpeed: 360,
+              lerp: 0.32,
             },
             nearMissBurst: {
               activeUntil: Number.NEGATIVE_INFINITY,
-              durationMs: 140,
-              speedMultiplier: 1.42,
+              durationMs: 150,
+              speedMultiplier: 1.58,
+            },
+            nearMissPushback: {
+              activeUntil: Number.NEGATIVE_INFINITY,
+              durationMs: 160,
+              radius: 92,
+              speed: 132,
             },
             nearMissStabilityPulse: {
               activeUntil: Number.NEGATIVE_INFINITY,
@@ -603,6 +609,11 @@
 
         triggerNearMissStabilityPulse() {
           this.state.nearMissStabilityPulse.activeUntil = this.time.now + this.state.nearMissStabilityPulse.durationMs;
+        }
+
+        triggerNearMissPushback() {
+          const nearMissPushback = this.state.nearMissPushback;
+          nearMissPushback.activeUntil = this.time.now + nearMissPushback.durationMs;
         }
 
         releasePointer() {
@@ -1068,6 +1079,7 @@
           } else if (result.outcome === SNAP_BACK_RESULT.NEAR_MISS) {
             this.triggerNearMissMagnetPulse();
             this.triggerNearMissBurst(inputDir);
+            this.triggerNearMissPushback();
             this.triggerNearMissStabilityPulse();
           }
           this.showSnapBackDebugFlash(result.outcome, inputDir, now);
@@ -1296,7 +1308,7 @@
             targets: label,
             y: label.y - 12,
             alpha: 0,
-            duration: isSuccess ? 260 : 230,
+            duration: isSuccess ? 260 : 180,
             ease: 'Quad.easeOut',
             onComplete: () => label.destroy(),
           });
@@ -1372,9 +1384,26 @@
           const vy = Phaser.Math.Linear(this.player.body.velocity.y, targetVelY, t);
           this.player.setVelocity(vx, vy);
 
+          const nearMissPushback = this.state.nearMissPushback;
+          const hasNearMissPushback = this.time.now < nearMissPushback.activeUntil;
           this.enemies.getChildren().forEach((enemy) => {
             const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
             const pressuredSpeed = enemy.speed * riskProfile.enemyPressureMultiplier;
+            let pushbackVx = 0;
+            let pushbackVy = 0;
+            if (hasNearMissPushback) {
+              const fromPlayerX = enemy.x - this.player.x;
+              const fromPlayerY = enemy.y - this.player.y;
+              const dist = Math.hypot(fromPlayerX, fromPlayerY);
+              if (dist > 0.001 && dist < nearMissPushback.radius) {
+                const nx = fromPlayerX / dist;
+                const ny = fromPlayerY / dist;
+                const falloff = Phaser.Math.Clamp(1 - dist / nearMissPushback.radius, 0, 1);
+                const pushSpeed = nearMissPushback.speed * falloff;
+                pushbackVx = nx * pushSpeed;
+                pushbackVy = ny * pushSpeed;
+              }
+            }
             if (enemy.behaviorType === ENEMY_BEHAVIOR_TYPES.DRIFTER) {
               const toPlayerX = Math.cos(angle);
               const toPlayerY = Math.sin(angle);
@@ -1384,7 +1413,10 @@
               const targetX = toPlayerX + perpX * driftOscillation;
               const targetY = toPlayerY + perpY * driftOscillation;
               const targetLen = Math.hypot(targetX, targetY) || 1;
-              enemy.setVelocity((targetX / targetLen) * pressuredSpeed, (targetY / targetLen) * pressuredSpeed);
+              enemy.setVelocity(
+                (targetX / targetLen) * pressuredSpeed + pushbackVx,
+                (targetY / targetLen) * pressuredSpeed + pushbackVy,
+              );
               if (Math.random() < 0.045) {
                 this.xpTrailParticles.emitParticleAt(enemy.x, enemy.y, 1);
               }
@@ -1393,7 +1425,10 @@
             if (enemy.behaviorType === ENEMY_BEHAVIOR_TYPES.SWARM && Math.random() < 0.06) {
               this.xpTrailParticles.emitParticleAt(enemy.x, enemy.y, 1);
             }
-            enemy.setVelocity(Math.cos(angle) * pressuredSpeed, Math.sin(angle) * pressuredSpeed);
+            enemy.setVelocity(
+              Math.cos(angle) * pressuredSpeed + pushbackVx,
+              Math.sin(angle) * pressuredSpeed + pushbackVy,
+            );
           });
 
           this.bullets.getChildren().forEach((bullet) => {
