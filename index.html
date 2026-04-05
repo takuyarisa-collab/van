@@ -121,8 +121,8 @@
         NEAR_MISS: 'near miss',
         FAIL: 'fail',
       };
-      const APP_VERSION = '0.1.1';
-      const BUILD_TIMESTAMP = '2026-04-05 16:05';
+      const APP_VERSION = '0.1.2';
+      const BUILD_TIMESTAMP = '2026-04-05 12:51';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -225,12 +225,12 @@
         edgeAlpha: 0.62,
         edgeWidth: 2,
         durationMs: 260,
-        steerLerp: 0.15,
+        steerLerp: 0.2,
         maxSteerStepRad: 0.12,
         steerDurationMs: 110,
         minSteerSpeed: 58,
       };
-      const DEBUG_NEAR_ATTACK_HITBOX = false;
+      const DEBUG_NEAR_ATTACK_HITBOX = true;
       const SNAP_AUDIO = {
         sampleRate: 32000,
         peakVolume: 0.24,
@@ -902,11 +902,11 @@
         emitNearAttackRectangle(nearEvent) {
           const visual = NEAR_ATTACK_VISUAL;
           const hitRect = this.add.rectangle(0, 0, visual.length, visual.width, 0xffffff, 1)
-            .setDepth(this.player.depth + 2);
+            .setDepth(this.player.depth + 4);
           hitRect.setOrigin(0.5, 0.5);
           hitRect.setFillStyle(0xffffff, 0);
           if (DEBUG_NEAR_ATTACK_HITBOX) {
-            hitRect.setStrokeStyle(1, 0x00ff66, 0.9);
+            hitRect.setStrokeStyle(3, 0xff2bd6, 0.98);
           }
           this.applyNearAttackTransform(hitRect, nearEvent);
           return hitRect;
