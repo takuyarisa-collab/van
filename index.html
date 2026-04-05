@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-05 14:02';
+      const BUILD_TIMESTAMP = '2026-04-05 14:25';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -219,11 +219,14 @@
       const NEAR_ATTACK_SLASH_VISUAL = {
         textureKey: 'nearSlashCore',
         length: 228,
-        coreWidth: 4,
-        glowWidth: 16,
+        mainWidth: 5,
         forwardOffset: 118,
-        coreDurationMs: 68,
-        glowDurationMs: 116,
+        mainDurationMs: 86,
+        afterimages: [
+          { delayMs: 16, widthScale: 0.84, alpha: 0.38, durationMs: 108, lengthScale: 0.98, offsetScale: 0.985 },
+          { delayMs: 28, widthScale: 0.72, alpha: 0.24, durationMs: 128, lengthScale: 0.965, offsetScale: 0.97 },
+          { delayMs: 42, widthScale: 0.62, alpha: 0.14, durationMs: 146, lengthScale: 0.95, offsetScale: 0.955 },
+        ],
       };
       const SNAP_AUDIO = {
         sampleRate: 32000,
@@ -899,45 +902,52 @@
           enemy.destroy();
         }
 
-        emitNearAttackSlashFlash(dir) {
+        emitNearAttackSlashFlash(nearEvent) {
           const visual = NEAR_ATTACK_SLASH_VISUAL;
-          const slashCenterX = this.player.x + dir.x * visual.forwardOffset;
-          const slashCenterY = this.player.y + dir.y * visual.forwardOffset;
-          const angle = Math.atan2(dir.y, dir.x);
+          const slashCenterX = nearEvent.originX + nearEvent.dirX * visual.forwardOffset;
+          const slashCenterY = nearEvent.originY + nearEvent.dirY * visual.forwardOffset;
+          const angle = Math.atan2(nearEvent.dirY, nearEvent.dirX);
 
-          const slashGlow = this.add.image(slashCenterX, slashCenterY, visual.textureKey)
-            .setDepth(this.player.depth + 2);
-          slashGlow.setDisplaySize(visual.length, visual.glowWidth);
-          slashGlow.setAlpha(0.32);
-          slashGlow.setTint(0x85a9ff);
-          slashGlow.setBlendMode(Phaser.BlendModes.ADD);
-          slashGlow.setRotation(angle);
-
-          const slashCore = this.add.image(slashCenterX, slashCenterY, visual.textureKey)
+          const slashMain = this.add.image(slashCenterX, slashCenterY, visual.textureKey)
             .setDepth(this.player.depth + 3);
-          slashCore.setDisplaySize(visual.length, visual.coreWidth);
-          slashCore.setAlpha(0.98);
-          slashCore.setTint(0xf4ebff);
-          slashCore.setBlendMode(Phaser.BlendModes.ADD);
-          slashCore.setRotation(angle);
+          slashMain.setDisplaySize(visual.length, visual.mainWidth);
+          slashMain.setAlpha(0.94);
+          slashMain.setTint(0xf4ebff);
+          slashMain.setBlendMode(Phaser.BlendModes.ADD);
+          slashMain.setRotation(angle);
 
           this.tweens.add({
-            targets: slashCore,
+            targets: slashMain,
             alpha: 0,
-            duration: visual.coreDurationMs,
+            duration: visual.mainDurationMs,
             ease: 'Quad.easeOut',
             onComplete: () => {
-              slashCore.destroy();
+              slashMain.destroy();
             },
           });
-          this.tweens.add({
-            targets: slashGlow,
-            alpha: 0,
-            duration: visual.glowDurationMs,
-            ease: 'Quad.easeOut',
-            onComplete: () => {
-              slashGlow.destroy();
-            },
+
+          visual.afterimages.forEach((afterimage, index) => {
+            this.time.delayedCall(afterimage.delayMs, () => {
+              if (!this.scene.isActive()) return;
+              const trailX = nearEvent.originX + nearEvent.dirX * visual.forwardOffset * afterimage.offsetScale;
+              const trailY = nearEvent.originY + nearEvent.dirY * visual.forwardOffset * afterimage.offsetScale;
+              const slashAfterimage = this.add.image(trailX, trailY, visual.textureKey)
+                .setDepth(this.player.depth + 2 - index * 0.05);
+              slashAfterimage.setDisplaySize(visual.length * afterimage.lengthScale, visual.mainWidth * afterimage.widthScale);
+              slashAfterimage.setAlpha(afterimage.alpha);
+              slashAfterimage.setTint(0x9aafff);
+              slashAfterimage.setBlendMode(Phaser.BlendModes.ADD);
+              slashAfterimage.setRotation(angle);
+              this.tweens.add({
+                targets: slashAfterimage,
+                alpha: 0,
+                duration: afterimage.durationMs,
+                ease: 'Quad.easeOut',
+                onComplete: () => {
+                  slashAfterimage.destroy();
+                },
+              });
+            });
           });
         }
 
@@ -959,18 +969,24 @@
 
         triggerNearAttack(inputDir) {
           const dir = this.getNearAttackDirection(inputDir);
-          this.emitNearAttackSlashFlash(dir);
+          const nearEvent = {
+            originX: this.player.x,
+            originY: this.player.y,
+            dirX: dir.x,
+            dirY: dir.y,
+          };
+          this.emitNearAttackSlashFlash(nearEvent);
 
           const range = NEAR_ATTACK_PROFILE.range;
           const halfWidth = NEAR_ATTACK_PROFILE.width * 0.5;
           const damage = NEAR_ATTACK_PROFILE.damage;
-          const perpX = -dir.y;
-          const perpY = dir.x;
+          const perpX = -nearEvent.dirY;
+          const perpY = nearEvent.dirX;
           this.enemies.getChildren().forEach((enemy) => {
             if (!enemy.active) return;
-            const relX = enemy.x - this.player.x;
-            const relY = enemy.y - this.player.y;
-            const forward = relX * dir.x + relY * dir.y;
+            const relX = enemy.x - nearEvent.originX;
+            const relY = enemy.y - nearEvent.originY;
+            const forward = relX * nearEvent.dirX + relY * nearEvent.dirY;
             if (forward < 0 || forward > range) return;
             const lateral = Math.abs(relX * perpX + relY * perpY);
             if (lateral > halfWidth) return;
