@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-05 12:44';
+      const BUILD_TIMESTAMP = '2026-04-05 13:18';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -217,11 +217,13 @@
         damage: 1,
       };
       const NEAR_ATTACK_SLASH_VISUAL = {
-        textureKey: 'nearSlashBand',
-        length: 216,
-        width: 36,
+        textureKey: 'nearSlashCore',
+        length: 214,
+        coreWidth: 5,
+        glowWidth: 20,
         forwardOffset: 110,
-        durationMs: 175,
+        coreDurationMs: 72,
+        glowDurationMs: 124,
       };
       const SNAP_AUDIO = {
         sampleRate: 32000,
@@ -682,15 +684,34 @@
           VISUAL_ASSETS.enemies.forEach((enemyVisual) => enemyVisual.generatePlaceholder(g));
           VISUAL_ASSETS.attack.bullet.generatePlaceholder(g);
           VISUAL_ASSETS.xp.generatePlaceholder(g);
-          const slashBaseWidth = 240;
-          const slashBaseHeight = 60;
-          const slashRadius = Math.floor(slashBaseHeight * 0.48);
+          const slashBaseWidth = 256;
+          const slashBaseHeight = 32;
           if (this.textures.exists(NEAR_ATTACK_SLASH_VISUAL.textureKey)) {
             this.textures.remove(NEAR_ATTACK_SLASH_VISUAL.textureKey);
           }
-          g.fillStyle(0xffc7f4, 1);
-          g.fillRoundedRect(0, 0, slashBaseWidth, slashBaseHeight, slashRadius);
-          g.generateTexture(NEAR_ATTACK_SLASH_VISUAL.textureKey, slashBaseWidth, slashBaseHeight);
+          const slashTexture = this.textures.createCanvas(NEAR_ATTACK_SLASH_VISUAL.textureKey, slashBaseWidth, slashBaseHeight);
+          const ctx = slashTexture.getContext();
+          const gradient = ctx.createLinearGradient(0, 0, slashBaseWidth, 0);
+          gradient.addColorStop(0, 'rgba(255, 230, 252, 0)');
+          gradient.addColorStop(0.12, 'rgba(255, 232, 252, 0.66)');
+          gradient.addColorStop(0.5, 'rgba(255, 244, 255, 1)');
+          gradient.addColorStop(0.88, 'rgba(255, 232, 252, 0.66)');
+          gradient.addColorStop(1, 'rgba(255, 230, 252, 0)');
+          ctx.fillStyle = gradient;
+          const slashRadius = Math.floor(slashBaseHeight * 0.5);
+          ctx.beginPath();
+          ctx.moveTo(slashRadius, 0);
+          ctx.lineTo(slashBaseWidth - slashRadius, 0);
+          ctx.quadraticCurveTo(slashBaseWidth, 0, slashBaseWidth, slashRadius);
+          ctx.lineTo(slashBaseWidth, slashBaseHeight - slashRadius);
+          ctx.quadraticCurveTo(slashBaseWidth, slashBaseHeight, slashBaseWidth - slashRadius, slashBaseHeight);
+          ctx.lineTo(slashRadius, slashBaseHeight);
+          ctx.quadraticCurveTo(0, slashBaseHeight, 0, slashBaseHeight - slashRadius);
+          ctx.lineTo(0, slashRadius);
+          ctx.quadraticCurveTo(0, 0, slashRadius, 0);
+          ctx.closePath();
+          ctx.fill();
+          slashTexture.refresh();
           g.clear();
           g.destroy();
         }
@@ -878,29 +899,44 @@
           enemy.destroy();
         }
 
-        emitNearAttackSlashFlash(angle) {
+        emitNearAttackSlashFlash(dir) {
           const visual = NEAR_ATTACK_SLASH_VISUAL;
-          const cos = Math.cos(angle);
-          const sin = Math.sin(angle);
-          const slashCenterX = this.player.x + cos * visual.forwardOffset;
-          const slashCenterY = this.player.y + sin * visual.forwardOffset;
+          const slashCenterX = this.player.x + dir.x * visual.forwardOffset;
+          const slashCenterY = this.player.y + dir.y * visual.forwardOffset;
+          const angle = Math.atan2(dir.y, dir.x);
 
-          const slash = this.add.image(
-            slashCenterX,
-            slashCenterY,
-            visual.textureKey,
-          ).setDepth(this.player.depth + 3);
-          slash.setDisplaySize(visual.length, visual.width);
-          slash.setAlpha(0.84);
-          slash.setRotation(angle);
+          const slashGlow = this.add.image(slashCenterX, slashCenterY, visual.textureKey)
+            .setDepth(this.player.depth + 2);
+          slashGlow.setDisplaySize(visual.length, visual.glowWidth);
+          slashGlow.setAlpha(0.32);
+          slashGlow.setTint(0x85a9ff);
+          slashGlow.setBlendMode(Phaser.BlendModes.ADD);
+          slashGlow.setRotation(angle);
+
+          const slashCore = this.add.image(slashCenterX, slashCenterY, visual.textureKey)
+            .setDepth(this.player.depth + 3);
+          slashCore.setDisplaySize(visual.length, visual.coreWidth);
+          slashCore.setAlpha(0.98);
+          slashCore.setTint(0xf4ebff);
+          slashCore.setBlendMode(Phaser.BlendModes.ADD);
+          slashCore.setRotation(angle);
 
           this.tweens.add({
-            targets: slash,
+            targets: slashCore,
             alpha: 0,
-            duration: visual.durationMs,
+            duration: visual.coreDurationMs,
             ease: 'Quad.easeOut',
             onComplete: () => {
-              slash.destroy();
+              slashCore.destroy();
+            },
+          });
+          this.tweens.add({
+            targets: slashGlow,
+            alpha: 0,
+            duration: visual.glowDurationMs,
+            ease: 'Quad.easeOut',
+            onComplete: () => {
+              slashGlow.destroy();
             },
           });
         }
@@ -911,11 +947,6 @@
             if (len > 0.0001) {
               return new Phaser.Math.Vector2(preferredInputDir.x / len, preferredInputDir.y / len);
             }
-          }
-          const inputVel = this.state.desiredVel;
-          const inputVelLen = Math.hypot(inputVel.x, inputVel.y);
-          if (inputVelLen > 0.0001) {
-            return new Phaser.Math.Vector2(inputVel.x / inputVelLen, inputVel.y / inputVelLen);
           }
           const vx = this.player.body.velocity.x;
           const vy = this.player.body.velocity.y;
@@ -928,7 +959,7 @@
 
         triggerNearAttack(inputDir) {
           const dir = this.getNearAttackDirection(inputDir);
-          this.emitNearAttackSlashFlash(Math.atan2(dir.y, dir.x));
+          this.emitNearAttackSlashFlash(dir);
 
           const range = NEAR_ATTACK_PROFILE.range;
           const halfWidth = NEAR_ATTACK_PROFILE.width * 0.5;
