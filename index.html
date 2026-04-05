@@ -134,7 +134,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-05 11:40';
+      const BUILD_TIMESTAMP = '2026-04-05 12:05';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -335,8 +335,8 @@
             },
             nearFollowupShot: {
               armed: false,
-              speed: 820,
-              lifespanMs: 220,
+              speed: 700,
+              lifespanMs: 320,
             },
             spawnDirector: {
               startedAt: 0,
@@ -900,17 +900,17 @@
         }
 
         emitNearFollowupShotFlash(angle) {
-          const trailDistance = 12;
+          const trailDistance = 16;
           const trailOffsetX = Math.cos(angle) * trailDistance;
           const trailOffsetY = Math.sin(angle) * trailDistance;
-          for (let i = 1; i <= 2; i += 1) {
+          for (let i = 1; i <= 4; i += 1) {
             const trail = this.add.rectangle(
-              this.player.x + Math.cos(angle) * (16 - i * 6),
-              this.player.y + Math.sin(angle) * (16 - i * 6),
-              34 - i * 6,
+              this.player.x + Math.cos(angle) * (18 - i * 5),
+              this.player.y + Math.sin(angle) * (18 - i * 5),
+              38 - i * 5,
               3,
               0xff8de2,
-              0.34 - i * 0.08,
+              0.42 - i * 0.07,
             ).setDepth(this.player.depth + 2);
             trail.setRotation(angle);
             trail.setBlendMode(Phaser.BlendModes.ADD);
@@ -919,7 +919,7 @@
               x: trail.x + trailOffsetX,
               y: trail.y + trailOffsetY,
               alpha: 0,
-              duration: 52 + i * 12,
+              duration: 86 + i * 24,
               ease: 'Quad.easeOut',
               onComplete: () => trail.destroy(),
             });
@@ -940,7 +940,7 @@
             y: slash.y + Math.sin(angle) * 18,
             scaleX: 1.12,
             alpha: 0,
-            duration: 64,
+            duration: 118,
             ease: 'Quad.easeOut',
             onComplete: () => slash.destroy(),
           });
