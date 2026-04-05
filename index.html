@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-05 13:18';
+      const BUILD_TIMESTAMP = '2026-04-05 14:02';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -212,18 +212,18 @@
         pulseAlphaStart: 0.42,
       };
       const NEAR_ATTACK_PROFILE = {
-        range: 172,
-        width: 38,
+        range: 186,
+        width: 32,
         damage: 1,
       };
       const NEAR_ATTACK_SLASH_VISUAL = {
         textureKey: 'nearSlashCore',
-        length: 214,
-        coreWidth: 5,
-        glowWidth: 20,
-        forwardOffset: 110,
-        coreDurationMs: 72,
-        glowDurationMs: 124,
+        length: 228,
+        coreWidth: 4,
+        glowWidth: 16,
+        forwardOffset: 118,
+        coreDurationMs: 68,
+        glowDurationMs: 116,
       };
       const SNAP_AUDIO = {
         sampleRate: 32000,
@@ -280,16 +280,16 @@
             gameOver: false,
             snapBack: {
               minSpeed: 130,
-              nearSpeed: 82,
+              nearSpeed: 86,
               successEnergyCost: 60,
               reversalDot: -0.71,
-              nearDot: -0.14,
+              nearDot: -0.2,
               reactionWindowMs: 155,
-              nearReactionWindowMs: 260,
+              nearReactionWindowMs: 232,
               cooldownMs: 110,
               minInputPower: 0.58,
-              nearMinInputPower: 0.27,
-              nearFlipDot: -0.16,
+              nearMinInputPower: 0.31,
+              nearFlipDot: -0.24,
               lastStrongInputDir: new Phaser.Math.Vector2(0, 0),
               lastStrongInputAt: Number.NEGATIVE_INFINITY,
               lastDetectedAt: Number.NEGATIVE_INFINITY,
