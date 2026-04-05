@@ -213,15 +213,15 @@
       };
       const NEAR_ATTACK_PROFILE = {
         range: 186,
-        width: 32,
+        width: 44,
         damage: 1,
       };
-      const NEAR_ATTACK_SLASH_VISUAL = {
+      const NEAR_ATTACK_VISUAL = {
         length: NEAR_ATTACK_PROFILE.range,
-        width: 6,
-        color: 0xf8fbff,
-        alpha: 0.95,
-        durationMs: 180,
+        width: NEAR_ATTACK_PROFILE.width,
+        color: 0xdce7ff,
+        alpha: 0.9,
+        durationMs: 260,
       };
       const SNAP_AUDIO = {
         sampleRate: 32000,
@@ -869,10 +869,9 @@
           enemy.destroy();
         }
 
-        emitNearAttackSlashFlash(nearEvent) {
-          const visual = NEAR_ATTACK_SLASH_VISUAL;
-          const angle = Math.atan2(nearEvent.dirY, nearEvent.dirX);
-          const slashMain = this.add.rectangle(
+        emitNearAttackRectangle(nearEvent) {
+          const visual = NEAR_ATTACK_VISUAL;
+          const nearRect = this.add.rectangle(
             nearEvent.originX,
             nearEvent.originY,
             visual.length,
@@ -880,18 +879,9 @@
             visual.color,
             visual.alpha,
           ).setDepth(this.player.depth + 3);
-          slashMain.setOrigin(0, 0.5);
-          slashMain.setRotation(angle);
-
-          this.tweens.add({
-            targets: slashMain,
-            alpha: 0,
-            duration: visual.durationMs,
-            ease: 'Quad.easeOut',
-            onComplete: () => {
-              slashMain.destroy();
-            },
-          });
+          nearRect.setOrigin(0, 0.5);
+          nearRect.setRotation(nearEvent.angle);
+          this.time.delayedCall(visual.durationMs, () => nearRect.destroy());
         }
 
         getNearAttackDirection(preferredInputDir) {
@@ -917,8 +907,9 @@
             originY: this.player.y,
             dirX: dir.x,
             dirY: dir.y,
+            angle: Math.atan2(dir.y, dir.x),
           };
-          this.emitNearAttackSlashFlash(nearEvent);
+          this.emitNearAttackRectangle(nearEvent);
 
           const range = NEAR_ATTACK_PROFILE.range;
           const halfWidth = NEAR_ATTACK_PROFILE.width * 0.5;
@@ -1390,37 +1381,7 @@
               onComplete: () => ring.destroy(),
             });
           } else {
-            this.emitSnapRipple(
-              this.player.x + inputDir.x * 14,
-              this.player.y + inputDir.y * 14,
-              0xb9c8ff,
-              0.4,
-            );
-            const nearRing = this.add.circle(
-              this.player.x + inputDir.x * 20,
-              this.player.y + inputDir.y * 20,
-              12,
-              color,
-              0,
-            ).setDepth(this.player.depth + 2);
-            nearRing.setStrokeStyle(2.5, 0xb9c8ff, 0.85);
-            nearRing.setBlendMode(Phaser.BlendModes.ADD);
-            this.tweens.add({
-              targets: nearRing,
-              scale: 1.45,
-              alpha: 0,
-              duration: 110,
-              ease: 'Cubic.easeOut',
-              onUpdate: () => {
-                const ringProgress = Phaser.Math.Clamp((nearRing.scaleX - 1) / 0.45, 0, 1);
-                nearRing.setStrokeStyle(
-                  Phaser.Math.Linear(2.5, 0, ringProgress),
-                  0xb9c8ff,
-                  Phaser.Math.Linear(0.85, 0, ringProgress),
-                );
-              },
-              onComplete: () => nearRing.destroy(),
-            });
+            return;
           }
 
           const label = this.add.text(
