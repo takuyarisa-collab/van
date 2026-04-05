@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-05 09:40';
+      const BUILD_TIMESTAMP = '2026-04-05 10:05';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -589,6 +589,47 @@
         triggerNearMissBurst(inputDir) {
           const nearMissBurst = this.state.nearMissBurst;
           nearMissBurst.activeUntil = this.time.now + nearMissBurst.durationMs;
+          const playerFlash = this.add.circle(
+            this.player.x,
+            this.player.y,
+            22,
+            0xa8c6ff,
+            0.38,
+          ).setDepth(this.player.depth + 1);
+          playerFlash.setBlendMode(Phaser.BlendModes.ADD);
+          this.tweens.add({
+            targets: playerFlash,
+            alpha: 0,
+            scale: 1.48,
+            duration: 92,
+            ease: 'Cubic.easeOut',
+            onComplete: () => playerFlash.destroy(),
+          });
+
+          const burstLen = 46;
+          const burstWidth = 13;
+          const streak = this.add.rectangle(
+            this.player.x + inputDir.x * 22,
+            this.player.y + inputDir.y * 22,
+            burstLen,
+            burstWidth,
+            0xb9d0ff,
+            0.44,
+          ).setDepth(this.player.depth + 2);
+          streak.rotation = Math.atan2(inputDir.y, inputDir.x);
+          streak.setBlendMode(Phaser.BlendModes.ADD);
+          this.tweens.add({
+            targets: streak,
+            alpha: 0,
+            scaleX: 1.2,
+            scaleY: 0.7,
+            x: streak.x + inputDir.x * 8,
+            y: streak.y + inputDir.y * 8,
+            duration: 74,
+            ease: 'Quad.easeOut',
+            onComplete: () => streak.destroy(),
+          });
+
           const flash = this.add.circle(
             this.player.x + inputDir.x * 10,
             this.player.y + inputDir.y * 10,
@@ -1402,6 +1443,11 @@
                 const pushSpeed = nearMissPushback.speed * falloff;
                 pushbackVx = nx * pushSpeed;
                 pushbackVy = ny * pushSpeed;
+                if (pushSpeed > 16) {
+                  const hitReadability = Phaser.Math.Clamp(pushSpeed / nearMissPushback.speed, 0.18, 1);
+                  enemy.nearReactUntil = this.time.now + 90;
+                  enemy.nearReactStrength = hitReadability;
+                }
               }
             }
             if (enemy.behaviorType === ENEMY_BEHAVIOR_TYPES.DRIFTER) {
@@ -1448,6 +1494,7 @@
                 lerp: nearMissPulse.lerp,
               }
             : magnetConfig;
+          const nearXpVisualBoost = hasNearMissPulse ? 1.35 : 1;
           const magnetRadiusSq = effectiveMagnetConfig.radius * effectiveMagnetConfig.radius;
           let shouldEmitXpTrail = false;
           let xpTrailX = this.player.x;
@@ -1485,14 +1532,18 @@
             orb.setVelocity(nextVx, nextVy);
             const speed = Math.hypot(nextVx, nextVy);
             if (speed > XP_VISUAL.pullSpeedThreshold) {
-              const pullFactor = Phaser.Math.Clamp(speed / effectiveMagnetConfig.maxSpeed, 0, 1);
+              const pullFactor = Phaser.Math.Clamp((speed / effectiveMagnetConfig.maxSpeed) * nearXpVisualBoost, 0, 1);
               const stretch = 1 + pullFactor * XP_VISUAL.stretchMax;
               scaleX *= stretch;
               scaleY *= 2 - stretch;
               alpha = Phaser.Math.Clamp(alpha + pullFactor * XP_VISUAL.glowBoostMax, 0.6, 1);
               orb.setRotation(Math.atan2(nextVy, nextVx));
               if (speed > XP_VISUAL.trailSpeedThreshold) {
-                const trailStrength = Phaser.Math.Clamp((speed - XP_VISUAL.trailSpeedThreshold) / effectiveMagnetConfig.maxSpeed, 0, 1);
+                const trailStrength = Phaser.Math.Clamp(
+                  ((speed - XP_VISUAL.trailSpeedThreshold) / effectiveMagnetConfig.maxSpeed) * nearXpVisualBoost,
+                  0,
+                  1,
+                );
                 if (trailStrength >= xpTrailStrength) {
                   shouldEmitXpTrail = true;
                   xpTrailStrength = trailStrength;
@@ -1514,7 +1565,7 @@
               XP_VISUAL.trailBaseIntervalMs,
               XP_VISUAL.trailPullIntervalMs,
               xpTrailStrength,
-            ) * getActiveBuildTuning().xpAttraction.trailIntervalScale
+            ) * getActiveBuildTuning().xpAttraction.trailIntervalScale * (hasNearMissPulse ? 0.72 : 1)
           ) {
             this.lastXpTrailAt = this.time.now;
             const trailSpeed = Math.hypot(xpTrailVx, xpTrailVy) || 1;
@@ -1532,7 +1583,9 @@
             this.xpTrailParticles.particleScaleY = trailScaleOp;
             this.xpTrailParticles.particleAlpha = {
               start: Phaser.Math.Clamp(
-                Phaser.Math.Linear(XP_VISUAL.trailAlphaMin, XP_VISUAL.trailAlphaMax, trailMotion) * getActiveBuildTuning().xpAttraction.trailAlphaScale,
+                Phaser.Math.Linear(XP_VISUAL.trailAlphaMin, XP_VISUAL.trailAlphaMax, trailMotion)
+                * getActiveBuildTuning().xpAttraction.trailAlphaScale
+                * (hasNearMissPulse ? 1.2 : 1),
                 0,
                 1,
               ),
@@ -1547,7 +1600,13 @@
             };
             this.xpTrailParticles.emitParticleAt(xpTrailX, xpTrailY, 1);
             if (xpTrailStrength > 0.28) {
-              const tailParticles = Math.max(1, Math.round((1 + Math.round(trailMotion * 2)) * getActiveBuildTuning().xpAttraction.trailTailScale));
+              const tailParticles = Math.max(
+                1,
+                Math.round(
+                  (1 + Math.round(trailMotion * 2) + (hasNearMissPulse ? 1 : 0))
+                  * getActiveBuildTuning().xpAttraction.trailTailScale,
+                ),
+              );
               for (let i = 1; i <= tailParticles; i += 1) {
                 const tailBack = Phaser.Math.Linear(XP_VISUAL.trailBackOffsetMin, XP_VISUAL.trailBackOffsetMax, i / (tailParticles + 0.35));
                 this.xpTrailParticles.emitParticleAt(xpTrailX - dirX * tailBack, xpTrailY - dirY * tailBack, 1);
@@ -1580,27 +1639,30 @@
               0,
               1,
             );
+            const burstTrailStrength = hasNearMissBurst ? Phaser.Math.Clamp(trailStrength + 0.26, 0, 1) : trailStrength;
             this.playerTrailParticles.emitting = hasNearMissBurst || trailStrength > 0.04;
             this.playerTrailParticles.frequency = Phaser.Math.Linear(
               PLAYER_TRAIL_VISUAL.frequencySlow,
               PLAYER_TRAIL_VISUAL.frequencyFast,
-              trailStrength,
-            ) * playerTrailTuning.frequencyScale;
+              burstTrailStrength,
+            ) * playerTrailTuning.frequencyScale * (hasNearMissBurst ? 0.8 : 1);
             this.playerTrailParticles.setParticleLifespan(
               Phaser.Math.Linear(
                 PLAYER_TRAIL_VISUAL.lifespanSlow,
                 PLAYER_TRAIL_VISUAL.lifespanFast,
-                trailStrength,
-              ) * playerTrailTuning.lifespanScale,
+                burstTrailStrength,
+              ) * playerTrailTuning.lifespanScale * (hasNearMissBurst ? 1.15 : 1),
             );
             this.playerTrailParticles.particleScaleX = {
-              start: Phaser.Math.Linear(PLAYER_TRAIL_VISUAL.scaleStartSlow, PLAYER_TRAIL_VISUAL.scaleStartFast, trailStrength),
-              end: Phaser.Math.Linear(PLAYER_TRAIL_VISUAL.scaleEndSlow, PLAYER_TRAIL_VISUAL.scaleEndFast, trailStrength),
+              start: Phaser.Math.Linear(PLAYER_TRAIL_VISUAL.scaleStartSlow, PLAYER_TRAIL_VISUAL.scaleStartFast, burstTrailStrength),
+              end: Phaser.Math.Linear(PLAYER_TRAIL_VISUAL.scaleEndSlow, PLAYER_TRAIL_VISUAL.scaleEndFast, burstTrailStrength),
             };
             this.playerTrailParticles.particleScaleY = this.playerTrailParticles.particleScaleX;
             this.playerTrailParticles.particleAlpha = {
               start: Phaser.Math.Clamp(
-                Phaser.Math.Linear(PLAYER_TRAIL_VISUAL.alphaSlow, PLAYER_TRAIL_VISUAL.alphaFast, trailStrength) * playerTrailTuning.alphaScale,
+                Phaser.Math.Linear(PLAYER_TRAIL_VISUAL.alphaSlow, PLAYER_TRAIL_VISUAL.alphaFast, burstTrailStrength)
+                * playerTrailTuning.alphaScale
+                * (hasNearMissBurst ? 1.24 : 1),
                 0,
                 1,
               ),
@@ -1611,6 +1673,10 @@
           const enemyPulse = this.time.now * 0.0038;
           this.enemies.getChildren().forEach((enemy, enemyIndex) => {
             const seed = enemy.driftPhase || enemyIndex * 0.7;
+            const nearReactProgress = enemy.nearReactUntil
+              ? Phaser.Math.Clamp((enemy.nearReactUntil - this.time.now) / 90, 0, 1)
+              : 0;
+            const nearReactStrength = (enemy.nearReactStrength || 0) * nearReactProgress;
             if (enemy.behaviorType === ENEMY_BEHAVIOR_TYPES.SWARM) {
               const swarmJitter = Math.sin(enemyPulse * 6 + seed * 4.5);
               enemy.setAlpha(0.8 + swarmJitter * 0.1);
@@ -1623,6 +1689,13 @@
               const chaserFlicker = 0.5 + 0.5 * Math.sin(enemyPulse * 4.3 + seed * 2);
               enemy.setAlpha(0.88 + chaserFlicker * 0.1);
               enemy.setScale(VISUAL_SCALE.enemy * (0.98 + chaserFlicker * 0.04));
+            }
+            if (nearReactStrength > 0.01) {
+              enemy.setTintFill(0xdce7ff, 0xdce7ff, 0xdce7ff, 0xdce7ff);
+              enemy.setAlpha(Phaser.Math.Clamp(enemy.alpha + nearReactStrength * 0.18, 0, 1));
+              enemy.setScale(enemy.scaleX * (1 - nearReactStrength * 0.07), enemy.scaleY * (1 - nearReactStrength * 0.07));
+            } else {
+              enemy.clearTint();
             }
           });
 
