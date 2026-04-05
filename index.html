@@ -121,8 +121,8 @@
         NEAR_MISS: 'near miss',
         FAIL: 'fail',
       };
-      const APP_VERSION = '0.1.3';
-      const BUILD_TIMESTAMP = '2026-04-05 14:22';
+      const APP_VERSION = '0.1.4';
+      const BUILD_TIMESTAMP = '2026-04-05 14:58';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -229,6 +229,14 @@
         maxSteerStepRad: 0.12,
         steerDurationMs: 110,
         minSteerSpeed: 58,
+      };
+      const NEAR_ATTACK_HIT_TUNING = {
+        widthPadding: 8,
+        lengthPadding: 6,
+        enemyRadiusScale: 0.45,
+        enemyRadiusMin: 4,
+        enemyRadiusMax: 11,
+        debugHitFlashMs: 110,
       };
       const DEBUG_NEAR_ATTACK_HITBOX = true;
       const SNAP_AUDIO = {
@@ -999,8 +1007,9 @@
         applyNearAttackDamage(attack) {
           const damage = NEAR_ATTACK_PROFILE.damage;
           const transform = this.getNearAttackTransform(attack);
-          const halfLength = transform.length * 0.5;
-          const halfWidth = transform.width * 0.5;
+          const hitTuning = NEAR_ATTACK_HIT_TUNING;
+          const halfLength = (transform.length * 0.5) + hitTuning.lengthPadding;
+          const halfWidth = (transform.width * 0.5) + hitTuning.widthPadding;
           const cos = Math.cos(transform.angle);
           const sin = Math.sin(transform.angle);
 
@@ -1013,9 +1022,19 @@
             const dy = enemyCenterY - transform.centerY;
             const localX = (dx * cos) + (dy * sin);
             const localY = (-dx * sin) + (dy * cos);
-            if (Math.abs(localX) > halfLength || Math.abs(localY) > halfWidth) return;
+            const enemyRadius = enemy.body?.halfWidth ?? ((enemy.displayWidth || enemy.width || 0) * 0.5);
+            const enemyAllowance = Phaser.Math.Clamp(
+              enemyRadius * hitTuning.enemyRadiusScale,
+              hitTuning.enemyRadiusMin,
+              hitTuning.enemyRadiusMax,
+            );
+            if (Math.abs(localX) > halfLength + enemyAllowance || Math.abs(localY) > halfWidth + enemyAllowance) return;
 
             attack.hitEnemyUids.add(enemy.uid);
+            if (DEBUG_NEAR_ATTACK_HITBOX) {
+              enemy.nearAttackHitUntil = this.time.now + hitTuning.debugHitFlashMs;
+              enemy.nearAttackHitStrength = 1;
+            }
             enemy.hp -= damage;
             if (enemy.hp > 0) return;
             this.addEnergyFromKill(enemy);
@@ -1844,6 +1863,14 @@
               ? Phaser.Math.Clamp((enemy.nearReactUntil - this.time.now) / 90, 0, 1)
               : 0;
             const nearReactStrength = (enemy.nearReactStrength || 0) * nearReactProgress;
+            const nearAttackHitProgress = enemy.nearAttackHitUntil
+              ? Phaser.Math.Clamp(
+                (enemy.nearAttackHitUntil - this.time.now) / NEAR_ATTACK_HIT_TUNING.debugHitFlashMs,
+                0,
+                1,
+              )
+              : 0;
+            const nearAttackHitStrength = (enemy.nearAttackHitStrength || 0) * nearAttackHitProgress;
             if (enemy.behaviorType === ENEMY_BEHAVIOR_TYPES.SWARM) {
               const swarmJitter = Math.sin(enemyPulse * 6 + seed * 4.5);
               enemy.setAlpha(0.8 + swarmJitter * 0.1);
@@ -1857,7 +1884,11 @@
               enemy.setAlpha(0.88 + chaserFlicker * 0.1);
               enemy.setScale(VISUAL_SCALE.enemy * (0.98 + chaserFlicker * 0.04));
             }
-            if (nearReactStrength > 0.01) {
+            if (nearAttackHitStrength > 0.01) {
+              enemy.setTintFill(0xfff3ae, 0xfff3ae, 0xfff3ae, 0xfff3ae);
+              enemy.setAlpha(Phaser.Math.Clamp(enemy.alpha + nearAttackHitStrength * 0.3, 0, 1));
+              enemy.setScale(enemy.scaleX * (1 - nearAttackHitStrength * 0.13), enemy.scaleY * (1 - nearAttackHitStrength * 0.13));
+            } else if (nearReactStrength > 0.01) {
               enemy.setTintFill(0xdce7ff, 0xdce7ff, 0xdce7ff, 0xdce7ff);
               enemy.setAlpha(Phaser.Math.Clamp(enemy.alpha + nearReactStrength * 0.24, 0, 1));
               enemy.setScale(enemy.scaleX * (1 - nearReactStrength * 0.09), enemy.scaleY * (1 - nearReactStrength * 0.09));
