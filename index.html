@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.4';
-      const BUILD_TIMESTAMP = '2026-04-05 15:00';
+      const BUILD_TIMESTAMP = '2026-04-05 23:54';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -221,7 +221,8 @@
         width: NEAR_ATTACK_PROFILE.width,
         color: 0xd9edff,
         alpha: 0.66,
-        tipWidth: 8,
+        bodyBaseWidth: 6,
+        bodyTipWidth: 2.2,
         coreColor: 0xffffff,
         coreAlpha: 1,
         coreWidth: 2.6,
@@ -962,8 +963,7 @@
           const glow = createTaperLayer(visual.length, visual.glowWidth, visual.glowTipWidth, visual.glowColor, visual.glowAlpha);
           glow.setBlendMode(Phaser.BlendModes.ADD);
 
-          const body = createTaperLayer(visual.length, visual.width, visual.tipWidth, visual.color, visual.alpha);
-          body.setStrokeStyle(visual.edgeWidth, visual.edgeColor, visual.edgeAlpha);
+          const body = createTaperLayer(visual.length, visual.bodyBaseWidth, visual.bodyTipWidth, visual.color, visual.alpha);
           body.setBlendMode(Phaser.BlendModes.ADD);
 
           const core = createTaperLayer(visual.length, visual.coreWidth, visual.coreTipWidth, visual.coreColor, visual.coreAlpha);
