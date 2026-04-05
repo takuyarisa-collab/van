@@ -121,8 +121,8 @@
         NEAR_MISS: 'near miss',
         FAIL: 'fail',
       };
-      const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-05 15:24';
+      const APP_VERSION = '0.1.1';
+      const BUILD_TIMESTAMP = '2026-04-05 16:05';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -997,21 +997,21 @@
         }
 
         applyNearAttackDamage(attack) {
-          const range = NEAR_ATTACK_PROFILE.range;
-          const halfWidth = NEAR_ATTACK_PROFILE.width * 0.5;
           const damage = NEAR_ATTACK_PROFILE.damage;
-          const perpX = -attack.dirY;
-          const perpY = attack.dirX;
+          const transform = this.getNearAttackTransform(attack);
+          const halfLength = transform.length * 0.5;
+          const halfWidth = transform.width * 0.5;
+          const cos = Math.cos(transform.angle);
+          const sin = Math.sin(transform.angle);
 
           this.enemies.getChildren().forEach((enemy) => {
             if (!enemy.active) return;
             if (attack.hitEnemyUids.has(enemy.uid)) return;
-            const relX = enemy.x - attack.originX;
-            const relY = enemy.y - attack.originY;
-            const forward = relX * attack.dirX + relY * attack.dirY;
-            if (forward < 0 || forward > range) return;
-            const lateral = Math.abs(relX * perpX + relY * perpY);
-            if (lateral > halfWidth) return;
+            const dx = enemy.x - transform.centerX;
+            const dy = enemy.y - transform.centerY;
+            const localX = (dx * cos) + (dy * sin);
+            const localY = (-dx * sin) + (dy * cos);
+            if (Math.abs(localX) > halfLength || Math.abs(localY) > halfWidth) return;
 
             attack.hitEnemyUids.add(enemy.uid);
             enemy.hp -= damage;
