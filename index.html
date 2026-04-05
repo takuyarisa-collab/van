@@ -100,6 +100,17 @@
               g.clear();
             },
           },
+          nearFollowup: {
+            textureKey: 'nearFollowupShot',
+            hitRadius: 6,
+            generatePlaceholder(g) {
+              g.fillStyle(0xff7ddf, 0.32).fillRoundedRect(0, 3, 38, 6, 3);
+              g.fillStyle(0xff9eea, 0.78).fillRoundedRect(4, 4, 30, 4, 2);
+              g.fillStyle(0xffffff, 1).fillRoundedRect(8, 5, 22, 2, 1);
+              g.generateTexture(this.textureKey, 38, 12);
+              g.clear();
+            },
+          },
         },
         xp: {
           textureKey: 'xp',
@@ -122,7 +133,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-05 10:34';
+      const BUILD_TIMESTAMP = '2026-04-05 11:12';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -179,6 +190,7 @@
         enemy: 1.12,
         enemySwarm: 0.82,
         bullet: 1.14,
+        nearFollowupShot: 1,
         xp: 1,
       };
       const XP_VISUAL = {
@@ -320,6 +332,11 @@
               durationMs: 180,
               instabilityMultiplier: 0.86,
             },
+            nearFollowupShot: {
+              armed: false,
+              speed: 760,
+              lifespanMs: 260,
+            },
             spawnDirector: {
               startedAt: 0,
               rampDurationMs: 4 * 60 * 1000,
@@ -331,6 +348,7 @@
               biasUntil: 0,
               nextBiasCheckAt: 0,
             },
+            nextEnemyUid: 1,
           };
 
           this.player = this.physics.add.sprite(WORLD_W / 2, WORLD_H / 2, VISUAL_ASSETS.player.textureKey);
@@ -668,6 +686,7 @@
           const g = this.add.graphics();
           VISUAL_ASSETS.enemies.forEach((enemyVisual) => enemyVisual.generatePlaceholder(g));
           VISUAL_ASSETS.attack.bullet.generatePlaceholder(g);
+          VISUAL_ASSETS.attack.nearFollowup.generatePlaceholder(g);
           VISUAL_ASSETS.xp.generatePlaceholder(g);
           g.destroy();
         }
@@ -700,6 +719,8 @@
           enemy.setTint(0xffffff);
 
           enemy.behaviorType = behaviorType;
+          enemy.uid = this.state.nextEnemyUid;
+          this.state.nextEnemyUid += 1;
           enemy.hp = 2 + Math.floor(this.state.level * 0.45);
           enemy.speed = 62 + this.state.level * 7;
           enemy.lastHit = 0;
@@ -826,28 +847,78 @@
           const target = this.getNearestEnemy();
           if (!target) return;
 
-          const bulletVisual = VISUAL_ASSETS.attack.bullet;
+          const nearFollowupState = this.state.nearFollowupShot;
+          const shouldUseNearFollowup = nearFollowupState.armed;
+          const bulletVisual = shouldUseNearFollowup
+            ? VISUAL_ASSETS.attack.nearFollowup
+            : VISUAL_ASSETS.attack.bullet;
           const bullet = this.bullets.get(this.player.x, this.player.y, bulletVisual.textureKey);
           if (!bullet) return;
 
           bullet.setActive(true).setVisible(true);
-          bullet.setScale(VISUAL_SCALE.bullet);
+          bullet.setScale(shouldUseNearFollowup ? VISUAL_SCALE.nearFollowupShot : VISUAL_SCALE.bullet);
           bullet.body.enable = true;
-          bullet.body.setCircle(bulletVisual.hitRadius);
+          bullet.setAlpha(1);
+          bullet.setBlendMode(shouldUseNearFollowup ? Phaser.BlendModes.ADD : Phaser.BlendModes.NORMAL);
+          if (shouldUseNearFollowup) {
+            bullet.body.setSize(36, 6, true);
+            bullet.hitEnemyUids = new Set();
+          } else {
+            bullet.body.setCircle(bulletVisual.hitRadius);
+            bullet.hitEnemyUids = null;
+          }
 
           const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, target.x, target.y);
-          const speed = 480;
+          const speed = shouldUseNearFollowup ? nearFollowupState.speed : 480;
           bullet.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
-          bullet.lifespan = 700;
+          bullet.setRotation(angle);
+          bullet.lifespan = shouldUseNearFollowup ? nearFollowupState.lifespanMs : 700;
+          bullet.isNearFollowupShot = shouldUseNearFollowup;
+          if (shouldUseNearFollowup) {
+            nearFollowupState.armed = false;
+            this.emitNearFollowupShotFlash(angle);
+          }
         }
 
         onBulletHit(bullet, enemy) {
-          bullet.disableBody(true, true);
+          if (bullet.isNearFollowupShot) {
+            if (bullet.hitEnemyUids && bullet.hitEnemyUids.has(enemy.uid)) {
+              return;
+            }
+            if (bullet.hitEnemyUids) {
+              bullet.hitEnemyUids.add(enemy.uid);
+            }
+          } else {
+            bullet.disableBody(true, true);
+          }
           enemy.hp -= 1;
           if (enemy.hp > 0) return;
           this.addEnergyFromKill(enemy);
           this.spawnXp(enemy.x, enemy.y);
           enemy.destroy();
+        }
+
+        emitNearFollowupShotFlash(angle) {
+          const slash = this.add.rectangle(
+            this.player.x + Math.cos(angle) * 20,
+            this.player.y + Math.sin(angle) * 20,
+            40,
+            3,
+            0xffa9e6,
+            0.95,
+          ).setDepth(this.player.depth + 3);
+          slash.setRotation(angle);
+          slash.setBlendMode(Phaser.BlendModes.ADD);
+          this.tweens.add({
+            targets: slash,
+            x: slash.x + Math.cos(angle) * 14,
+            y: slash.y + Math.sin(angle) * 14,
+            scaleX: 1.18,
+            alpha: 0,
+            duration: 70,
+            ease: 'Quad.easeOut',
+            onComplete: () => slash.destroy(),
+          });
         }
 
         addEnergyFromKill(enemy) {
@@ -1118,6 +1189,7 @@
           if (result.outcome === SNAP_BACK_RESULT.SUCCESS_CANDIDATE) {
             this.triggerSnapBackRelease();
           } else if (result.outcome === SNAP_BACK_RESULT.NEAR_MISS) {
+            this.state.nearFollowupShot.armed = true;
             this.triggerNearMissMagnetPulse();
             this.triggerNearMissBurst(inputDir);
             this.triggerNearMissPushback();
