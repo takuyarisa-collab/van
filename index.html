@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.4';
-      const BUILD_TIMESTAMP = '2026-04-05 14:58';
+      const BUILD_TIMESTAMP = '2026-04-05 14:41';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -212,19 +212,30 @@
         pulseAlphaStart: 0.42,
       };
       const NEAR_ATTACK_PROFILE = {
-        range: 186,
+        range: 244,
         width: 44,
-        damage: 1,
+        damage: 3,
       };
       const NEAR_ATTACK_VISUAL = {
         length: NEAR_ATTACK_PROFILE.range,
         width: NEAR_ATTACK_PROFILE.width,
-        color: 0xcfe6ff,
-        alpha: 0.86,
+        color: 0xd9edff,
+        alpha: 0.78,
+        coreColor: 0xffffff,
+        coreAlpha: 0.98,
+        coreWidth: 5,
+        glowColor: 0x8fd6ff,
+        glowAlpha: 0.42,
+        glowWidth: 56,
+        trailColor: 0xaedfff,
+        trailAlpha: 0.24,
+        trailWidth: 18,
+        trailLengthScale: 0.78,
+        trailBackOffset: 22,
         edgeColor: 0xf3fbff,
-        edgeAlpha: 0.62,
-        edgeWidth: 2,
-        durationMs: 260,
+        edgeAlpha: 0.84,
+        edgeWidth: 1,
+        durationMs: 340,
         steerLerp: 0.2,
         maxSteerStepRad: 0.12,
         steerDurationMs: 110,
@@ -922,14 +933,35 @@
 
         emitNearAttackLaserVisual(nearEvent) {
           const visual = NEAR_ATTACK_VISUAL;
-          const laserRect = this.add.rectangle(0, 0, visual.length, visual.width, visual.color, visual.alpha)
-            .setDepth(this.player.depth + 3);
-          laserRect.setOrigin(0.5, 0.5);
-          laserRect.setStrokeStyle(visual.edgeWidth, visual.edgeColor, visual.edgeAlpha);
-          laserRect.setFillStyle(visual.color, visual.alpha);
-          laserRect.setBlendMode(Phaser.BlendModes.ADD);
-          this.applyNearAttackTransform(laserRect, nearEvent);
-          return laserRect;
+          const laserVisual = this.add.container(0, 0).setDepth(this.player.depth + 3);
+
+          const glow = this.add.rectangle(0, 0, visual.length, visual.glowWidth, visual.glowColor, visual.glowAlpha);
+          glow.setOrigin(0.5, 0.5);
+          glow.setBlendMode(Phaser.BlendModes.ADD);
+
+          const body = this.add.rectangle(0, 0, visual.length, visual.width, visual.color, visual.alpha);
+          body.setOrigin(0.5, 0.5);
+          body.setStrokeStyle(visual.edgeWidth, visual.edgeColor, visual.edgeAlpha);
+          body.setBlendMode(Phaser.BlendModes.ADD);
+
+          const core = this.add.rectangle(0, 0, visual.length, visual.coreWidth, visual.coreColor, visual.coreAlpha);
+          core.setOrigin(0.5, 0.5);
+          core.setBlendMode(Phaser.BlendModes.ADD);
+
+          const trail = this.add.rectangle(
+            -visual.trailBackOffset,
+            0,
+            visual.length * visual.trailLengthScale,
+            visual.trailWidth,
+            visual.trailColor,
+            visual.trailAlpha,
+          );
+          trail.setOrigin(0.5, 0.5);
+          trail.setBlendMode(Phaser.BlendModes.ADD);
+
+          laserVisual.add([trail, glow, body, core]);
+          this.applyNearAttackTransform(laserVisual, nearEvent);
+          return laserVisual;
         }
 
         getNearAttackDirection(preferredInputDir) {
