@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.0';
-      const BUILD_TIMESTAMP = '2026-04-05 12:18';
+      const BUILD_TIMESTAMP = '2026-04-05 12:44';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -213,12 +213,13 @@
       };
       const NEAR_ATTACK_PROFILE = {
         range: 172,
-        width: 26,
+        width: 38,
         damage: 1,
       };
       const NEAR_ATTACK_SLASH_VISUAL = {
-        length: 208,
-        width: 10,
+        textureKey: 'nearSlashBand',
+        length: 216,
+        width: 36,
         forwardOffset: 110,
         durationMs: 175,
       };
@@ -681,6 +682,16 @@
           VISUAL_ASSETS.enemies.forEach((enemyVisual) => enemyVisual.generatePlaceholder(g));
           VISUAL_ASSETS.attack.bullet.generatePlaceholder(g);
           VISUAL_ASSETS.xp.generatePlaceholder(g);
+          const slashBaseWidth = 240;
+          const slashBaseHeight = 60;
+          const slashRadius = Math.floor(slashBaseHeight * 0.48);
+          if (this.textures.exists(NEAR_ATTACK_SLASH_VISUAL.textureKey)) {
+            this.textures.remove(NEAR_ATTACK_SLASH_VISUAL.textureKey);
+          }
+          g.fillStyle(0xffc7f4, 1);
+          g.fillRoundedRect(0, 0, slashBaseWidth, slashBaseHeight, slashRadius);
+          g.generateTexture(NEAR_ATTACK_SLASH_VISUAL.textureKey, slashBaseWidth, slashBaseHeight);
+          g.clear();
           g.destroy();
         }
 
@@ -874,14 +885,13 @@
           const slashCenterX = this.player.x + cos * visual.forwardOffset;
           const slashCenterY = this.player.y + sin * visual.forwardOffset;
 
-          const slash = this.add.rectangle(
+          const slash = this.add.image(
             slashCenterX,
             slashCenterY,
-            visual.length,
-            visual.width,
-            0xffc7f4,
-            0.78,
+            visual.textureKey,
           ).setDepth(this.player.depth + 3);
+          slash.setDisplaySize(visual.length, visual.width);
+          slash.setAlpha(0.84);
           slash.setRotation(angle);
 
           this.tweens.add({
