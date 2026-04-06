@@ -28,6 +28,8 @@ export const NEAR_ATTACK_VISUAL = {
   edgeColor: 0xf3fbff,
   edgeAlpha: 0.52,
   edgeWidth: 0.7,
+  /** core先行型launch：先端方向への移動量（全長に対する割合 0.2〜0.35） */
+  launchCoreTravelRatio: 0.28,
   launchAnimMs: 55,
   durationMs: 340,
   steerLerp: 0.2,
@@ -144,22 +146,14 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
   trail.setBlendMode(Phaser.BlendModes.ADD);
 
   laserVisual.add([trail, glow, body, core]);
-  const launchState = { t: 0 };
-  const animateLayerLaunch = (layer, fullLength, delay = 0) => {
-    const localT = Phaser.Math.Clamp((launchState.t - delay) / Math.max(0.0001, 1 - delay), 0, 1);
-    layer.redrawLength(Phaser.Math.Linear(0, fullLength, localT));
-  };
+  const launchHalfMs = Math.max(1, Math.round(visual.launchAnimMs * 0.5));
   scene.tweens.add({
-    targets: launchState,
-    t: 1,
-    duration: visual.launchAnimMs,
+    targets: core,
+    x: visual.length * visual.launchCoreTravelRatio,
+    alpha: visual.coreAlpha * 0.62,
+    duration: launchHalfMs,
     ease: 'Cubic.Out',
-    onUpdate: () => {
-      animateLayerLaunch(core, visual.length, 0);
-      animateLayerLaunch(body, visual.length, 0.08);
-      animateLayerLaunch(glow, visual.length, 0.14);
-      animateLayerLaunch(trail, trailLength, 0.1);
-    },
+    yoyo: true,
   });
   applyNearAttackVisualTransform(laserVisual, nearEvent);
   return laserVisual;
