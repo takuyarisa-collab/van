@@ -29,7 +29,6 @@ export const NEAR_ATTACK_VISUAL = {
   edgeAlpha: 0.52,
   edgeWidth: 0.7,
   launchAnimMs: 55,
-  launchAnimMinScaleX: 0.06,
   durationMs: 340,
   steerLerp: 0.2,
   maxSteerStepRad: 0.12,
@@ -90,20 +89,31 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
 
   const createTaperLayer = (length, baseWidth, tipWidth, color, alpha) => {
     const halfBase = baseWidth * 0.5;
-    const halfTip = tipWidth * 0.5;
+    const layerPoints = [
+      0, -halfBase,
+      0, halfBase,
+      0, 0,
+      0, 0,
+    ];
     const layer = scene.add.polygon(
       0,
       0,
-      [
-        0, -halfBase,
-        0, halfBase,
-        length, halfTip,
-        length, -halfTip,
-      ],
+      layerPoints,
       color,
       alpha,
     );
     layer.setOrigin(0, 0.5);
+    layer.redrawLength = (nextLength) => {
+      const clampedLength = Math.max(0, nextLength);
+      const halfTip = tipWidth * 0.5;
+      layer.setTo([
+        0, -halfBase,
+        0, halfBase,
+        clampedLength, halfTip,
+        clampedLength, -halfTip,
+      ]);
+    };
+    layer.redrawLength(length);
     return layer;
   };
 
@@ -135,9 +145,9 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
 
   laserVisual.add([trail, glow, body, core]);
   const launchState = { t: 0 };
-  const animateLayerLaunch = (layer) => {
-    const scaleX = Phaser.Math.Linear(visual.launchAnimMinScaleX, 1, launchState.t);
-    layer.setScale(scaleX, 1);
+  const animateLayerLaunch = (layer, fullLength, delay = 0) => {
+    const localT = Phaser.Math.Clamp((launchState.t - delay) / Math.max(0.0001, 1 - delay), 0, 1);
+    layer.redrawLength(Phaser.Math.Linear(0, fullLength, localT));
   };
   scene.tweens.add({
     targets: launchState,
@@ -145,10 +155,10 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
     duration: visual.launchAnimMs,
     ease: 'Cubic.Out',
     onUpdate: () => {
-      animateLayerLaunch(glow);
-      animateLayerLaunch(body);
-      animateLayerLaunch(core);
-      animateLayerLaunch(trail);
+      animateLayerLaunch(core, visual.length, 0);
+      animateLayerLaunch(body, visual.length, 0.08);
+      animateLayerLaunch(glow, visual.length, 0.14);
+      animateLayerLaunch(trail, trailLength, 0.1);
     },
   });
   applyNearAttackVisualTransform(laserVisual, nearEvent);
