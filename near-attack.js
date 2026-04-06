@@ -28,6 +28,8 @@ export const NEAR_ATTACK_VISUAL = {
   edgeColor: 0xf3fbff,
   edgeAlpha: 0.52,
   edgeWidth: 0.7,
+  /** Core-only launch pulse: local X offset as fraction of beam length (0.2–0.35). */
+  coreLaunchOffsetRatio: 0.28,
   launchAnimMs: 55,
   durationMs: 340,
   steerLerp: 0.2,
@@ -95,11 +97,13 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
 
   const createTaperLayer = (length, baseWidth, tipWidth, color, alpha) => {
     const halfBase = baseWidth * 0.5;
+    const clampedLength = Math.max(0, length);
+    const halfTip = tipWidth * 0.5;
     const layerPoints = [
       0, -halfBase,
       0, halfBase,
-      0, 0,
-      0, 0,
+      clampedLength, halfTip,
+      clampedLength, -halfTip,
     ];
     const layer = scene.add.polygon(
       0,
@@ -109,17 +113,6 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
       alpha,
     );
     layer.setOrigin(0, 0.5);
-    layer.redrawLength = (nextLength) => {
-      const clampedLength = Math.max(0, nextLength);
-      const halfTip = tipWidth * 0.5;
-      layer.setTo([
-        0, -halfBase,
-        0, halfBase,
-        clampedLength, halfTip,
-        clampedLength, -halfTip,
-      ]);
-    };
-    layer.redrawLength(length);
     return layer;
   };
 
@@ -150,25 +143,20 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
   trail.setBlendMode(Phaser.BlendModes.ADD);
 
   laserVisual.add([trail, glow, body, core]);
-  const launchState = { t: 0 };
-  const animateLayerLaunch = (layer, fullLength, delay = 0) => {
-    if (!scene.sys?.isActive() || !layer.active) return;
-    const localT = Phaser.Math.Clamp((launchState.t - delay) / Math.max(0.0001, 1 - delay), 0, 1);
-    layer.redrawLength(Phaser.Math.Linear(0, fullLength, localT));
-  };
+  const coreLaunchX = visual.length * visual.coreLaunchOffsetRatio;
+  const coreBaseAlpha = visual.coreAlpha;
   const launchTween = scene.tweens.add({
-    targets: launchState,
-    t: 1,
-    duration: visual.launchAnimMs,
+    targets: core,
+    x: coreLaunchX,
+    alpha: coreBaseAlpha * 0.86,
+    duration: Math.max(8, Math.round(visual.launchAnimMs * 0.5)),
     ease: 'Cubic.Out',
-    onUpdate: () => {
-      if (!scene.sys?.isActive() || !core.active) return;
-      animateLayerLaunch(core, visual.length, 0);
-      animateLayerLaunch(body, visual.length, 0.08);
-      animateLayerLaunch(glow, visual.length, 0.14);
-      animateLayerLaunch(trail, trailLength, 0.1);
-    },
+    yoyo: true,
     onComplete: () => {
+      if (core.active) {
+        core.setPosition(0, 0);
+        core.setAlpha(coreBaseAlpha);
+      }
       if (nearEvent.launchTween === launchTween) {
         nearEvent.launchTween = null;
       }
