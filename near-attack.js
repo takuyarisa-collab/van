@@ -42,6 +42,16 @@ export const NEAR_ATTACK_HIT_TUNING = {
   debugHitFlashMs: 110,
 };
 
+/** NEAR 前方 OBB 内の「低抵抗レーン」（判定・ダメージは NEAR_ATTACK_HIT_TUNING のまま） */
+export const NEAR_ATTACK_DRIFT = {
+  /** 毎フレーム速度に掛ける係数（小さめの減衰＋後続の assist と併用） */
+  frictionScale: 0.93,
+  /** 進行方向への補助加速度（px/s 換算、過剰に引っ張らない） */
+  assistForce: 320,
+  /** ローカル Y オフセットに比例する中央寄せ（弱い） */
+  centerPull: 14,
+};
+
 export const DEBUG_NEAR_ATTACK_HITBOX = false;
 
 export function stopNearAttackLaunchTween(scene, nearEvent) {
@@ -60,6 +70,49 @@ export function getNearAttackTransform(nearEvent) {
     centerX: nearEvent.originX + nearEvent.dirX * halfLength,
     centerY: nearEvent.originY + nearEvent.dirY * halfLength,
   };
+}
+
+/**
+ * 視覚・レーン用 OBB（パディングなし）。getNearAttackTransform と同じ center/angle/length/width。
+ */
+export function isPointInNearAttackLane(transform, worldX, worldY) {
+  const halfLength = transform.length * 0.5;
+  const halfWidth = transform.width * 0.5;
+  const cos = Math.cos(transform.angle);
+  const sin = Math.sin(transform.angle);
+  const dx = worldX - transform.centerX;
+  const dy = worldY - transform.centerY;
+  const localX = (dx * cos) + (dy * sin);
+  const localY = (-dx * sin) + (dy * cos);
+  return Math.abs(localX) <= halfLength && Math.abs(localY) <= halfWidth;
+}
+
+function applyNearAttackDriftLane(scene, attack, dtMs) {
+  const body = scene.player?.body;
+  if (!body) return;
+  const drift = NEAR_ATTACK_DRIFT;
+  const transform = getNearAttackTransform(attack);
+  const px = body.center.x;
+  const py = body.center.y;
+  if (!isPointInNearAttackLane(transform, px, py)) return;
+
+  const dt = dtMs / 1000;
+  const cos = Math.cos(transform.angle);
+  const sin = Math.sin(transform.angle);
+  const dx = px - transform.centerX;
+  const dy = py - transform.centerY;
+  const localY = (-dx * sin) + (dy * cos);
+
+  body.velocity.x *= drift.frictionScale;
+  body.velocity.y *= drift.frictionScale;
+
+  body.velocity.x += cos * drift.assistForce * dt;
+  body.velocity.y += sin * drift.assistForce * dt;
+
+  const perpX = -sin;
+  const perpY = cos;
+  body.velocity.x += -localY * perpX * drift.centerPull * dt;
+  body.velocity.y += -localY * perpY * drift.centerPull * dt;
 }
 
 export function applyNearAttackTransform(gameObject, nearEvent) {
@@ -196,7 +249,7 @@ export function getNearAttackTrackingDirection(scene) {
   return null;
 }
 
-export function updateNearAttack(scene, now) {
+export function updateNearAttack(scene, now, dtMs) {
   const attack = scene.activeNearAttack;
   if (!attack) return;
   if (now >= attack.endAt) {
@@ -233,6 +286,7 @@ export function updateNearAttack(scene, now) {
 
   if (attack.hitRect) applyNearAttackTransform(attack.hitRect, attack);
   if (attack.laserVisual) applyNearAttackVisualTransform(attack.laserVisual, attack);
+  applyNearAttackDriftLane(scene, attack, dtMs ?? scene.game?.loop?.delta ?? 16);
   applyNearAttackDamage(scene, attack);
 }
 
