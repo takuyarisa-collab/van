@@ -121,6 +121,7 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
   const glow = createTaperLayer(visual.length, visual.glowWidth, visual.glowTipWidth, visual.glowColor, visual.glowAlpha);
   glow.setPosition(0, 0);
   glow.setBlendMode(Phaser.BlendModes.ADD);
+  glow.setVisible(false);
 
   const core = createTaperLayer(visual.length, visual.coreWidth, visual.coreTipWidth, visual.coreColor, visual.coreAlpha);
   core.setPosition(0, 0);
