@@ -122,7 +122,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.4';
-      const BUILD_TIMESTAMP = '2026-04-05 23:54';
+      const BUILD_TIMESTAMP = '2026-04-06 00:06';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -925,6 +925,11 @@
           gameObject.setRotation(transform.angle);
         }
 
+        applyNearAttackVisualTransform(gameObject, nearEvent) {
+          gameObject.setPosition(nearEvent.originX, nearEvent.originY);
+          gameObject.setRotation(nearEvent.angle);
+        }
+
         emitNearAttackRectangle(nearEvent) {
           const visual = NEAR_ATTACK_VISUAL;
           const hitRect = this.add.rectangle(0, 0, visual.length, visual.width, 0xffffff, 1)
@@ -941,6 +946,7 @@
         emitNearAttackLaserVisual(nearEvent) {
           const visual = NEAR_ATTACK_VISUAL;
           const laserVisual = this.add.container(0, 0).setDepth(this.player.depth + 3);
+          const rootBaseX = visual.length * 0.5;
 
           const createTaperLayer = (length, baseWidth, tipWidth, color, alpha) => {
             const halfLen = length * 0.5;
@@ -961,12 +967,15 @@
           };
 
           const glow = createTaperLayer(visual.length, visual.glowWidth, visual.glowTipWidth, visual.glowColor, visual.glowAlpha);
+          glow.setPosition(rootBaseX, 0);
           glow.setBlendMode(Phaser.BlendModes.ADD);
 
           const body = createTaperLayer(visual.length, visual.bodyBaseWidth, visual.bodyTipWidth, visual.color, visual.alpha);
+          body.setPosition(rootBaseX, 0);
           body.setBlendMode(Phaser.BlendModes.ADD);
 
           const core = createTaperLayer(visual.length, visual.coreWidth, visual.coreTipWidth, visual.coreColor, visual.coreAlpha);
+          core.setPosition(rootBaseX, 0);
           core.setBlendMode(Phaser.BlendModes.ADD);
 
           const trailLength = visual.length * visual.trailLengthScale;
@@ -978,17 +987,17 @@
             visual.trailAlpha,
           );
           trail.setPosition(
-            -visual.trailBackOffset,
+            rootBaseX - visual.trailBackOffset,
             0,
           );
           trail.setBlendMode(Phaser.BlendModes.ADD);
 
           laserVisual.add([trail, glow, body, core]);
           const launchState = { t: 0 };
-          const animateLayerLaunch = (layer, layerLength) => {
+          const animateLayerLaunch = (layer, layerLength, baseX) => {
             const scaleX = Phaser.Math.Linear(visual.launchAnimMinScaleX, 1, launchState.t);
             layer.setScale(scaleX, 1);
-            layer.x = (layerLength * (scaleX - 1)) * 0.5 + (layer === trail ? -visual.trailBackOffset : 0);
+            layer.x = baseX + (layerLength * (scaleX - 1)) * 0.5;
           };
           this.tweens.add({
             targets: launchState,
@@ -996,13 +1005,13 @@
             duration: visual.launchAnimMs,
             ease: 'Cubic.Out',
             onUpdate: () => {
-              animateLayerLaunch(glow, visual.length);
-              animateLayerLaunch(body, visual.length);
-              animateLayerLaunch(core, visual.length);
-              animateLayerLaunch(trail, trailLength);
+              animateLayerLaunch(glow, visual.length, rootBaseX);
+              animateLayerLaunch(body, visual.length, rootBaseX);
+              animateLayerLaunch(core, visual.length, rootBaseX);
+              animateLayerLaunch(trail, trailLength, rootBaseX - visual.trailBackOffset);
             },
           });
-          this.applyNearAttackTransform(laserVisual, nearEvent);
+          this.applyNearAttackVisualTransform(laserVisual, nearEvent);
           return laserVisual;
         }
 
@@ -1074,7 +1083,7 @@
           }
 
           if (attack.hitRect) this.applyNearAttackTransform(attack.hitRect, attack);
-          if (attack.laserVisual) this.applyNearAttackTransform(attack.laserVisual, attack);
+          if (attack.laserVisual) this.applyNearAttackVisualTransform(attack.laserVisual, attack);
           this.applyNearAttackDamage(attack);
         }
 
