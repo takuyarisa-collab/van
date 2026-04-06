@@ -40,6 +40,7 @@
   <script type="module">
     import {
       NEAR_ATTACK_HIT_TUNING,
+      stopNearAttackLaunchTween,
       triggerNearAttack,
       updateNearAttack,
     } from './near-attack.js';
@@ -415,9 +416,12 @@
               this.playerHitRing.destroy();
               this.playerHitRing = null;
             }
-            this.activeNearAttack?.hitRect?.destroy();
-            this.activeNearAttack?.laserVisual?.destroy();
-            this.activeNearAttack = null;
+            if (this.activeNearAttack) {
+              stopNearAttackLaunchTween(this, this.activeNearAttack);
+              this.activeNearAttack.hitRect?.destroy();
+              this.activeNearAttack.laserVisual?.destroy();
+              this.activeNearAttack = null;
+            }
             this.disposeSnapAudio();
           });
 

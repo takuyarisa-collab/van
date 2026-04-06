@@ -49,6 +49,12 @@ export const NEAR_ATTACK_HIT_TUNING = {
 
 export const DEBUG_NEAR_ATTACK_HITBOX = false;
 
+export function stopNearAttackLaunchTween(scene, nearEvent) {
+  if (!nearEvent?.launchTween || !scene?.tweens) return;
+  scene.tweens.remove(nearEvent.launchTween);
+  nearEvent.launchTween = null;
+}
+
 export function getNearAttackTransform(nearEvent) {
   const visual = NEAR_ATTACK_VISUAL;
   const halfLength = visual.length * 0.5;
@@ -147,14 +153,20 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
 
   laserVisual.add([trail, glow, body, core]);
   const launchHalfMs = Math.max(1, Math.round(visual.launchAnimMs * 0.5));
-  scene.tweens.add({
+  const launchTween = scene.tweens.add({
     targets: core,
     x: visual.length * visual.launchCoreTravelRatio,
     alpha: visual.coreAlpha * 0.62,
     duration: launchHalfMs,
     ease: 'Cubic.Out',
     yoyo: true,
+    onComplete: () => {
+      if (nearEvent.launchTween === launchTween) {
+        nearEvent.launchTween = null;
+      }
+    },
   });
+  nearEvent.launchTween = launchTween;
   applyNearAttackVisualTransform(laserVisual, nearEvent);
   return laserVisual;
 }
@@ -196,6 +208,7 @@ export function updateNearAttack(scene, now) {
   const attack = scene.activeNearAttack;
   if (!attack) return;
   if (now >= attack.endAt) {
+    stopNearAttackLaunchTween(scene, attack);
     attack.hitRect?.destroy();
     attack.laserVisual?.destroy();
     scene.activeNearAttack = null;
@@ -272,8 +285,12 @@ export function applyNearAttackDamage(scene, attack) {
 
 export function triggerNearAttack(scene, inputDir) {
   const dir = getNearAttackDirection(scene, inputDir);
-  scene.activeNearAttack?.hitRect?.destroy();
-  scene.activeNearAttack?.laserVisual?.destroy();
+  const prev = scene.activeNearAttack;
+  if (prev) {
+    stopNearAttackLaunchTween(scene, prev);
+    prev.hitRect?.destroy();
+    prev.laserVisual?.destroy();
+  }
   const nearEvent = {
     originX: scene.player.x,
     originY: scene.player.y,
