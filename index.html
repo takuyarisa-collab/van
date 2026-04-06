@@ -129,7 +129,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.4';
-      const BUILD_TIMESTAMP = '2026-04-06 12:23';
+      const BUILD_TIMESTAMP = '2026-04-06 18:45';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -1416,7 +1416,7 @@
           const vx = Phaser.Math.Linear(this.player.body.velocity.x, targetVelX, t);
           const vy = Phaser.Math.Linear(this.player.body.velocity.y, targetVelY, t);
           this.player.setVelocity(vx, vy);
-          updateNearAttack(this, this.time.now);
+          updateNearAttack(this, this.time.now, dt);
 
           const nearMissPushback = this.state.nearMissPushback;
           const hasNearMissPushback = this.time.now < nearMissPushback.activeUntil;
