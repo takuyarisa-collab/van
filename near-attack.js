@@ -21,6 +21,8 @@ export const NEAR_ATTACK_VISUAL = {
   trailTipWidth: 3,
   trailLengthScale: 0.68,
   trailBackOffset: 22,
+  /** グロー層の表示（一時オフ可） */
+  showGlow: false,
   /** core先行型launch：先端方向への移動量（全長に対する割合 0.2〜0.35） */
   launchCoreTravelRatio: 0.28,
   launchAnimMs: 55,
@@ -121,6 +123,7 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
   const glow = createTaperLayer(visual.length, visual.glowWidth, visual.glowTipWidth, visual.glowColor, visual.glowAlpha);
   glow.setPosition(0, 0);
   glow.setBlendMode(Phaser.BlendModes.ADD);
+  glow.setVisible(visual.showGlow);
 
   const core = createTaperLayer(visual.length, visual.coreWidth, visual.coreTipWidth, visual.coreColor, visual.coreAlpha);
   core.setPosition(0, 0);
