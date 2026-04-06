@@ -7,14 +7,10 @@ export const NEAR_ATTACK_PROFILE = {
 export const NEAR_ATTACK_VISUAL = {
   length: NEAR_ATTACK_PROFILE.range,
   width: NEAR_ATTACK_PROFILE.width,
-  color: 0xd9edff,
-  alpha: 0.66,
-  bodyBaseWidth: 6,
-  bodyTipWidth: 2.2,
   coreColor: 0xffffff,
   coreAlpha: 1,
-  coreWidth: 2.6,
-  coreTipWidth: 1,
+  coreWidth: 3.3,
+  coreTipWidth: 1.27,
   glowColor: 0x8fd6ff,
   glowAlpha: 0.24,
   glowWidth: 18,
@@ -25,9 +21,6 @@ export const NEAR_ATTACK_VISUAL = {
   trailTipWidth: 3,
   trailLengthScale: 0.68,
   trailBackOffset: 22,
-  edgeColor: 0xf3fbff,
-  edgeAlpha: 0.52,
-  edgeWidth: 0.7,
   /** core先行型launch：先端方向への移動量（全長に対する割合 0.2〜0.35） */
   launchCoreTravelRatio: 0.28,
   launchAnimMs: 55,
@@ -129,10 +122,6 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
   glow.setPosition(0, 0);
   glow.setBlendMode(Phaser.BlendModes.ADD);
 
-  const body = createTaperLayer(visual.length, visual.bodyBaseWidth, visual.bodyTipWidth, visual.color, visual.alpha);
-  body.setPosition(0, 0);
-  body.setBlendMode(Phaser.BlendModes.ADD);
-
   const core = createTaperLayer(visual.length, visual.coreWidth, visual.coreTipWidth, visual.coreColor, visual.coreAlpha);
   core.setPosition(0, 0);
   core.setBlendMode(Phaser.BlendModes.ADD);
@@ -151,7 +140,7 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
   );
   trail.setBlendMode(Phaser.BlendModes.ADD);
 
-  laserVisual.add([trail, glow, body, core]);
+  laserVisual.add([trail, glow, core]);
   const launchHalfMs = Math.max(1, Math.round(visual.launchAnimMs * 0.5));
   const launchTween = scene.tweens.add({
     targets: core,
