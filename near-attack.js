@@ -87,36 +87,36 @@ export function emitNearAttackRectangle(scene, nearEvent) {
 export function emitNearAttackLaserVisual(scene, nearEvent) {
   const visual = NEAR_ATTACK_VISUAL;
   const laserVisual = scene.add.container(0, 0).setDepth(scene.player.depth + 3);
-  const rootBaseX = visual.length * 0.5;
 
   const createTaperLayer = (length, baseWidth, tipWidth, color, alpha) => {
-    const halfLen = length * 0.5;
     const halfBase = baseWidth * 0.5;
     const halfTip = tipWidth * 0.5;
-    return scene.add.polygon(
+    const layer = scene.add.polygon(
       0,
       0,
       [
-        -halfLen, -halfBase,
-        -halfLen, halfBase,
-        halfLen, halfTip,
-        halfLen, -halfTip,
+        0, -halfBase,
+        0, halfBase,
+        length, halfTip,
+        length, -halfTip,
       ],
       color,
       alpha,
     );
+    layer.setOrigin(0, 0.5);
+    return layer;
   };
 
   const glow = createTaperLayer(visual.length, visual.glowWidth, visual.glowTipWidth, visual.glowColor, visual.glowAlpha);
-  glow.setPosition(rootBaseX, 0);
+  glow.setPosition(0, 0);
   glow.setBlendMode(Phaser.BlendModes.ADD);
 
   const body = createTaperLayer(visual.length, visual.bodyBaseWidth, visual.bodyTipWidth, visual.color, visual.alpha);
-  body.setPosition(rootBaseX, 0);
+  body.setPosition(0, 0);
   body.setBlendMode(Phaser.BlendModes.ADD);
 
   const core = createTaperLayer(visual.length, visual.coreWidth, visual.coreTipWidth, visual.coreColor, visual.coreAlpha);
-  core.setPosition(rootBaseX, 0);
+  core.setPosition(0, 0);
   core.setBlendMode(Phaser.BlendModes.ADD);
 
   const trailLength = visual.length * visual.trailLengthScale;
@@ -128,17 +128,16 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
     visual.trailAlpha,
   );
   trail.setPosition(
-    rootBaseX - visual.trailBackOffset,
+    -visual.trailBackOffset,
     0,
   );
   trail.setBlendMode(Phaser.BlendModes.ADD);
 
   laserVisual.add([trail, glow, body, core]);
   const launchState = { t: 0 };
-  const animateLayerLaunch = (layer, layerLength, baseX) => {
+  const animateLayerLaunch = (layer) => {
     const scaleX = Phaser.Math.Linear(visual.launchAnimMinScaleX, 1, launchState.t);
     layer.setScale(scaleX, 1);
-    layer.x = baseX + (layerLength * (scaleX - 1)) * 0.5;
   };
   scene.tweens.add({
     targets: launchState,
@@ -146,10 +145,10 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
     duration: visual.launchAnimMs,
     ease: 'Cubic.Out',
     onUpdate: () => {
-      animateLayerLaunch(glow, visual.length, rootBaseX);
-      animateLayerLaunch(body, visual.length, rootBaseX);
-      animateLayerLaunch(core, visual.length, rootBaseX);
-      animateLayerLaunch(trail, trailLength, rootBaseX - visual.trailBackOffset);
+      animateLayerLaunch(glow);
+      animateLayerLaunch(body);
+      animateLayerLaunch(core);
+      animateLayerLaunch(trail);
     },
   });
   applyNearAttackVisualTransform(laserVisual, nearEvent);
