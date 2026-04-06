@@ -47,6 +47,12 @@ export const NEAR_ATTACK_HIT_TUNING = {
 
 export const DEBUG_NEAR_ATTACK_HITBOX = false;
 
+export function stopNearAttackLaunchTween(scene, nearEvent) {
+  if (!nearEvent?.launchTween || !scene?.tweens) return;
+  scene.tweens.remove(nearEvent.launchTween);
+  nearEvent.launchTween = null;
+}
+
 export function getNearAttackTransform(nearEvent) {
   const visual = NEAR_ATTACK_VISUAL;
   const halfLength = visual.length * 0.5;
@@ -146,21 +152,29 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
   laserVisual.add([trail, glow, body, core]);
   const launchState = { t: 0 };
   const animateLayerLaunch = (layer, fullLength, delay = 0) => {
+    if (!scene.sys?.isActive() || !layer.active) return;
     const localT = Phaser.Math.Clamp((launchState.t - delay) / Math.max(0.0001, 1 - delay), 0, 1);
     layer.redrawLength(Phaser.Math.Linear(0, fullLength, localT));
   };
-  scene.tweens.add({
+  const launchTween = scene.tweens.add({
     targets: launchState,
     t: 1,
     duration: visual.launchAnimMs,
     ease: 'Cubic.Out',
     onUpdate: () => {
+      if (!scene.sys?.isActive() || !core.active) return;
       animateLayerLaunch(core, visual.length, 0);
       animateLayerLaunch(body, visual.length, 0.08);
       animateLayerLaunch(glow, visual.length, 0.14);
       animateLayerLaunch(trail, trailLength, 0.1);
     },
+    onComplete: () => {
+      if (nearEvent.launchTween === launchTween) {
+        nearEvent.launchTween = null;
+      }
+    },
   });
+  nearEvent.launchTween = launchTween;
   applyNearAttackVisualTransform(laserVisual, nearEvent);
   return laserVisual;
 }
@@ -202,6 +216,7 @@ export function updateNearAttack(scene, now) {
   const attack = scene.activeNearAttack;
   if (!attack) return;
   if (now >= attack.endAt) {
+    stopNearAttackLaunchTween(scene, attack);
     attack.hitRect?.destroy();
     attack.laserVisual?.destroy();
     scene.activeNearAttack = null;
@@ -278,8 +293,12 @@ export function applyNearAttackDamage(scene, attack) {
 
 export function triggerNearAttack(scene, inputDir) {
   const dir = getNearAttackDirection(scene, inputDir);
-  scene.activeNearAttack?.hitRect?.destroy();
-  scene.activeNearAttack?.laserVisual?.destroy();
+  const prev = scene.activeNearAttack;
+  if (prev) {
+    stopNearAttackLaunchTween(scene, prev);
+    prev.hitRect?.destroy();
+    prev.laserVisual?.destroy();
+  }
   const nearEvent = {
     originX: scene.player.x,
     originY: scene.player.y,
