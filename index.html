@@ -39,7 +39,9 @@
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
   <script type="module">
     import {
+      NEAR_ATTACK_FRONT_CONTACT_TUNING,
       NEAR_ATTACK_HIT_TUNING,
+      isEnemyInNearForwardDefenseSector,
       stopNearAttackLaunchTween,
       triggerNearAttack,
       updateNearAttack,
@@ -129,7 +131,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.4';
-      const BUILD_TIMESTAMP = '2026-04-06 18:45';
+      const BUILD_TIMESTAMP = '2026-04-07 08:52';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -1068,7 +1070,20 @@
           const now = this.time.now;
           if (now - enemy.lastHit < 450) return;
           enemy.lastHit = now;
-          this.state.hp = Math.max(0, this.state.hp - 8);
+          const baseContactDamage = 8;
+          const near = this.activeNearAttack;
+          let damage = baseContactDamage;
+          if (
+            near
+            && now < near.endAt
+            && isEnemyInNearForwardDefenseSector(this, near, enemy)
+          ) {
+            damage = Math.max(
+              1,
+              Math.round(baseContactDamage * NEAR_ATTACK_FRONT_CONTACT_TUNING.damageTakenMultiplier),
+            );
+          }
+          this.state.hp = Math.max(0, this.state.hp - damage);
           this.updateHUD();
           if (this.state.hp === 0) this.gameOver();
         }
