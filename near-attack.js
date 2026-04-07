@@ -48,6 +48,11 @@ export const NEAR_ATTACK_DRIFT = {
   frictionScale: 0.93,
   /** 進行方向への補助加速度（px/s 換算、過剰に引っ張らない） */
   assistForce: 320,
+  /**
+   * 発動直後のみの前方初動ブースト（assist と同様 velocity に force*dt で加算、常時 assist は変更しない）。
+   */
+  boostDurationMs: 90,
+  boostForce: 920,
   /** ローカル Y オフセットに比例する中央寄せ（弱い） */
   centerPull: 14,
 };
@@ -116,6 +121,13 @@ function applyNearAttackDriftLane(scene, attack, dtMs) {
 
   body.velocity.x *= drift.frictionScale;
   body.velocity.y *= drift.frictionScale;
+
+  const elapsedMs = scene.time?.now != null ? scene.time.now - attack.startedAt : 0;
+  const inBoost = elapsedMs >= 0 && elapsedMs < drift.boostDurationMs;
+  if (inBoost) {
+    body.velocity.x += attack.dirX * drift.boostForce * dt;
+    body.velocity.y += attack.dirY * drift.boostForce * dt;
+  }
 
   body.velocity.x += cos * drift.assistForce * dt;
   body.velocity.y += sin * drift.assistForce * dt;
