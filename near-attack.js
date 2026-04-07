@@ -46,10 +46,15 @@ export const NEAR_ATTACK_HIT_TUNING = {
 export const NEAR_ATTACK_DRIFT = {
   /** 毎フレーム速度に掛ける係数（小さめの減衰＋後続の assist と併用） */
   frictionScale: 0.93,
-  /** 進行方向への補助加速度（px/s 換算、過剰に引っ張らない） */
-  assistForce: 320,
+  /** 進行方向への補助加速度（px/s 換算・単発インパルス後のごく弱い継続補助） */
+  assistForce: 130,
   /** ローカル Y オフセットに比例する中央寄せ（弱い） */
   centerPull: 14,
+  /**
+   * 発動瞬間のみ velocity へ加算（正規化 dir 方向、体感用に強め。
+   * 単位は速度と同系で、moveSpeed 300 前後の基準でチューンする）。
+   */
+  nearImpulse: 440,
 };
 
 /**
@@ -381,5 +386,13 @@ export function triggerNearAttack(scene, inputDir) {
   nearEvent.steerEndAt = nearEvent.startedAt + NEAR_ATTACK_VISUAL.steerDurationMs;
   nearEvent.hitEnemyUids = new Set();
   scene.activeNearAttack = nearEvent;
+
+  const body = scene.player?.body;
+  if (body) {
+    const kick = NEAR_ATTACK_DRIFT.nearImpulse;
+    body.velocity.x += dir.x * kick;
+    body.velocity.y += dir.y * kick;
+  }
+
   applyNearAttackDamage(scene, nearEvent);
 }
