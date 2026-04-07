@@ -52,6 +52,17 @@ export const NEAR_ATTACK_DRIFT = {
   centerPull: 14,
 };
 
+/**
+ * NEAR 表示中のみの「前方からの接触ダメージ」軽減（OBB 不使用・内積のみ）。
+ * activeNearAttack が有効な間・かつ endAt 未満のとき onEnemyTouch から利用する。
+ */
+export const NEAR_ATTACK_FRONT_CONTACT_TUNING = {
+  /** 正規化ベクトル player→enemy と NEAR の dir の内積がこれ以上なら「前方」（約 ±60°） */
+  minForwardDot: 0.5,
+  /** 接触ダメージに掛ける係数（1 - 0.32 ≒ 68% 軽減） */
+  damageTakenMultiplier: 0.32,
+};
+
 export const DEBUG_NEAR_ATTACK_HITBOX = false;
 
 export function stopNearAttackLaunchTween(scene, nearEvent) {
@@ -214,6 +225,25 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
   nearEvent.launchTween = launchTween;
   applyNearAttackVisualTransform(laserVisual, nearEvent);
   return laserVisual;
+}
+
+/**
+ * プレイヤー中心から敵中心への方向と NEAR の dir の内積で前方を判定する。
+ */
+export function isEnemyInNearForwardDefenseSector(scene, nearEvent, enemy) {
+  if (!scene?.player || !nearEvent || !enemy?.active) return false;
+  const px = scene.player.body?.center?.x ?? scene.player.x;
+  const py = scene.player.body?.center?.y ?? scene.player.y;
+  const ex = enemy.body?.center?.x ?? enemy.x;
+  const ey = enemy.body?.center?.y ?? enemy.y;
+  let vx = ex - px;
+  let vy = ey - py;
+  const len = Math.hypot(vx, vy);
+  if (len < 1e-4) return false;
+  vx /= len;
+  vy /= len;
+  const dot = vx * nearEvent.dirX + vy * nearEvent.dirY;
+  return dot >= NEAR_ATTACK_FRONT_CONTACT_TUNING.minForwardDot;
 }
 
 export function getNearAttackDirection(scene, preferredInputDir) {
