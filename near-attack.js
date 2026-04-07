@@ -26,7 +26,7 @@ export const NEAR_ATTACK_VISUAL = {
   /** core先行型launch：先端方向への移動量（全長に対する割合 0.2〜0.35） */
   launchCoreTravelRatio: 0.28,
   launchAnimMs: 55,
-  durationMs: 340,
+  durationMs: 460,
   steerLerp: 0.2,
   maxSteerStepRad: 0.12,
   steerDurationMs: 160,
