@@ -8,10 +8,18 @@ export const NEAR_ATTACK_VISUAL = {
   /** 表示のみ（判定は NEAR_ATTACK_PROFILE の range / width） */
   laneLength: NEAR_ATTACK_PROFILE.range,
   laneColor: 0xc5d9e8,
+  /** 根元はそのまま、先端へ向かってグラデでフェード（単一 Graphics） */
   laneAlpha: 0.5,
+  laneTipAlpha: 0.06,
   /** 根元・先端の全幅（細めの帯＋軽いテーパー） */
   laneWidth: 22,
   laneTipWidth: 17,
+  /** 前方軽減の可視化：dir 方向に短い薄い矩形（長さ×幅・ローカル X が進行方向） */
+  forwardPlaneLength: 46,
+  forwardPlaneWidth: 54,
+  forwardPlaneOffset: 34,
+  forwardPlaneColor: 0xc5d9e8,
+  forwardPlaneAlpha: 0.2,
   durationMs: 460,
   steerLerp: 0.2,
   maxSteerStepRad: 0.12,
@@ -151,22 +159,59 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
   const length = visual.laneLength;
   const halfBase = visual.laneWidth * 0.5;
   const halfTip = visual.laneTipWidth * 0.5;
-  const lane = scene.add.polygon(
-    0,
-    0,
-    [
-      0, -halfBase,
-      0, halfBase,
-      length, halfTip,
-      length, -halfTip,
-    ],
-    visual.laneColor,
-    visual.laneAlpha,
-  );
+  const strips = 22;
+  const lane = scene.add.graphics();
+  const widthAt = (x) => halfBase + (halfTip - halfBase) * (x / length);
+  for (let i = 0; i < strips; i++) {
+    const x0 = (length * i) / strips;
+    const x1 = (length * (i + 1)) / strips;
+    const w0 = widthAt(x0);
+    const w1 = widthAt(x1);
+    const tMid = ((x0 + x1) * 0.5) / length;
+    const a = Phaser.Math.Linear(visual.laneAlpha, visual.laneTipAlpha, tMid);
+    lane.fillStyle(visual.laneColor, a);
+    lane.beginPath();
+    lane.moveTo(x0, -w0);
+    lane.lineTo(x1, -w1);
+    lane.lineTo(x1, w1);
+    lane.lineTo(x0, w0);
+    lane.closePath();
+    lane.fillPath();
+  }
   lane.setOrigin(0, 0.5);
   lane.setDepth(scene.player.depth + 3);
   applyNearAttackVisualTransform(lane, nearEvent);
   return lane;
+}
+
+export function emitNearAttackForwardPlane(scene) {
+  const visual = NEAR_ATTACK_VISUAL;
+  const plane = scene.add.rectangle(
+    0,
+    0,
+    visual.forwardPlaneLength,
+    visual.forwardPlaneWidth,
+    visual.forwardPlaneColor,
+    visual.forwardPlaneAlpha,
+  );
+  plane.setStrokeStyle(0);
+  plane.setBlendMode(Phaser.BlendModes.NORMAL);
+  plane.setDepth(scene.player.depth + 2);
+  plane.setOrigin(0.5, 0.5);
+  return plane;
+}
+
+export function updateNearAttackForwardPlane(scene, nearEvent) {
+  const plane = nearEvent?.forwardPlane;
+  const body = scene.player?.body;
+  if (!plane || !body) return;
+  const visual = NEAR_ATTACK_VISUAL;
+  const halfLen = visual.forwardPlaneLength * 0.5;
+  const dist = visual.forwardPlaneOffset + halfLen;
+  const cx = body.center.x + nearEvent.dirX * dist;
+  const cy = body.center.y + nearEvent.dirY * dist;
+  plane.setPosition(cx, cy);
+  plane.setRotation(nearEvent.angle);
 }
 
 /**
@@ -228,6 +273,7 @@ export function updateNearAttack(scene, now, dtMs) {
     stopNearAttackLaunchTween(scene, attack);
     attack.hitRect?.destroy();
     attack.laserVisual?.destroy();
+    attack.forwardPlane?.destroy();
     scene.activeNearAttack = null;
     return;
   }
@@ -258,6 +304,7 @@ export function updateNearAttack(scene, now, dtMs) {
 
   if (attack.hitRect) applyNearAttackTransform(attack.hitRect, attack);
   if (attack.laserVisual) applyNearAttackVisualTransform(attack.laserVisual, attack);
+  updateNearAttackForwardPlane(scene, attack);
   applyNearAttackDriftLane(scene, attack, dtMs ?? scene.game?.loop?.delta ?? 16);
   applyNearAttackDamage(scene, attack);
 }
@@ -308,6 +355,7 @@ export function triggerNearAttack(scene, inputDir) {
     stopNearAttackLaunchTween(scene, prev);
     prev.hitRect?.destroy();
     prev.laserVisual?.destroy();
+    prev.forwardPlane?.destroy();
   }
   const nearEvent = {
     originX: scene.player.x,
@@ -318,6 +366,8 @@ export function triggerNearAttack(scene, inputDir) {
   };
   nearEvent.hitRect = emitNearAttackRectangle(scene, nearEvent);
   nearEvent.laserVisual = emitNearAttackLaserVisual(scene, nearEvent);
+  nearEvent.forwardPlane = emitNearAttackForwardPlane(scene);
+  updateNearAttackForwardPlane(scene, nearEvent);
   nearEvent.startedAt = scene.time.now;
   nearEvent.endAt = nearEvent.startedAt + NEAR_ATTACK_VISUAL.durationMs;
   nearEvent.steerEndAt = nearEvent.startedAt + NEAR_ATTACK_VISUAL.steerDurationMs;

@@ -422,6 +422,7 @@
               stopNearAttackLaunchTween(this, this.activeNearAttack);
               this.activeNearAttack.hitRect?.destroy();
               this.activeNearAttack.laserVisual?.destroy();
+              this.activeNearAttack.forwardPlane?.destroy();
               this.activeNearAttack = null;
             }
             this.disposeSnapAudio();
