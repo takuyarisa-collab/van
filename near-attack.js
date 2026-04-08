@@ -257,7 +257,7 @@ export function updateNearAttack(scene, now, dtMs) {
   }
 
   if (attack.hitRect) applyNearAttackTransform(attack.hitRect, attack);
-  if (attack.laserVisual) applyNearAttackTransform(attack.laserVisual, attack);
+  if (attack.laserVisual) applyNearAttackVisualTransform(attack.laserVisual, attack);
   applyNearAttackDriftLane(scene, attack, dtMs ?? scene.game?.loop?.delta ?? 16);
   applyNearAttackDamage(scene, attack);
 }
