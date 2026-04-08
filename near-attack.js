@@ -5,27 +5,13 @@ export const NEAR_ATTACK_PROFILE = {
 };
 
 export const NEAR_ATTACK_VISUAL = {
-  length: NEAR_ATTACK_PROFILE.range,
-  width: NEAR_ATTACK_PROFILE.width,
-  coreColor: 0xffffff,
-  coreAlpha: 1,
-  coreWidth: 3.3,
-  coreTipWidth: 1.27,
-  glowColor: 0x8fd6ff,
-  glowAlpha: 0.24,
-  glowWidth: 18,
-  glowTipWidth: 6,
-  trailColor: 0xaedfff,
-  trailAlpha: 0.1,
-  trailWidth: 8,
-  trailTipWidth: 3,
-  trailLengthScale: 0.68,
-  trailBackOffset: 22,
-  /** グロー層の表示（一時オフ可） */
-  showGlow: false,
-  /** core先行型launch：先端方向への移動量（全長に対する割合 0.2〜0.35） */
-  launchCoreTravelRatio: 0.28,
-  launchAnimMs: 55,
+  /** 表示のみ（判定は NEAR_ATTACK_PROFILE の range / width） */
+  laneLength: NEAR_ATTACK_PROFILE.range,
+  laneColor: 0xc5d9e8,
+  laneAlpha: 0.5,
+  /** 根元・先端の全幅（細めの帯＋軽いテーパー） */
+  laneWidth: 22,
+  laneTipWidth: 17,
   durationMs: 460,
   steerLerp: 0.2,
   maxSteerStepRad: 0.12,
@@ -77,11 +63,10 @@ export function stopNearAttackLaunchTween(scene, nearEvent) {
 }
 
 export function getNearAttackTransform(nearEvent) {
-  const visual = NEAR_ATTACK_VISUAL;
-  const halfLength = visual.length * 0.5;
+  const halfLength = NEAR_ATTACK_PROFILE.range * 0.5;
   return {
-    length: visual.length,
-    width: visual.width,
+    length: NEAR_ATTACK_PROFILE.range,
+    width: NEAR_ATTACK_PROFILE.width,
     angle: nearEvent.angle,
     centerX: nearEvent.originX + nearEvent.dirX * halfLength,
     centerY: nearEvent.originY + nearEvent.dirY * halfLength,
@@ -143,8 +128,14 @@ export function applyNearAttackVisualTransform(gameObject, nearEvent) {
 }
 
 export function emitNearAttackRectangle(scene, nearEvent) {
-  const visual = NEAR_ATTACK_VISUAL;
-  const hitRect = scene.add.rectangle(0, 0, visual.length, visual.width, 0xffffff, 1)
+  const hitRect = scene.add.rectangle(
+    0,
+    0,
+    NEAR_ATTACK_PROFILE.range,
+    NEAR_ATTACK_PROFILE.width,
+    0xffffff,
+    1,
+  )
     .setDepth(scene.player.depth + 4);
   hitRect.setOrigin(0.5, 0.5);
   hitRect.setFillStyle(0xffffff, 0);
@@ -157,79 +148,25 @@ export function emitNearAttackRectangle(scene, nearEvent) {
 
 export function emitNearAttackLaserVisual(scene, nearEvent) {
   const visual = NEAR_ATTACK_VISUAL;
-  const laserVisual = scene.add.container(0, 0).setDepth(scene.player.depth + 3);
-
-  const createTaperLayer = (length, baseWidth, tipWidth, color, alpha) => {
-    const halfBase = baseWidth * 0.5;
-    const layerPoints = [
+  const length = visual.laneLength;
+  const halfBase = visual.laneWidth * 0.5;
+  const halfTip = visual.laneTipWidth * 0.5;
+  const lane = scene.add.polygon(
+    0,
+    0,
+    [
       0, -halfBase,
       0, halfBase,
-      0, 0,
-      0, 0,
-    ];
-    const layer = scene.add.polygon(
-      0,
-      0,
-      layerPoints,
-      color,
-      alpha,
-    );
-    layer.setOrigin(0, 0.5);
-    layer.redrawLength = (nextLength) => {
-      const clampedLength = Math.max(0, nextLength);
-      const halfTip = tipWidth * 0.5;
-      layer.setTo([
-        0, -halfBase,
-        0, halfBase,
-        clampedLength, halfTip,
-        clampedLength, -halfTip,
-      ]);
-    };
-    layer.redrawLength(length);
-    return layer;
-  };
-
-  const glow = createTaperLayer(visual.length, visual.glowWidth, visual.glowTipWidth, visual.glowColor, visual.glowAlpha);
-  glow.setPosition(0, 0);
-  glow.setBlendMode(Phaser.BlendModes.ADD);
-  glow.setVisible(visual.showGlow);
-
-  const core = createTaperLayer(visual.length, visual.coreWidth, visual.coreTipWidth, visual.coreColor, visual.coreAlpha);
-  core.setPosition(0, 0);
-  core.setBlendMode(Phaser.BlendModes.ADD);
-
-  const trailLength = visual.length * visual.trailLengthScale;
-  const trail = createTaperLayer(
-    trailLength,
-    visual.trailWidth,
-    visual.trailTipWidth,
-    visual.trailColor,
-    visual.trailAlpha,
+      length, halfTip,
+      length, -halfTip,
+    ],
+    visual.laneColor,
+    visual.laneAlpha,
   );
-  trail.setPosition(
-    -visual.trailBackOffset,
-    0,
-  );
-  trail.setBlendMode(Phaser.BlendModes.ADD);
-
-  laserVisual.add([trail, glow, core]);
-  const launchHalfMs = Math.max(1, Math.round(visual.launchAnimMs * 0.5));
-  const launchTween = scene.tweens.add({
-    targets: core,
-    x: visual.length * visual.launchCoreTravelRatio,
-    alpha: visual.coreAlpha * 0.62,
-    duration: launchHalfMs,
-    ease: 'Cubic.Out',
-    yoyo: true,
-    onComplete: () => {
-      if (nearEvent.launchTween === launchTween) {
-        nearEvent.launchTween = null;
-      }
-    },
-  });
-  nearEvent.launchTween = launchTween;
-  applyNearAttackVisualTransform(laserVisual, nearEvent);
-  return laserVisual;
+  lane.setOrigin(0, 0.5);
+  lane.setDepth(scene.player.depth + 3);
+  applyNearAttackVisualTransform(lane, nearEvent);
+  return lane;
 }
 
 /**
@@ -320,7 +257,7 @@ export function updateNearAttack(scene, now, dtMs) {
   }
 
   if (attack.hitRect) applyNearAttackTransform(attack.hitRect, attack);
-  if (attack.laserVisual) applyNearAttackVisualTransform(attack.laserVisual, attack);
+  if (attack.laserVisual) applyNearAttackTransform(attack.laserVisual, attack);
   applyNearAttackDriftLane(scene, attack, dtMs ?? scene.game?.loop?.delta ?? 16);
   applyNearAttackDamage(scene, attack);
 }
