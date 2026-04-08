@@ -9,8 +9,8 @@ export const NEAR_ATTACK_VISUAL = {
   laneLength: NEAR_ATTACK_PROFILE.range,
   laneColor: 0xc5d9e8,
   /** 根元はそのまま、先端へ向かってグラデでフェード（単一 Graphics） */
-  laneAlpha: 0.5,
-  laneTipAlpha: 0.06,
+  laneAlpha: 0.62,
+  laneTipAlpha: 0.28,
   /** 根元・先端の全幅（細めの帯＋軽いテーパー） */
   laneWidth: 22,
   laneTipWidth: 17,
@@ -159,8 +159,9 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
   const length = visual.laneLength;
   const halfBase = visual.laneWidth * 0.5;
   const halfTip = visual.laneTipWidth * 0.5;
-  const strips = 22;
+  const strips = 10;
   const lane = scene.add.graphics();
+  lane.setBlendMode(Phaser.BlendModes.NORMAL);
   const widthAt = (x) => halfBase + (halfTip - halfBase) * (x / length);
   for (let i = 0; i < strips; i++) {
     const x0 = (length * i) / strips;
