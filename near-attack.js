@@ -46,15 +46,15 @@ export const NEAR_ATTACK_HIT_TUNING = {
 export const NEAR_ATTACK_DRIFT = {
   /** 毎フレーム速度に掛ける係数（小さめの減衰＋後続の assist と併用） */
   frictionScale: 0.93,
-  /** 進行方向への補助加速度（px/s 換算、過剰に引っ張らない） */
-  assistForce: 320,
-  /**
-   * 発動直後のみの前方初動ブースト（assist と同様 velocity に force*dt で加算、常時 assist は変更しない）。
-   */
-  boostDurationMs: 90,
-  boostForce: 920,
+  /** 進行方向への補助加速度（px/s 換算・単発インパルス後のごく弱い継続補助） */
+  assistForce: 130,
   /** ローカル Y オフセットに比例する中央寄せ（弱い） */
   centerPull: 14,
+  /**
+   * 発動瞬間のみ velocity へ加算（正規化 dir 方向、体感用に強め。
+   * 単位は速度と同系で、moveSpeed 300 前後の基準でチューンする）。
+   */
+  nearImpulse: 440,
 };
 
 /**
@@ -121,13 +121,6 @@ function applyNearAttackDriftLane(scene, attack, dtMs) {
 
   body.velocity.x *= drift.frictionScale;
   body.velocity.y *= drift.frictionScale;
-
-  const elapsedMs = scene.time?.now != null ? scene.time.now - attack.startedAt : 0;
-  const inBoost = elapsedMs >= 0 && elapsedMs < drift.boostDurationMs;
-  if (inBoost) {
-    body.velocity.x += attack.dirX * drift.boostForce * dt;
-    body.velocity.y += attack.dirY * drift.boostForce * dt;
-  }
 
   body.velocity.x += cos * drift.assistForce * dt;
   body.velocity.y += sin * drift.assistForce * dt;
@@ -393,5 +386,13 @@ export function triggerNearAttack(scene, inputDir) {
   nearEvent.steerEndAt = nearEvent.startedAt + NEAR_ATTACK_VISUAL.steerDurationMs;
   nearEvent.hitEnemyUids = new Set();
   scene.activeNearAttack = nearEvent;
+
+  const body = scene.player?.body;
+  if (body) {
+    const kick = NEAR_ATTACK_DRIFT.nearImpulse;
+    body.velocity.x += dir.x * kick;
+    body.velocity.y += dir.y * kick;
+  }
+
   applyNearAttackDamage(scene, nearEvent);
 }
