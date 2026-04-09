@@ -130,8 +130,15 @@ export function applyNearAttackTransform(gameObject, nearEvent) {
   gameObject.setRotation(transform.angle);
 }
 
-export function applyNearAttackVisualTransform(gameObject, nearEvent) {
-  gameObject.setPosition(nearEvent.originX, nearEvent.originY);
+/**
+ * NEAR レーンの見た目だけ。プレイヤーの body 中心に追従（ワールド座標・scrollFactor 1）。
+ * nearEvent.originX/Y は判定・getNearAttackTransform 用のまま変更しない。
+ */
+export function applyNearAttackVisualTransform(scene, gameObject, nearEvent) {
+  const body = scene.player?.body;
+  const ax = body?.center?.x ?? nearEvent.originX;
+  const ay = body?.center?.y ?? nearEvent.originY;
+  gameObject.setPosition(ax, ay);
   gameObject.setRotation(nearEvent.angle);
 }
 
@@ -162,6 +169,7 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
   const strips = 10;
   const lane = scene.add.graphics();
   lane.setBlendMode(Phaser.BlendModes.NORMAL);
+  lane.setScrollFactor(1, 1);
   const widthAt = (x) => halfBase + (halfTip - halfBase) * (x / length);
   for (let i = 0; i < strips; i++) {
     const x0 = (length * i) / strips;
@@ -179,9 +187,8 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
     lane.closePath();
     lane.fillPath();
   }
-  lane.setOrigin(0, 0.5);
   lane.setDepth(scene.player.depth + 3);
-  applyNearAttackVisualTransform(lane, nearEvent);
+  applyNearAttackVisualTransform(scene, lane, nearEvent);
   return lane;
 }
 
@@ -304,7 +311,7 @@ export function updateNearAttack(scene, now, dtMs) {
   }
 
   if (attack.hitRect) applyNearAttackTransform(attack.hitRect, attack);
-  if (attack.laserVisual) applyNearAttackVisualTransform(attack.laserVisual, attack);
+  if (attack.laserVisual) applyNearAttackVisualTransform(scene, attack.laserVisual, attack);
   updateNearAttackForwardPlane(scene, attack);
   applyNearAttackDriftLane(scene, attack, dtMs ?? scene.game?.loop?.delta ?? 16);
   applyNearAttackDamage(scene, attack);
