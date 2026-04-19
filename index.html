@@ -245,6 +245,85 @@
       };
       const getActiveBuildTuning = () => BUILD_DIRECTION_TUNING[activeBuildDirection] || BUILD_DIRECTION_TUNING[BUILD_DIRECTION.SNAP];
 
+      class BootScene extends Phaser.Scene {
+        constructor() {
+          super('boot');
+        }
+
+        create() {
+          const cx = WORLD_W / 2;
+          const cy = WORLD_H / 2;
+          const durationMs = 350;
+
+          const styleError = {
+            fontFamily: 'system-ui, sans-serif',
+            fontSize: '52px',
+            fontStyle: 'bold',
+            color: '#ff5a6a',
+            stroke: '#3a1018',
+            strokeThickness: 4,
+          };
+          const styleOverlap = {
+            fontFamily: 'system-ui, sans-serif',
+            fontSize: '52px',
+            fontStyle: 'bold',
+            color: '#58f0ff',
+            stroke: '#0a2833',
+            strokeThickness: 4,
+          };
+
+          const textError = this.add.text(cx - 16, cy - 16, 'Error', styleError).setOrigin(0.5);
+          const textOverlap = this.add.text(cx, cy, 'Overlap', styleOverlap).setOrigin(0.5);
+
+          textError.setAlpha(0.94);
+          textOverlap.setAlpha(0.94);
+
+          this.input.once('pointerdown', () => {
+            this.tweens.add({
+              targets: textError,
+              x: cx,
+              y: cy - 20,
+              duration: durationMs,
+              ease: 'Sine.easeOut',
+            });
+            this.tweens.add({
+              targets: textOverlap,
+              x: cx,
+              y: cy + 20,
+              duration: durationMs,
+              ease: 'Sine.easeOut',
+              onComplete: () => this.scene.start('home'),
+            });
+          });
+        }
+      }
+
+      class HomeScene extends Phaser.Scene {
+        constructor() {
+          super('home');
+        }
+
+        create() {
+          const cx = WORLD_W / 2;
+          const cy = WORLD_H / 2;
+
+          this.add.text(cx, cy - 12, 'START', {
+            fontFamily: 'system-ui, sans-serif',
+            fontSize: '44px',
+            fontStyle: 'bold',
+            color: '#eef3ff',
+          }).setOrigin(0.5);
+
+          this.add.text(cx, cy + 44, 'Tap to play', {
+            fontFamily: 'system-ui, sans-serif',
+            fontSize: '18px',
+            color: '#9aaccc',
+          }).setOrigin(0.5);
+
+          this.input.once('pointerdown', () => this.scene.start('game'));
+        }
+      }
+
       class GameScene extends Phaser.Scene {
         constructor() {
           super('game');
@@ -1749,7 +1828,7 @@
           width: WORLD_W,
           height: WORLD_H,
         },
-        scene: [GameScene],
+        scene: [BootScene, HomeScene, GameScene],
       });
     })();
   </script>
