@@ -38,6 +38,7 @@
   <div id="game-wrap"></div>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
   <script type="module">
+    import { mountBootHomeBackdrop } from './boot-home-bg.js';
     import {
       NEAR_ATTACK_FRONT_CONTACT_TUNING,
       NEAR_ATTACK_HIT_TUNING,
@@ -251,9 +252,22 @@
         }
 
         create() {
+          this._bootBackdrop = mountBootHomeBackdrop(this, {
+            width: WORLD_W,
+            height: WORLD_H,
+            seed: 0x70f700,
+            depthBase: -55,
+            structureAlpha: 1.05,
+            noiseAlpha: 1,
+            fragmentAlpha: 1.02,
+            noiseDots: 86,
+          });
+
           const cx = WORLD_W / 2;
           const cy = WORLD_H / 2;
-          const durationMs = 350;
+          const moveDurationMs = 430;
+          const settleHoldMs = 62;
+          const targetSeparation = 26;
 
           const styleError = {
             fontFamily: 'system-ui, sans-serif',
@@ -272,27 +286,63 @@
             strokeThickness: 4,
           };
 
-          const textError = this.add.text(cx - 16, cy - 16, 'Error', styleError).setOrigin(0.5);
-          const textOverlap = this.add.text(cx, cy, 'Overlap', styleOverlap).setOrigin(0.5);
+          const textError = this.add.text(cx - 24, cy - 20, 'Error', styleError).setOrigin(0.5);
+          const textOverlap = this.add.text(cx + 18, cy + 14, 'Overlap', styleOverlap).setOrigin(0.5);
+          textError.setAngle(-5.5);
+          textOverlap.setAngle(4.2);
+          textError.setAlpha(0.88);
+          textOverlap.setAlpha(0.88);
+          textError.setDepth(5);
+          textOverlap.setDepth(5);
 
-          textError.setAlpha(0.94);
-          textOverlap.setAlpha(0.94);
+          this.events.once('shutdown', () => {
+            this._bootBackdrop?.destroy?.();
+            this._bootBackdrop = null;
+          });
+
+          const goHome = () => {
+            this._bootBackdrop?.destroy?.();
+            this._bootBackdrop = null;
+            this.scene.start('home');
+          };
 
           this.input.once('pointerdown', () => {
+            let done = 0;
+            const onMoveFinished = () => {
+              done += 1;
+              if (done !== 2) return;
+              this.time.delayedCall(settleHoldMs, () => {
+                this.tweens.add({
+                  targets: [textError, textOverlap],
+                  alpha: 1,
+                  duration: 105,
+                  ease: 'Cubic.easeOut',
+                  onComplete: () => {
+                    this.time.delayedCall(48, goHome);
+                  },
+                });
+              });
+            };
+
             this.tweens.add({
               targets: textError,
               x: cx,
-              y: cy - 20,
-              duration: durationMs,
-              ease: 'Sine.easeOut',
+              y: cy - targetSeparation,
+              angle: 0,
+              duration: moveDurationMs,
+              ease: 'Back.easeOut',
+              easeParams: [1.22],
+              onComplete: onMoveFinished,
             });
             this.tweens.add({
               targets: textOverlap,
               x: cx,
-              y: cy + 20,
-              duration: durationMs,
-              ease: 'Sine.easeOut',
-              onComplete: () => this.scene.start('home'),
+              y: cy + targetSeparation,
+              angle: 0,
+              duration: moveDurationMs,
+              ease: 'Back.easeOut',
+              easeParams: [1.22],
+              onComplete: onMoveFinished,
             });
           });
         }
@@ -304,6 +354,17 @@
         }
 
         create() {
+          this._homeBackdrop = mountBootHomeBackdrop(this, {
+            width: WORLD_W,
+            height: WORLD_H,
+            seed: 0xcafe404,
+            depthBase: -55,
+            structureAlpha: 0.95,
+            noiseAlpha: 0.92,
+            fragmentAlpha: 0.9,
+            noiseDots: 78,
+          });
+
           const cx = WORLD_W / 2;
           const cy = WORLD_H / 2;
 
@@ -312,15 +373,24 @@
             fontSize: '44px',
             fontStyle: 'bold',
             color: '#eef3ff',
-          }).setOrigin(0.5);
+          }).setOrigin(0.5).setDepth(5);
 
           this.add.text(cx, cy + 44, 'Tap to play', {
             fontFamily: 'system-ui, sans-serif',
             fontSize: '18px',
             color: '#9aaccc',
-          }).setOrigin(0.5);
+          }).setOrigin(0.5).setDepth(5);
 
-          this.input.once('pointerdown', () => this.scene.start('game'));
+          this.events.once('shutdown', () => {
+            this._homeBackdrop?.destroy?.();
+            this._homeBackdrop = null;
+          });
+
+          this.input.once('pointerdown', () => {
+            this._homeBackdrop?.destroy?.();
+            this._homeBackdrop = null;
+            this.scene.start('game');
+          });
         }
       }
 
