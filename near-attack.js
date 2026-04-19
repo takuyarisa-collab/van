@@ -40,15 +40,14 @@ export const NEAR_ATTACK_HIT_TUNING = {
 export const NEAR_ATTACK_DRIFT = {
   /** 毎フレーム速度に掛ける係数（小さめの減衰＋後続の assist と併用） */
   frictionScale: 0.93,
-  /** 進行方向への補助加速度（px/s 換算・単発インパルス後のごく弱い継続補助） */
-  assistForce: 130,
+  /** 進行方向への継続補助（レーンに乗った引っ張り・dir 固定） */
+  assistForce: 300,
   /** ローカル Y オフセットに比例する中央寄せ（弱い） */
   centerPull: 14,
-  /**
-   * 発動瞬間のみ velocity へ加算（正規化 dir 方向、体感用に強め。
-   * 単位は速度と同系で、moveSpeed 300 前後の基準でチューンする）。
-   */
-  nearImpulse: 440,
+  /** 発動直後のみ dir 方向へ強く加速（継続、ms） */
+  boostDurationMs: 120,
+  /** ブースト中、毎フレーム velocity に dir 方向で加算（assist と同次元） */
+  boostForce: 1650,
 };
 
 /**
@@ -115,6 +114,13 @@ function applyNearAttackDriftLane(scene, attack, dtMs) {
   body.velocity.x *= drift.frictionScale;
   body.velocity.y *= drift.frictionScale;
 
+  const now = scene.time.now;
+  const sinceStart = now - attack.startedAt;
+  if (sinceStart >= 0 && sinceStart < drift.boostDurationMs) {
+    body.velocity.x += attack.dirX * drift.boostForce * dt;
+    body.velocity.y += attack.dirY * drift.boostForce * dt;
+  }
+
   body.velocity.x += cos * drift.assistForce * dt;
   body.velocity.y += sin * drift.assistForce * dt;
 
@@ -130,15 +136,9 @@ export function applyNearAttackTransform(gameObject, nearEvent) {
   gameObject.setRotation(transform.angle);
 }
 
-/**
- * NEAR レーンの見た目だけ。プレイヤーの body 中心に追従（ワールド座標・scrollFactor 1）。
- * nearEvent.originX/Y は判定・getNearAttackTransform 用のまま変更しない。
- */
-export function applyNearAttackVisualTransform(scene, gameObject, nearEvent) {
-  const body = scene.player?.body;
-  const ax = body?.center?.x ?? nearEvent.originX;
-  const ay = body?.center?.y ?? nearEvent.originY;
-  gameObject.setPosition(ax, ay);
+/** レーン表示：発動時 origin・angle で固定（毎フレーム追従しない） */
+export function applyNearAttackFixedLaneTransform(gameObject, nearEvent) {
+  gameObject.setPosition(nearEvent.originX, nearEvent.originY);
   gameObject.setRotation(nearEvent.angle);
 }
 
@@ -188,7 +188,7 @@ export function emitNearAttackLaserVisual(scene, nearEvent) {
     lane.fillPath();
   }
   lane.setDepth(scene.player.depth + 3);
-  applyNearAttackVisualTransform(scene, lane, nearEvent);
+  applyNearAttackFixedLaneTransform(lane, nearEvent);
   return lane;
 }
 
@@ -257,23 +257,6 @@ export function getNearAttackDirection(scene, preferredInputDir) {
   return new Phaser.Math.Vector2(0, -1);
 }
 
-export function getNearAttackTrackingDirection(scene) {
-  const desiredSpeed = scene.state.desiredVel.length();
-  if (desiredSpeed > NEAR_ATTACK_VISUAL.minSteerSpeed) {
-    return new Phaser.Math.Vector2(
-      scene.state.desiredVel.x / desiredSpeed,
-      scene.state.desiredVel.y / desiredSpeed,
-    );
-  }
-  const vx = scene.player.body.velocity.x;
-  const vy = scene.player.body.velocity.y;
-  const speed = Math.hypot(vx, vy);
-  if (speed > NEAR_ATTACK_VISUAL.minSteerSpeed) {
-    return new Phaser.Math.Vector2(vx / speed, vy / speed);
-  }
-  return null;
-}
-
 export function updateNearAttack(scene, now, dtMs) {
   const attack = scene.activeNearAttack;
   if (!attack) return;
@@ -286,32 +269,7 @@ export function updateNearAttack(scene, now, dtMs) {
     return;
   }
 
-  if (now < attack.steerEndAt) {
-    const targetDir = getNearAttackTrackingDirection(scene);
-    if (targetDir) {
-      const targetAngle = Math.atan2(targetDir.y, targetDir.x);
-      const elapsed = now - attack.startedAt;
-      const followWeight = Phaser.Math.Clamp(
-        1 - (elapsed / Math.max(1, NEAR_ATTACK_VISUAL.steerDurationMs)),
-        0,
-        1,
-      );
-      const delta = Phaser.Math.Angle.Wrap(targetAngle - attack.angle);
-      const steerStep = Phaser.Math.Clamp(
-        delta * NEAR_ATTACK_VISUAL.steerLerp * followWeight,
-        -NEAR_ATTACK_VISUAL.maxSteerStepRad,
-        NEAR_ATTACK_VISUAL.maxSteerStepRad,
-      );
-      attack.angle = Phaser.Math.Angle.Wrap(
-        attack.angle + steerStep,
-      );
-      attack.dirX = Math.cos(attack.angle);
-      attack.dirY = Math.sin(attack.angle);
-    }
-  }
-
   if (attack.hitRect) applyNearAttackTransform(attack.hitRect, attack);
-  if (attack.laserVisual) applyNearAttackVisualTransform(scene, attack.laserVisual, attack);
   updateNearAttackForwardPlane(scene, attack);
   applyNearAttackDriftLane(scene, attack, dtMs ?? scene.game?.loop?.delta ?? 16);
   applyNearAttackDamage(scene, attack);
@@ -378,16 +336,8 @@ export function triggerNearAttack(scene, inputDir) {
   updateNearAttackForwardPlane(scene, nearEvent);
   nearEvent.startedAt = scene.time.now;
   nearEvent.endAt = nearEvent.startedAt + NEAR_ATTACK_VISUAL.durationMs;
-  nearEvent.steerEndAt = nearEvent.startedAt + NEAR_ATTACK_VISUAL.steerDurationMs;
   nearEvent.hitEnemyUids = new Set();
   scene.activeNearAttack = nearEvent;
-
-  const body = scene.player?.body;
-  if (body) {
-    const kick = NEAR_ATTACK_DRIFT.nearImpulse;
-    body.velocity.x += dir.x * kick;
-    body.velocity.y += dir.y * kick;
-  }
 
   applyNearAttackDamage(scene, nearEvent);
 }
