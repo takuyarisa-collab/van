@@ -317,9 +317,9 @@
 
           this.input.once('pointerdown', () => {
             const frags = this._bootTitle.fragments;
-            const letterCount = frags.length;
+            const glitchG = this._bootTitle.glitchGraphics;
             let done = 0;
-            const need = 4 + letterCount;
+            const need = 5 + frags.length;
             let settleScheduled = false;
             const tick = () => {
               done += 1;
@@ -333,13 +333,24 @@
                   scaleY: 1.05,
                   duration: 75,
                   yoyo: true,
-                  ease: 'Sine.easeOut',
+                  ease: 'Back.easeOut',
                   onComplete: () => this.time.delayedCall(42, goHome),
                 });
               });
             };
 
             this._bootBackdrop.convergeLayers(convergeMs, 'Back.easeOut', [1.14], tick);
+
+            if (glitchG) {
+              this.tweens.add({
+                targets: glitchG,
+                alpha: 0,
+                duration: convergeMs,
+                ease: 'Back.easeOut',
+                easeParams: [1.14],
+                onComplete: tick,
+              });
+            }
 
             frags.forEach((f) => {
               this.tweens.add({
