@@ -38,7 +38,11 @@
   <div id="game-wrap"></div>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
   <script type="module">
-    import { mountBootHomeBackdrop } from './boot-home-bg.js';
+    import {
+      createScatteredBootTitle,
+      mountBootCollapsedBackdrop,
+      mountBootHomeBackdrop,
+    } from './boot-home-bg.js';
     import {
       NEAR_ATTACK_FRONT_CONTACT_TUNING,
       NEAR_ATTACK_HIT_TUNING,
@@ -131,8 +135,8 @@
         NEAR_MISS: 'near miss',
         FAIL: 'fail',
       };
-      const APP_VERSION = '0.1.5';
-      const BUILD_TIMESTAMP = '2026-04-19 18:00';
+      const APP_VERSION = '0.1.6';
+      const BUILD_TIMESTAMP = '2026-04-19 21:30';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -252,7 +256,12 @@
         }
 
         create() {
-          this._bootBackdrop = mountBootHomeBackdrop(this, {
+          const cx = WORLD_W / 2;
+          const cy = WORLD_H / 2;
+          const convergeMs = 260;
+          const settleHoldMs = 68;
+
+          this._bootBackdrop = mountBootCollapsedBackdrop(this, {
             width: WORLD_W,
             height: WORLD_H,
             seed: 0x70f700,
@@ -262,12 +271,6 @@
             fragmentAlpha: 1.02,
             noiseDots: 86,
           });
-
-          const cx = WORLD_W / 2;
-          const cy = WORLD_H / 2;
-          const moveDurationMs = 430;
-          const settleHoldMs = 62;
-          const targetSeparation = 26;
 
           const styleError = {
             fontFamily: 'system-ui, sans-serif',
@@ -286,63 +289,70 @@
             strokeThickness: 4,
           };
 
-          const textError = this.add.text(cx - 24, cy - 20, 'Error', styleError).setOrigin(0.5);
-          const textOverlap = this.add.text(cx + 18, cy + 14, 'Overlap', styleOverlap).setOrigin(0.5);
-          textError.setAngle(-5.5);
-          textOverlap.setAngle(4.2);
-          textError.setAlpha(0.88);
-          textOverlap.setAlpha(0.88);
-          textError.setDepth(5);
-          textOverlap.setDepth(5);
+          this._bootTitle = createScatteredBootTitle(this, {
+            width: WORLD_W,
+            height: WORLD_H,
+            cx,
+            cy,
+            lineGap: 27,
+            seed: 0x70f701,
+            styleError,
+            styleOverlap,
+          });
 
           this.events.once('shutdown', () => {
             this._bootBackdrop?.destroy?.();
+            this._bootTitle?.destroy?.();
             this._bootBackdrop = null;
+            this._bootTitle = null;
           });
 
           const goHome = () => {
             this._bootBackdrop?.destroy?.();
+            this._bootTitle?.destroy?.();
             this._bootBackdrop = null;
+            this._bootTitle = null;
             this.scene.start('home');
           };
 
           this.input.once('pointerdown', () => {
+            const frags = this._bootTitle.fragments;
+            const letterCount = frags.length;
             let done = 0;
-            const onMoveFinished = () => {
+            const need = 4 + letterCount;
+            let settleScheduled = false;
+            const tick = () => {
               done += 1;
-              if (done !== 2) return;
+              if (done < need || settleScheduled) return;
+              settleScheduled = true;
               this.time.delayedCall(settleHoldMs, () => {
+                const texts = frags.map((f) => f.text);
                 this.tweens.add({
-                  targets: [textError, textOverlap],
-                  alpha: 1,
-                  duration: 105,
-                  ease: 'Cubic.easeOut',
-                  onComplete: () => {
-                    this.time.delayedCall(48, goHome);
-                  },
+                  targets: texts,
+                  scaleX: 1.05,
+                  scaleY: 1.05,
+                  duration: 75,
+                  yoyo: true,
+                  ease: 'Sine.easeOut',
+                  onComplete: () => this.time.delayedCall(42, goHome),
                 });
               });
             };
 
-            this.tweens.add({
-              targets: textError,
-              x: cx,
-              y: cy - targetSeparation,
-              angle: 0,
-              duration: moveDurationMs,
-              ease: 'Back.easeOut',
-              easeParams: [1.22],
-              onComplete: onMoveFinished,
-            });
-            this.tweens.add({
-              targets: textOverlap,
-              x: cx,
-              y: cy + targetSeparation,
-              angle: 0,
-              duration: moveDurationMs,
-              ease: 'Back.easeOut',
-              easeParams: [1.22],
-              onComplete: onMoveFinished,
+            this._bootBackdrop.convergeLayers(convergeMs, 'Back.easeOut', [1.14], tick);
+
+            frags.forEach((f) => {
+              this.tweens.add({
+                targets: f.text,
+                x: f.targetX,
+                y: f.targetY,
+                angle: 0,
+                alpha: 1,
+                duration: convergeMs,
+                ease: 'Back.easeOut',
+                easeParams: [1.14],
+                onComplete: tick,
+              });
             });
           });
         }
