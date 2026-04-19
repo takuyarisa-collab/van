@@ -272,6 +272,16 @@ export function updateNearAttack(scene, now, dtMs) {
   if (attack.hitRect) applyNearAttackTransform(attack.hitRect, attack);
   updateNearAttackForwardPlane(scene, attack);
   applyNearAttackDriftLane(scene, attack, dtMs ?? scene.game?.loop?.delta ?? 16);
+
+  // TEMP / 一時テスト用（デバッグ・後で必ず削除）: NEAR 発動直後のみ「強すぎる」固定速度で未実装かを切り分け。数値は確認用。
+  if (now - attack.startedAt < 150) {
+    const body = scene.player?.body;
+    if (body) {
+      body.velocity.x = attack.dirX * 1200;
+      body.velocity.y = attack.dirY * 1200;
+    }
+  }
+
   applyNearAttackDamage(scene, attack);
 }
 
