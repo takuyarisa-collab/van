@@ -285,13 +285,14 @@ export function createScatteredBootTitle(scene, opts) {
     return Phaser.Math.Clamp(n, 2, 3);
   };
 
-  const clampToCenterDisk = (px, py, maxR) => {
-    const dx = px - cx;
-    const dy = py - cy;
+  /** 各文字は収束先から maxR 以内（中央のブロックに密集） */
+  const clampNearTarget = (tx, ty, px, py, maxR) => {
+    const dx = px - tx;
+    const dy = py - ty;
     const d = Math.hypot(dx, dy);
     if (d <= maxR || d < 1e-6) return { x: px, y: py };
     const s = maxR / d;
-    return { x: cx + dx * s, y: cy + dy * s };
+    return { x: tx + dx * s, y: ty + dy * s };
   };
 
   const fragments = [];
@@ -344,7 +345,7 @@ export function createScatteredBootTitle(scene, opts) {
         const jy = (rnd() - 0.5) * 72;
         let px = tx + jx + layerDx;
         let py = lineY + jy + layerDy;
-        ({ x: px, y: py } = clampToCenterDisk(px, py, 120));
+        ({ x: px, y: py } = clampNearTarget(tx, lineY, px, py, 120));
 
         const t = scene.add.text(px, py, word[i], style).setOrigin(0.5);
         t.setAngle((rnd() - 0.5) * 11);
