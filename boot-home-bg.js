@@ -145,6 +145,7 @@ export function mountBootHomeBackdrop(scene, opts = {}) {
     },
   };
 }
+ 
 
 /**
  * Boot: base / structure / noise / ui を別 Container に載せ、ズレ＋微動後に (0,0) へ収束
