@@ -252,7 +252,7 @@ export function mountBootCollapsedBackdrop(scene, opts = {}) {
 }
 
 /**
- * 「Error」「Overlap」1文字ずつ散らし、収束先座標を付与
+ * 「Error」「Overlap」中央グリッチ（複製レイヤー＋横ノイズ）→ タップで収束
  */
 export function createScatteredBootTitle(scene, opts) {
   const W = opts.width ?? scene.scale.width;
@@ -266,52 +266,132 @@ export function createScatteredBootTitle(scene, opts) {
   const styleError = opts.styleError;
   const styleOverlap = opts.styleOverlap;
 
+  const styleErrorBase = {
+    ...styleError,
+    color: '#e6ebf4',
+    stroke: '#283040',
+    strokeThickness: Math.max(2, (styleError.strokeThickness ?? 4) - 1),
+  };
+  const styleOverlapBase = {
+    ...styleOverlap,
+    color: '#dff8fc',
+    stroke: '#143038',
+    strokeThickness: Math.max(2, (styleOverlap.strokeThickness ?? 4) - 1),
+  };
+
+  /** 2〜3レイヤー（ベース＋色干渉） */
+  const nLayersFor = (baseN) => {
+    const n = baseN + Math.floor(rnd() * 2);
+    return Phaser.Math.Clamp(n, 2, 3);
+  };
+
+  const clampToCenterDisk = (px, py, maxR) => {
+    const dx = px - cx;
+    const dy = py - cy;
+    const d = Math.hypot(dx, dy);
+    if (d <= maxR || d < 1e-6) return { x: px, y: py };
+    const s = maxR / d;
+    return { x: cx + dx * s, y: cy + dy * s };
+  };
+
   const fragments = [];
   const rows = [
-    { word: 'Error', style: styleError, lineY: cy - lineGap },
-    { word: 'Overlap', style: styleOverlap, lineY: cy + lineGap },
+    {
+      word: 'Error',
+      lineY: cy - lineGap,
+      layerStyles: () => {
+        const n = nLayersFor(2);
+        const arr = [styleErrorBase];
+        for (let j = arr.length; j < n; j += 1) arr.push(styleError);
+        return arr;
+      },
+    },
+    {
+      word: 'Overlap',
+      lineY: cy + lineGap,
+      layerStyles: () => {
+        const n = nLayersFor(2);
+        const arr = [styleOverlapBase];
+        for (let j = arr.length; j < n; j += 1) arr.push(styleOverlap);
+        return arr;
+      },
+    },
   ];
 
-  rows.forEach(({ word, style, lineY }) => {
+  rows.forEach(({ word, lineY, layerStyles }, rowIdx) => {
+    const styles = layerStyles();
     const widths = [];
     let totalW = 0;
-    const chars = [];
     for (let i = 0; i < word.length; i += 1) {
-      const t = scene.add.text(0, 0, word[i], style).setOrigin(0.5);
+      const t = scene.add.text(0, 0, word[i], styles[0]).setOrigin(0.5);
       widths.push(t.width);
       totalW += t.width;
-      chars.push(t);
+      t.destroy();
     }
     const gap = 2;
     totalW += gap * (word.length - 1);
     let left = cx - totalW / 2;
+
     for (let i = 0; i < word.length; i += 1) {
       const tx = left + widths[i] / 2;
       left += widths[i] + gap;
 
-      const sx = cx + (rnd() - 0.5) * W * 0.94;
-      const sy = cy + (rnd() - 0.5) * H * 0.75;
-      const jitterX = Phaser.Math.Clamp(sx, -52, W + 52);
-      const jitterY = Phaser.Math.Clamp(sy, -40, H + 40);
+      styles.forEach((style, li) => {
+        const layerMag = () => 6 + rnd() * 6;
+        const layerDx = (rnd() < 0.5 ? -1 : 1) * layerMag();
+        const layerDy = (rnd() < 0.5 ? -1 : 1) * layerMag();
+        const jx = (rnd() - 0.5) * 100;
+        const jy = (rnd() - 0.5) * 72;
+        let px = tx + jx + layerDx;
+        let py = lineY + jy + layerDy;
+        ({ x: px, y: py } = clampToCenterDisk(px, py, 120));
 
-      chars[i].setPosition(jitterX, jitterY);
-      chars[i].setAngle((rnd() - 0.5) * 24);
-      chars[i].setAlpha(Phaser.Math.Clamp(0.38 + rnd() * 0.42, 0.32, 0.85));
-      chars[i].setDepth(12);
+        const t = scene.add.text(px, py, word[i], style).setOrigin(0.5);
+        t.setAngle((rnd() - 0.5) * 11);
+        t.setAlpha(Phaser.Math.Clamp(0.4 + rnd() * 0.4, 0.4, 0.8));
+        t.setDepth(12 + rowIdx * 4 + i * 2 + li);
 
-      fragments.push({
-        text: chars[i],
-        targetX: tx,
-        targetY: lineY,
+        fragments.push({
+          text: t,
+          targetX: tx,
+          targetY: lineY,
+        });
       });
     }
   });
 
+  const gGlitch = scene.add.graphics();
+  gGlitch.setDepth(60);
+  const nBars = 18 + Math.floor(rnd() * 10);
+  for (let bi = 0; bi < nBars; bi += 1) {
+    const bx = cx + (rnd() - 0.5) * 300;
+    const by = cy + (rnd() - 0.5) * 110;
+    const bw = 20 + rnd() * 100;
+    const bh = 2 + rnd() * 4;
+    const a = Phaser.Math.Clamp(0.2 + rnd() * 0.3, 0.2, 0.5);
+    const col = rnd() > 0.5 ? 0xd8e4ff : 0xa8c8ff;
+    if (rnd() > 0.52) {
+      const split = (rnd() - 0.5) * 16;
+      const gapW = 3 + rnd() * 6;
+      const w1 = bw * (0.42 + rnd() * 0.08);
+      const w2 = Math.max(12, bw - w1 - gapW);
+      gGlitch.fillStyle(col, a);
+      gGlitch.fillRect(bx, by, w1, bh);
+      gGlitch.fillRect(bx + w1 + gapW + split, by, w2, bh);
+    } else {
+      const slip = rnd() > 0.62 ? (rnd() - 0.5) * 16 : 0;
+      gGlitch.fillStyle(col, a);
+      gGlitch.fillRect(bx + slip, by, bw, bh);
+    }
+  }
+
   return {
     fragments,
+    glitchGraphics: gGlitch,
     destroy() {
       fragments.forEach((f) => f.text?.destroy?.());
       fragments.length = 0;
+      gGlitch?.destroy?.();
     },
   };
 }
