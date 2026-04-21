@@ -1,7 +1,8 @@
 /**
  * Boot / Home 用背景（Phaser Graphics）
- * - mountBootHomeBackdrop … 静的4層（Home）
+ * - mountBootHomeBackdrop … 静的4層（Home）＋空間グラデーション＋強化グリッド＋縦ライン
  * - mountBootCollapsedBackdrop … Boot 崩壊（レイヤーズレ＋微動→収束）
+ * - mountHomeParticles … 微粒子フェードアニメ（Home 専用）
  */
 
 function mulberry32(seed) {
@@ -13,17 +14,28 @@ function mulberry32(seed) {
   };
 }
 
+/**
+ * 3ストップ空間グラデーション:  上 #020611 → 中 #071a2f → 下 #020611
+ * Phaser の fillGradientStyle は4頂点なので2矩形に分割して近似
+ */
 function drawLayerBase(g, W, H, gTop, gBot) {
-  g.fillGradientStyle(gTop, gTop, gBot, gBot, 1, 1, 1, 1);
-  g.fillRect(0, 0, W, H);
-  g.fillStyle(0x000308, 0.38);
+  const gMid = 0x071a2f;
+  const half = Math.round(H / 2);
+  // 上半分: gTop → gMid
+  g.fillGradientStyle(gTop, gTop, gMid, gMid, 1, 1, 1, 1);
+  g.fillRect(0, 0, W, half);
+  // 下半分: gMid → gBot
+  g.fillGradientStyle(gMid, gMid, gBot, gBot, 1, 1, 1, 1);
+  g.fillRect(0, half, W, H - half);
+  // コーナーダークニング
+  g.fillStyle(0x000308, 0.28);
   g.beginPath();
   g.moveTo(0, 0);
   g.lineTo(W, 0);
   g.lineTo(0, H * 0.55);
   g.closePath();
   g.fillPath();
-  g.fillStyle(0x020814, 0.32);
+  g.fillStyle(0x020814, 0.22);
   g.beginPath();
   g.moveTo(W, H);
   g.lineTo(W, 0);
@@ -32,20 +44,42 @@ function drawLayerBase(g, W, H, gTop, gBot) {
   g.fillPath();
 }
 
-function drawLayerStructure(g, W, H, structAlpha) {
+/**
+ * 強化グリッド: 基本α 0.08〜0.12、ランダム強調線 α 0.18〜0.22
+ * さらに縦方向の薄いアクセントライン 2〜3本を追加
+ */
+function drawLayerStructure(g, W, H, structAlpha, rnd) {
   const gridStep = 52;
-  const gridA = 0.06 * structAlpha;
-  g.lineStyle(1, 0x5c7cad, gridA);
+  const baseA   = 0.10 * structAlpha;  // 従来 0.06 → 1.5倍強化
+  const lineW   = 1.4;                 // 従来 1 → +0.4px
+
+  // 通常グリッド
   for (let x = 0; x <= W; x += gridStep) {
+    const emph = rnd && rnd() > 0.72;
+    const a = emph ? (0.18 + rnd() * 0.04) * structAlpha : baseA;
+    g.lineStyle(emph ? lineW + 0.4 : lineW, 0x5c7cad, a);
     g.lineBetween(x, 0, x, H);
   }
   for (let y = 0; y <= H; y += gridStep) {
+    const emph = rnd && rnd() > 0.72;
+    const a = emph ? (0.18 + rnd() * 0.04) * structAlpha : baseA;
+    g.lineStyle(emph ? lineW + 0.4 : lineW, 0x5c7cad, a);
     g.lineBetween(0, y, W, y);
   }
-  g.lineStyle(1, 0x3d5a8a, 0.045 * structAlpha);
+
+  // 斜め情報線
+  g.lineStyle(lineW - 0.4, 0x3d5a8a, 0.05 * structAlpha);
   g.lineBetween(0, Math.floor(H * 0.42), W, Math.floor(H * 0.18));
-  g.lineStyle(1, 0x2a4466, 0.04 * structAlpha);
+  g.lineStyle(lineW - 0.4, 0x2a4466, 0.045 * structAlpha);
   g.lineBetween(0, Math.floor(H * 0.78), W, Math.floor(H * 0.62));
+
+  // 縦アクセントライン 2本（情報層の追加）
+  const vx1 = Math.round(W * 0.22);
+  const vx2 = Math.round(W * 0.81);
+  g.lineStyle(1, 0x4af0e4, 0.06 * structAlpha);
+  g.lineBetween(vx1, 0, vx1, H);
+  g.lineStyle(1, 0x4af0e4, 0.05 * structAlpha);
+  g.lineBetween(vx2, Math.round(H * 0.12), vx2, Math.round(H * 0.88));
 }
 
 function drawLayerNoise(g, W, H, noiseAlpha, noiseDots, rnd) {
@@ -111,8 +145,8 @@ export function mountBootHomeBackdrop(scene, opts = {}) {
   const fragAlpha = Phaser.Math.Clamp(opts.fragmentAlpha ?? 1, 0, 2);
   const noiseDots = Phaser.Math.Clamp(Math.floor(opts.noiseDots ?? 88), 24, 200);
 
-  const gTop = opts.gradientTop ?? 0x0d1220;
-  const gBot = opts.gradientBottom ?? 0x04070d;
+  const gTop = opts.gradientTop ?? 0x020611;
+  const gBot = opts.gradientBottom ?? 0x020611;
 
   const layers = [];
 
@@ -123,7 +157,7 @@ export function mountBootHomeBackdrop(scene, opts = {}) {
 
   const structure = scene.add.graphics();
   structure.setDepth(depthBase + 1);
-  drawLayerStructure(structure, W, H, structAlpha);
+  drawLayerStructure(structure, W, H, structAlpha, rnd);
   layers.push(structure);
 
   const noise = scene.add.graphics();
@@ -142,6 +176,59 @@ export function mountBootHomeBackdrop(scene, opts = {}) {
       for (let i = layers.length - 1; i >= 0; i -= 1) {
         layers[i]?.destroy?.();
       }
+    },
+  };
+}
+
+/**
+ * Home 専用: 微粒子フェードアニメ
+ * 20〜40個の 1〜2px 点、ランダムにフェードイン→フェードアウトを繰り返す
+ * @returns {{ destroy: () => void }}
+ */
+export function mountHomeParticles(scene, opts = {}) {
+  const W = opts.width ?? scene.scale.width;
+  const H = opts.height ?? scene.scale.height;
+  const depthBase = opts.depthBase ?? -52;
+  const rnd = mulberry32(((opts.seed >>> 0) || 0xdead00) ^ 0xbeef);
+
+  const count = Math.round(20 + rnd() * 20);  // 20〜40
+  const dots = [];
+  const tweens = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const px = rnd() * W;
+    const py = rnd() * H;
+    const r  = 0.5 + rnd() * 1.0;  // 1〜2px
+    const peakAlpha = 0.10 + rnd() * 0.20; // 0.10〜0.30
+
+    const g = scene.add.graphics();
+    g.setDepth(depthBase);
+    g.fillStyle(0xb8d0f8, 1);
+    g.fillCircle(px, py, r);
+    g.setAlpha(0);
+    dots.push(g);
+
+    // 各点に独立したフェードループ（開始タイミングをバラけさせる）
+    const delay  = rnd() * 3000;
+    const halfDur = 800 + rnd() * 2200; // 0.8〜3s フェード
+    const tw = scene.tweens.add({
+      targets: g,
+      alpha: peakAlpha,
+      duration: halfDur,
+      delay,
+      ease: 'Sine.easeInOut',
+      yoyo: true,
+      repeat: -1,
+    });
+    tweens.push(tw);
+  }
+
+  return {
+    destroy() {
+      tweens.forEach((t) => { if (t) scene.tweens.remove(t); });
+      tweens.length = 0;
+      dots.forEach((d) => d?.destroy?.());
+      dots.length = 0;
     },
   };
 }
@@ -195,7 +282,7 @@ export function mountBootCollapsedBackdrop(scene, opts = {}) {
     const rnd = mulberry32(seed + li * 7919);
 
     if (li === 0) drawLayerBase(g, W, H, gTop, gBot);
-    else if (li === 1) drawLayerStructure(g, W, H, structAlpha);
+    else if (li === 1) drawLayerStructure(g, W, H, structAlpha, rnd);
     else if (li === 2) drawLayerNoise(g, W, H, noiseAlpha, noiseDots, rnd);
     else drawLayerUiFrags(g, W, H, fragAlpha, rnd);
 
