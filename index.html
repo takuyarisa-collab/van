@@ -411,10 +411,81 @@
           const SUB_LINE   = 0x2ec8be;
           const SUB_TEXT   = '#2ec8be';
 
-          // ---------- START button ----------
+          // ---------- ghost Error residue (behind START, barely visible) ----------
+          this.add.text(cx + 6, startY - 2, 'Error', {
+            fontFamily: 'monospace, system-ui, sans-serif',
+            fontSize: '28px',
+            color: '#ff3333',
+            letterSpacing: 3,
+          }).setOrigin(0.5).setDepth(2).setAlpha(0.13);
+
+          // ---------- START button — fragmented frame ----------
+          // Frame is decomposed into individual line segments, not a closed rect.
+          // Each segment has small gaps at endpoints to break the "complete box" feel.
           const gStart = this.add.graphics().setDepth(4);
-          gStart.lineStyle(1.8, CYAN_LINE, 1.0);
-          gStart.strokeRect(cx - startW / 2, startTop, startW, startH);
+          gStart.lineStyle(2.2, CYAN_LINE, 1.0);
+
+          const sL  = cx - startW / 2;   // left edge
+          const sR  = cx + startW / 2;   // right edge
+          const sT  = startTop;          // top edge
+          const sB  = startTop + startH; // bottom edge
+          const gap = 6; // end-gap (px cut from segment tips)
+
+          // top edge: full width, minus gap at both ends
+          gStart.beginPath();
+          gStart.moveTo(sL + gap, sT);
+          gStart.lineTo(sR - gap, sT);
+          gStart.strokePath();
+
+          // bottom edge: slightly shorter and nudged 1px down (jitter)
+          gStart.beginPath();
+          gStart.moveTo(sL + gap + 14, sB + 1);
+          gStart.lineTo(sR - gap - 6,  sB + 1);
+          gStart.strokePath();
+
+          // left side: only upper half, ends before bottom-left corner
+          gStart.lineStyle(2.2, CYAN_LINE, 0.85);
+          gStart.beginPath();
+          gStart.moveTo(sL, sT + gap);
+          gStart.lineTo(sL, sT + startH * 0.52);
+          gStart.strokePath();
+
+          // right side: only lower half, starts slightly below top-right corner
+          gStart.lineStyle(2.2, CYAN_LINE, 0.75);
+          gStart.beginPath();
+          gStart.moveTo(sR - 1, sT + startH * 0.45);
+          gStart.lineTo(sR - 1, sB - gap);
+          gStart.strokePath();
+
+          // center accent line (short horizontal, below text baseline)
+          gStart.lineStyle(1.4, CYAN_LINE, 0.55);
+          gStart.beginPath();
+          gStart.moveTo(cx - 18, startY + 14);
+          gStart.lineTo(cx + 18, startY + 14);
+          gStart.strokePath();
+
+          // ambient connector dots / lines — UI bleeding into space
+          gStart.lineStyle(1.0, CYAN_LINE, 0.38);
+          // short tick above-left
+          gStart.beginPath();
+          gStart.moveTo(sL - 14, sT - 8);
+          gStart.lineTo(sL - 6,  sT - 8);
+          gStart.strokePath();
+          // short tick above-right
+          gStart.beginPath();
+          gStart.moveTo(sR + 5, sT - 4);
+          gStart.lineTo(sR + 16, sT - 4);
+          gStart.strokePath();
+          // single dot below-left (tiny line segment)
+          gStart.beginPath();
+          gStart.moveTo(sL - 4, sB + 10);
+          gStart.lineTo(sL - 1, sB + 10);
+          gStart.strokePath();
+          // vertical tick below-right
+          gStart.beginPath();
+          gStart.moveTo(sR + 8, sB + 5);
+          gStart.lineTo(sR + 8, sB + 13);
+          gStart.strokePath();
 
           this.add.text(cx, startY, 'START', {
             fontFamily: 'monospace, system-ui, sans-serif',
@@ -424,21 +495,56 @@
             letterSpacing: 8,
           }).setOrigin(0.5).setDepth(5);
 
-          // ---------- sub buttons ----------
+          // ---------- sub buttons — each missing a different side ----------
           subLabels.forEach((label, i) => {
-            const btnY  = subGroupTop + i * (subH + subGap) + subH / 2;
+            const btnY   = subGroupTop + i * (subH + subGap) + subH / 2;
             const btnTop = btnY - subH / 2;
+            const bL     = cx - subW / 2;
+            const bR     = cx + subW / 2;
+            const bT     = btnTop;
+            const bB     = btnTop + subH;
+            const sgap   = 4; // sub-button corner gap
 
             const g = this.add.graphics().setDepth(4);
             g.lineStyle(1.2, SUB_LINE, 0.78);
-            g.strokeRect(cx - subW / 2, btnTop, subW, subH);
+
+            if (i === 0) {
+              // ENHANCE — right side missing
+              // top
+              g.beginPath(); g.moveTo(bL + sgap, bT); g.lineTo(bR - sgap, bT); g.strokePath();
+              // bottom (nudged 1px right, slightly short)
+              g.beginPath(); g.moveTo(bL + sgap + 5, bB); g.lineTo(bR - sgap - 10, bB); g.strokePath();
+              // left only
+              g.beginPath(); g.moveTo(bL, bT + sgap); g.lineTo(bL, bB - sgap); g.strokePath();
+            } else if (i === 1) {
+              // LOG — bottom partially absent (only corners remain)
+              // top
+              g.beginPath(); g.moveTo(bL + sgap, bT); g.lineTo(bR - sgap, bT); g.strokePath();
+              // left
+              g.beginPath(); g.moveTo(bL, bT + sgap); g.lineTo(bL, bB - sgap); g.strokePath();
+              // right
+              g.beginPath(); g.moveTo(bR, bT + sgap); g.lineTo(bR, bB - sgap); g.strokePath();
+              // bottom: only left stub (broken midway)
+              g.lineStyle(1.2, SUB_LINE, 0.55);
+              g.beginPath(); g.moveTo(bL + sgap, bB + 1); g.lineTo(bL + subW * 0.38, bB + 1); g.strokePath();
+            } else {
+              // OPTION — left side short + jittered
+              // top (1px up jitter)
+              g.beginPath(); g.moveTo(bL + sgap, bT - 1); g.lineTo(bR - sgap, bT - 1); g.strokePath();
+              // bottom
+              g.beginPath(); g.moveTo(bL + sgap + 8, bB); g.lineTo(bR - sgap, bB); g.strokePath();
+              // right only
+              g.beginPath(); g.moveTo(bR - 1, bT + sgap); g.lineTo(bR - 1, bB - sgap); g.strokePath();
+              // left: only small top stub
+              g.lineStyle(1.2, SUB_LINE, 0.48);
+              g.beginPath(); g.moveTo(bL, bT + sgap); g.lineTo(bL, bT + subH * 0.35); g.strokePath();
+            }
 
             this.add.text(cx, btnY, label, {
               fontFamily: 'monospace, system-ui, sans-serif',
               fontSize: '14px',
               color: SUB_TEXT,
               letterSpacing: 4,
-              alpha: 0.78,
             }).setOrigin(0.5).setDepth(5).setAlpha(0.78);
           });
 
