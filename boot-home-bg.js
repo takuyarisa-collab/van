@@ -57,42 +57,85 @@ function drawLayerBase(g, W, H, gTop, gBot) {
 }
 
 /**
- * 強化グリッド: α 1.5倍、強調線を35%に増やす
- * 縦方向アクセントライン追加
+ * 非対称グリッド: 左上→右下の斜め軸で「強い側」と「弱い側」に分割。
+ *
+ * - 強い側 (左上): α 80〜100% of structAlpha、微揺らぎ対象
+ * - 弱い側 (右下): α 30〜50% of structAlpha、ほぼ静止
+ * - 境界付近 (対角線 ±15% 幅): ランダムに強弱を混ぜる
+ * - 全体の 20〜30% のラインをランダム強調 (α×1.5、線幅+0.8)
+ *
+ * @param {Phaser.GameObjects.Graphics} gStrong  強い側レイヤー（shimmer tween用）
+ * @param {Phaser.GameObjects.Graphics} gWeak    弱い側レイヤー
+ * @param {number} W
+ * @param {number} H
+ * @param {number} structAlpha
+ * @param {Function} rnd  mulberry32 PRNG
  */
-function drawLayerStructure(g, W, H, structAlpha, rnd) {
-  const gridStep = 52;
-  // α を従来比 1.5倍
-  const baseA   = 0.15 * structAlpha;
-  const lineW   = 1.6;
+function drawLayerStructure(gStrong, gWeak, W, H, structAlpha, rnd) {
+  const gridStep  = 52;
+  const lineW     = 1.6;
+  const emphFrac  = 0.20 + rnd() * 0.10;   // 20〜30% をランダム強調
+  const blurBand  = 0.15;                   // 境界のぼかし幅（正規化対角長比）
 
-  // 通常グリッド（強調線の割合を35%に増加）
-  for (let x = 0; x <= W; x += gridStep) {
-    const emph = rnd && rnd() > 0.65;  // 35%が強調
-    const a = emph ? (0.27 + rnd() * 0.06) * structAlpha : baseA;
-    g.lineStyle(emph ? lineW + 0.6 : lineW, 0x5c7cad, a);
-    g.lineBetween(x, 0, x, H);
-  }
-  for (let y = 0; y <= H; y += gridStep) {
-    const emph = rnd && rnd() > 0.65;
-    const a = emph ? (0.27 + rnd() * 0.06) * structAlpha : baseA;
-    g.lineStyle(emph ? lineW + 0.6 : lineW, 0x5c7cad, a);
-    g.lineBetween(0, y, W, y);
-  }
+  // 対角線の傾き係数: 左上→右下 (y = x * H/W)
+  // 点 (x,y) の「対角線からの距離」を [0,1] に正規化
+  const diagLen = Math.hypot(W, H);
+  // 正の値 → 強い側（左上）、負の値 → 弱い側（右下）
+  const diagSign = (x, y) => (H * x - W * y) / diagLen;
 
-  // 斜め情報線
-  g.lineStyle(lineW - 0.4, 0x3d5a8a, 0.08 * structAlpha);
-  g.lineBetween(0, Math.floor(H * 0.42), W, Math.floor(H * 0.18));
-  g.lineStyle(lineW - 0.4, 0x2a4466, 0.07 * structAlpha);
-  g.lineBetween(0, Math.floor(H * 0.78), W, Math.floor(H * 0.62));
+  const drawLine = (x0, y0, x1, y1) => {
+    // セグメント中点でサイド判定
+    const mx = (x0 + x1) * 0.5;
+    const my = (y0 + y1) * 0.5;
+    const d = diagSign(mx, my);            // -1〜+1 相当の符号付き距離
+
+    // 境界ぼかし: |d| < blurBand のとき確率的に強/弱を混ぜる
+    let strong;
+    if (d > blurBand) {
+      strong = true;
+    } else if (d < -blurBand) {
+      strong = false;
+    } else {
+      // 境界帯: 距離に応じた確率で強い側
+      const t = (d + blurBand) / (2 * blurBand);  // 0〜1
+      strong = rnd() < t;
+    }
+
+    // ランダム強調
+    const boost = rnd() < emphFrac;
+
+    let a, w;
+    if (strong) {
+      const base = (0.80 + rnd() * 0.20) * structAlpha * 0.18;
+      a = boost ? base * 1.5 : base;
+      w = boost ? lineW + 0.8 : lineW;
+    } else {
+      const base = (0.30 + rnd() * 0.20) * structAlpha * 0.18;
+      a = boost ? base * 1.5 : base;
+      w = boost ? lineW + 0.8 : lineW;
+    }
+
+    const g = strong ? gStrong : gWeak;
+    g.lineStyle(w, 0x5c7cad, a);
+    g.lineBetween(x0, y0, x1, y1);
+  };
+
+  for (let x = 0; x <= W; x += gridStep) drawLine(x, 0, x, H);
+  for (let y = 0; y <= H; y += gridStep) drawLine(0, y, W, y);
+
+  // 斜め情報線（強い側に描画）
+  gStrong.lineStyle(lineW - 0.4, 0x3d5a8a, 0.08 * structAlpha);
+  gStrong.lineBetween(0, Math.floor(H * 0.42), W, Math.floor(H * 0.18));
+  gStrong.lineStyle(lineW - 0.4, 0x2a4466, 0.07 * structAlpha);
+  gStrong.lineBetween(0, Math.floor(H * 0.78), W, Math.floor(H * 0.62));
 
   // 縦アクセントライン 2本
   const vx1 = Math.round(W * 0.22);
   const vx2 = Math.round(W * 0.81);
-  g.lineStyle(1, 0x4af0e4, 0.09 * structAlpha);
-  g.lineBetween(vx1, 0, vx1, H);
-  g.lineStyle(1, 0x4af0e4, 0.08 * structAlpha);
-  g.lineBetween(vx2, Math.round(H * 0.12), vx2, Math.round(H * 0.88));
+  gStrong.lineStyle(1, 0x4af0e4, 0.09 * structAlpha);
+  gStrong.lineBetween(vx1, 0, vx1, H);
+  gStrong.lineStyle(1, 0x4af0e4, 0.08 * structAlpha);
+  gStrong.lineBetween(vx2, Math.round(H * 0.12), vx2, Math.round(H * 0.88));
 }
 
 function drawLayerNoise(g, W, H, noiseAlpha, noiseDots, rnd) {
@@ -169,10 +212,23 @@ export function mountBootHomeBackdrop(scene, opts = {}) {
   drawLayerBase(base, W, H, gTop, gBot);
   layers.push(base);
 
-  const structure = scene.add.graphics();
-  structure.setDepth(depthBase + 1);
-  drawLayerStructure(structure, W, H, structAlpha, rnd);
-  layers.push(structure);
+  // 強い側（左上）・弱い側（右下）で別レイヤーに分け、強い側のみ微揺らぎ tween
+  const gWeak   = scene.add.graphics();
+  gWeak.setDepth(depthBase + 1);
+  const gStrong = scene.add.graphics();
+  gStrong.setDepth(depthBase + 1);
+  drawLayerStructure(gStrong, gWeak, W, H, structAlpha, rnd);
+  layers.push(gWeak, gStrong);
+
+  // 強い側だけゆっくり α 変化（弱い側はほぼ静止）
+  scene.tweens.add({
+    targets:  gStrong,
+    alpha:    { from: 0.82, to: 1.0 },
+    duration: 2800 + Math.floor(rnd() * 1400),
+    ease:     'Sine.easeInOut',
+    yoyo:     true,
+    repeat:   -1,
+  });
 
   const noise = scene.add.graphics();
   noise.setDepth(depthBase + 2);
@@ -296,7 +352,7 @@ export function mountBootCollapsedBackdrop(scene, opts = {}) {
     const rnd = mulberry32(seed + li * 7919);
 
     if (li === 0) drawLayerBase(g, W, H, gTop, gBot);
-    else if (li === 1) drawLayerStructure(g, W, H, structAlpha, rnd);
+    else if (li === 1) drawLayerStructure(g, g, W, H, structAlpha, rnd);
     else if (li === 2) drawLayerNoise(g, W, H, noiseAlpha, noiseDots, rnd);
     else drawLayerUiFrags(g, W, H, fragAlpha, rnd);
 
