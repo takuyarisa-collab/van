@@ -60,37 +60,120 @@ function drawLayerBase(g, W, H, gTop, gBot) {
  * 斜め勾配グリッド用: 全グリッド線のメタデータを事前計算して配列で返す。
  * 各線は独自の Graphics を持ち、グリッチ時に個別に差し替えられる。
  *
+ * A. 勾配: 非線形(t^1.7)で左上に強さを寄せ、中央帯を12%減光、強弱差を拡大。
+ * B. 間隔崩し: 密度偏り(左上詰め/右下広げ) + 連続ズレ塊 + 5〜10%欠落。
+ *
  * @param {Phaser.Scene} scene
  * @param {number} W
  * @param {number} H
  * @param {number} structAlpha
  * @param {number} depthBase
  * @param {Function} rnd
- * @returns {Array<{g: Phaser.GameObjects.Graphics, x0,y0,x1,y1, baseAlpha, baseWidth, baseOffsetX}>}
+ * @returns {{ lines: Array, accents: Array }}
  */
 function buildDiagonalGrid(scene, W, H, structAlpha, depthBase, rnd) {
-  const gridStep = 52;
+  const baseStep = 52;
   const diagLen  = Math.hypot(W, H);
 
-  // 点の左上→右下軸上の正規化位置 [0,1]:  左上コーナー=0、右下コーナー=1
-  // 軸方向単位ベクトル (W,H)/diagLen に射影
+  // 左上→右下軸上の正規化位置 [0,1]
   const diagT = (x, y) => (x * W + y * H) / (diagLen * diagLen);
 
+  // ---------------------------------------------------------------------------
+  // B-1: 間隔崩しポジション列を生成するヘルパー
+  //   - 左上(tPos<0.5)は基本間隔を-15%詰め、右下は+15%広げて密度を傾ける
+  //   - 全体の32%をランダム選択し、2〜3本の連続ブロック単位でズレを発生させる
+  //   - 8%のラインを欠落（生成しない）させる
+  // ---------------------------------------------------------------------------
+  const buildPositions = (maxCoord, isHorizontal) => {
+    // まず等間隔の基本位置を算出（密度偏りをこの段階で適用）
+    const rawPositions = [];
+    let pos = 0;
+    while (pos <= maxCoord + baseStep) {
+      // ラインの左上→右下軸上の位置 tPos を概算
+      const tPos = isHorizontal
+        ? diagT(W * 0.5, pos)   // 水平線: y=pos の中点
+        : diagT(pos, H * 0.5);  // 垂直線: x=pos の中点
+      // 左上側は詰め(-15%)、右下側は広げ(+15%)
+      const densityFactor = 1.0 - 0.15 + 0.30 * Math.min(tPos, 1);
+      const step = Math.round(baseStep * densityFactor);
+      rawPositions.push(pos);
+      pos += step;
+    }
+
+    // ランダムズレを「連続ブロック」で適用（単発ではなく2〜3本まとめて）
+    // 対象: 全体の32% をブロック選択
+    const jitterMap = new Map();  // index → jitter offset
+
+    let i = 0;
+    while (i < rawPositions.length) {
+      if (rnd() < 0.32) {
+        const blockLen = 2 + (rnd() < 0.4 ? 1 : 0); // 2〜3本
+        // ブロック内で共通方向、大きさは個別にばらつかせる
+        const sign   = rnd() < 0.5 ? 1 : -1;
+        const baseMag = (0.10 + rnd() * 0.15) * baseStep; // 10〜25%
+        for (let b = 0; b < blockLen && i + b < rawPositions.length; b += 1) {
+          const mag = baseMag * (0.8 + rnd() * 0.4);
+          jitterMap.set(i + b, sign * mag);
+        }
+        i += blockLen;
+      } else {
+        i += 1;
+      }
+    }
+
+    // 欠落: 8%をスキップ（欠落率は左上側を低く、右下側をやや高く）
+    const finalPositions = [];
+    for (let j = 0; j < rawPositions.length; j += 1) {
+      const tPos = isHorizontal
+        ? diagT(W * 0.5, rawPositions[j])
+        : diagT(rawPositions[j], H * 0.5);
+      // 右下ほど欠落しやすい: 0.04(左上) 〜 0.12(右下)
+      const dropChance = 0.04 + 0.08 * Math.min(tPos, 1);
+      if (rnd() < dropChance) continue;
+
+      const jitter = jitterMap.get(j) ?? 0;
+      finalPositions.push(rawPositions[j] + jitter);
+    }
+    return finalPositions;
+  };
+
+  // ---------------------------------------------------------------------------
+  // A. 勾配パラメータ計算
+  // ---------------------------------------------------------------------------
+  const alphaStrong = 0.11 * structAlpha;
+  const alphaWeak   = 0.013 * structAlpha;
+  const widthStrong = 3.2;
+  const widthWeak   = 0.7;
+  const GAMMA       = 1.7;   // 非線形指数: 左上に強さを寄せる
+
+  const lineAlpha = (t) => {
+    const tg = Math.pow(t, GAMMA);
+    let a = alphaStrong + (alphaWeak - alphaStrong) * tg;
+    // 中央帯(t=0.35〜0.65)を12%減光してSTART周辺の視認性を確保
+    if (t > 0.35 && t < 0.65) {
+      const mid = 1 - Math.abs(t - 0.5) / 0.15;  // 0→1→0
+      a *= (1 - 0.12 * Math.min(mid, 1));
+    }
+    return Math.max(a, 0.003);
+  };
+
+  const lineWidth = (t) => {
+    const tg = Math.pow(t, GAMMA);
+    return widthStrong + (widthWeak - widthStrong) * tg;
+  };
+
+  // ---------------------------------------------------------------------------
+  // ライン生成
+  // ---------------------------------------------------------------------------
   const lines = [];
 
   const addLine = (x0, y0, x1, y1) => {
     const mx  = (x0 + x1) * 0.5;
     const my  = (y0 + y1) * 0.5;
-    const t   = diagT(mx, my);           // 0=左上端, 1=右下端
+    const t   = Math.min(diagT(mx, my), 1);
 
-    // 連続勾配: 左上(t=0)が最大強度、右下(t=1)が最小強度
-    // α range: 0.072 (強) → 0.018 (弱)  * structAlpha
-    const alphaStrong = 0.072 * structAlpha;
-    const alphaWeak   = 0.018 * structAlpha;
-    const baseAlpha   = alphaStrong + (alphaWeak - alphaStrong) * t;
-
-    // 線幅: 強側 2.6 → 弱側 0.9
-    const baseWidth = 2.6 - t * 1.7;
+    const baseAlpha = lineAlpha(t);
+    const baseWidth = lineWidth(t);
 
     const g = scene.add.graphics();
     g.setDepth(depthBase + 1);
@@ -100,8 +183,17 @@ function buildDiagonalGrid(scene, W, H, structAlpha, depthBase, rnd) {
     lines.push({ g, x0, y0, x1, y1, baseAlpha, baseWidth, baseOffsetX: 0, diagT: t });
   };
 
-  for (let x = 0; x <= W; x += gridStep) addLine(x, 0, x, H);
-  for (let y = 0; y <= H; y += gridStep) addLine(0, y, W, y);
+  // 垂直ライン (x が変化, y は 0〜H 固定)
+  const vPositions = buildPositions(W, false);
+  for (const x of vPositions) {
+    if (x >= 0 && x <= W + baseStep) addLine(x, 0, x, H);
+  }
+
+  // 水平ライン (y が変化, x は 0〜W 固定)
+  const hPositions = buildPositions(H, true);
+  for (const y of hPositions) {
+    if (y >= 0 && y <= H + baseStep) addLine(0, y, W, y);
+  }
 
   // 縦アクセントライン 2本（グリッチ対象外の装飾層）
   const vx1 = Math.round(W * 0.22);
