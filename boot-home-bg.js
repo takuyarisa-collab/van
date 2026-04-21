@@ -1,6 +1,6 @@
 /**
  * Boot / Home 用背景（Phaser Graphics）
- * - mountBootHomeBackdrop … 静的4層（Home）＋空間グラデーション＋強化グリッド＋縦ライン
+ * - mountBootHomeBackdrop … 静的4層（Home）＋空間グラデーション＋斜め勾配グリッド＋断続グリッチ
  * - mountBootCollapsedBackdrop … Boot 崩壊（レイヤーズレ＋微動→収束）
  * - mountHomeParticles … 微粒子フェードアニメ（Home 専用）
  */
@@ -57,51 +57,199 @@ function drawLayerBase(g, W, H, gTop, gBot) {
 }
 
 /**
- * 非対称グリッド: 左上→右下の斜め軸で「強い側」と「弱い側」に分割。
+ * 斜め勾配グリッド用: 全グリッド線のメタデータを事前計算して配列で返す。
+ * 各線は独自の Graphics を持ち、グリッチ時に個別に差し替えられる。
  *
- * - 強い側 (左上): α 80〜100% of structAlpha、微揺らぎ対象
- * - 弱い側 (右下): α 30〜50% of structAlpha、ほぼ静止
- * - 境界付近 (対角線 ±15% 幅): ランダムに強弱を混ぜる
- * - 全体の 20〜30% のラインをランダム強調 (α×1.5、線幅+0.8)
- *
- * @param {Phaser.GameObjects.Graphics} gStrong  強い側レイヤー（shimmer tween用）
- * @param {Phaser.GameObjects.Graphics} gWeak    弱い側レイヤー
+ * @param {Phaser.Scene} scene
  * @param {number} W
  * @param {number} H
  * @param {number} structAlpha
- * @param {Function} rnd  mulberry32 PRNG
+ * @param {number} depthBase
+ * @param {Function} rnd
+ * @returns {Array<{g: Phaser.GameObjects.Graphics, x0,y0,x1,y1, baseAlpha, baseWidth, baseOffsetX}>}
+ */
+function buildDiagonalGrid(scene, W, H, structAlpha, depthBase, rnd) {
+  const gridStep = 52;
+  const diagLen  = Math.hypot(W, H);
+
+  // 点の左上→右下軸上の正規化位置 [0,1]:  左上コーナー=0、右下コーナー=1
+  // 軸方向単位ベクトル (W,H)/diagLen に射影
+  const diagT = (x, y) => (x * W + y * H) / (diagLen * diagLen);
+
+  const lines = [];
+
+  const addLine = (x0, y0, x1, y1) => {
+    const mx  = (x0 + x1) * 0.5;
+    const my  = (y0 + y1) * 0.5;
+    const t   = diagT(mx, my);           // 0=左上端, 1=右下端
+
+    // 連続勾配: 左上(t=0)が最大強度、右下(t=1)が最小強度
+    // α range: 0.034 (強) → 0.010 (弱)  * structAlpha
+    const alphaStrong = 0.034 * structAlpha;
+    const alphaWeak   = 0.010 * structAlpha;
+    const baseAlpha   = alphaStrong + (alphaWeak - alphaStrong) * t;
+
+    // 線幅: 強側 2.0 → 弱側 1.0
+    const baseWidth = 2.0 - t * 1.0;
+
+    const g = scene.add.graphics();
+    g.setDepth(depthBase + 1);
+    g.lineStyle(baseWidth, 0x5c7cad, baseAlpha);
+    g.lineBetween(x0, y0, x1, y1);
+
+    lines.push({ g, x0, y0, x1, y1, baseAlpha, baseWidth, baseOffsetX: 0, diagT: t });
+  };
+
+  for (let x = 0; x <= W; x += gridStep) addLine(x, 0, x, H);
+  for (let y = 0; y <= H; y += gridStep) addLine(0, y, W, y);
+
+  // 縦アクセントライン 2本（グリッチ対象外の装飾層）
+  const vx1 = Math.round(W * 0.22);
+  const vx2 = Math.round(W * 0.81);
+  const acc1 = scene.add.graphics();
+  acc1.setDepth(depthBase + 1);
+  acc1.lineStyle(1, 0x4af0e4, 0.09 * structAlpha);
+  acc1.lineBetween(vx1, 0, vx1, H);
+  const acc2 = scene.add.graphics();
+  acc2.setDepth(depthBase + 1);
+  acc2.lineStyle(1, 0x4af0e4, 0.08 * structAlpha);
+  acc2.lineBetween(vx2, Math.round(H * 0.12), vx2, Math.round(H * 0.88));
+
+  return { lines, accents: [acc1, acc2] };
+}
+
+/**
+ * グリッチループ: 0.4〜0.8秒に1回ランダム発火、5〜15本を対象に
+ * 4種エフェクト（シフト／α増幅／消去／線幅増大）のいずれか1つを適用し
+ * 40〜120ms で必ず元に戻す。やや斜め方向（左上→右下）に偏った選択。
+ *
+ * @param {Phaser.Scene} scene
+ * @param {Array} lines  buildDiagonalGrid が返す lines 配列
+ * @param {Function} rnd
+ * @returns {{ stop: () => void }}
+ */
+function startGlitchLoop(scene, lines, rnd) {
+  let timer = null;
+  let active = true;
+
+  const scheduleNext = () => {
+    if (!active) return;
+    const delay = 400 + rnd() * 400;   // 400〜800ms
+    timer = scene.time.delayedCall(delay, fire);
+  };
+
+  const redrawLine = (entry, offsetX, alphaOverride, widthOverride) => {
+    const { g, x0, y0, x1, y1 } = entry;
+    const ox = offsetX ?? entry.baseOffsetX;
+    const a  = alphaOverride ?? entry.baseAlpha;
+    const w  = widthOverride ?? entry.baseWidth;
+    g.clear();
+    g.lineStyle(w, 0x5c7cad, a);
+    g.lineBetween(x0 + ox, y0, x1 + ox, y1);
+  };
+
+  const fire = () => {
+    if (!active) return;
+
+    const count = 5 + Math.floor(rnd() * 11);   // 5〜15本
+
+    // 斜め偏り: diagT が小さいほど（左上に近いほど）選ばれやすい
+    const weights = lines.map((l) => Math.pow(1 - l.diagT * 0.7, 1.5) + 0.15);
+
+    // ルーレット選択で count 本を非重複ピック
+    const chosen = [];
+    const pool = lines.map((l, i) => ({ l, i, w: weights[i] }));
+    for (let pick = 0; pick < count && pool.length > 0; pick += 1) {
+      const totalW = pool.reduce((s, p) => s + p.w, 0);
+      let rv = rnd() * totalW;
+      let idx = 0;
+      while (idx < pool.length - 1 && rv > pool[idx].w) {
+        rv -= pool[idx].w;
+        idx += 1;
+      }
+      chosen.push(pool[idx]);
+      pool.splice(idx, 1);
+    }
+
+    // エフェクト種別をランダム選択（全選択ラインで同一種別）
+    const effectType = Math.floor(rnd() * 4);
+    // 0: 横シフト(2〜6px)  1: α増幅(1.5〜2x)  2: 消去  3: 線幅増大
+
+    const restores = chosen.map(({ l }) => {
+      switch (effectType) {
+        case 0: {
+          const shift = (rnd() < 0.5 ? -1 : 1) * (2 + rnd() * 4);
+          redrawLine(l, shift, null, null);
+          return () => redrawLine(l, 0, null, null);
+        }
+        case 1: {
+          const boost = 1.5 + rnd() * 0.5;
+          redrawLine(l, 0, Math.min(l.baseAlpha * boost, 1), null);
+          return () => redrawLine(l, 0, l.baseAlpha, null);
+        }
+        case 2: {
+          l.g.clear();
+          return () => redrawLine(l, 0, null, null);
+        }
+        case 3: {
+          const extra = 1.5 + rnd() * 2.0;
+          redrawLine(l, 0, null, l.baseWidth + extra);
+          return () => redrawLine(l, 0, null, l.baseWidth);
+        }
+        default:
+          return () => {};
+      }
+    });
+
+    // 40〜120ms 後に全て戻す
+    const restoreDelay = 40 + rnd() * 80;
+    scene.time.delayedCall(restoreDelay, () => {
+      restores.forEach((fn) => fn());
+      scheduleNext();
+    });
+  };
+
+  scheduleNext();
+
+  return {
+    stop() {
+      active = false;
+      if (timer) {
+        timer.remove(false);
+        timer = null;
+      }
+    },
+  };
+}
+
+/**
+ * Boot/Collapsed 用: 静的2レイヤーグリッド（shimmer tween 付き）。
+ * mountBootCollapsedBackdrop からのみ使用。
  */
 function drawLayerStructure(gStrong, gWeak, W, H, structAlpha, rnd) {
   const gridStep  = 52;
   const lineW     = 1.6;
-  const emphFrac  = 0.20 + rnd() * 0.10;   // 20〜30% をランダム強調
-  const blurBand  = 0.15;                   // 境界のぼかし幅（正規化対角長比）
+  const emphFrac  = 0.20 + rnd() * 0.10;
+  const blurBand  = 0.15;
 
-  // 対角線の傾き係数: 左上→右下 (y = x * H/W)
-  // 点 (x,y) の「対角線からの距離」を [0,1] に正規化
   const diagLen = Math.hypot(W, H);
-  // 正の値 → 強い側（左上）、負の値 → 弱い側（右下）
   const diagSign = (x, y) => (H * x - W * y) / diagLen;
 
   const drawLine = (x0, y0, x1, y1) => {
-    // セグメント中点でサイド判定
     const mx = (x0 + x1) * 0.5;
     const my = (y0 + y1) * 0.5;
-    const d = diagSign(mx, my);            // -1〜+1 相当の符号付き距離
+    const d = diagSign(mx, my);
 
-    // 境界ぼかし: |d| < blurBand のとき確率的に強/弱を混ぜる
     let strong;
     if (d > blurBand) {
       strong = true;
     } else if (d < -blurBand) {
       strong = false;
     } else {
-      // 境界帯: 距離に応じた確率で強い側
-      const t = (d + blurBand) / (2 * blurBand);  // 0〜1
+      const t = (d + blurBand) / (2 * blurBand);
       strong = rnd() < t;
     }
 
-    // ランダム強調
     const boost = rnd() < emphFrac;
 
     let a, w;
@@ -123,13 +271,11 @@ function drawLayerStructure(gStrong, gWeak, W, H, structAlpha, rnd) {
   for (let x = 0; x <= W; x += gridStep) drawLine(x, 0, x, H);
   for (let y = 0; y <= H; y += gridStep) drawLine(0, y, W, y);
 
-  // 斜め情報線（強い側に描画）
   gStrong.lineStyle(lineW - 0.4, 0x3d5a8a, 0.08 * structAlpha);
   gStrong.lineBetween(0, Math.floor(H * 0.42), W, Math.floor(H * 0.18));
   gStrong.lineStyle(lineW - 0.4, 0x2a4466, 0.07 * structAlpha);
   gStrong.lineBetween(0, Math.floor(H * 0.78), W, Math.floor(H * 0.62));
 
-  // 縦アクセントライン 2本
   const vx1 = Math.round(W * 0.22);
   const vx2 = Math.round(W * 0.81);
   gStrong.lineStyle(1, 0x4af0e4, 0.09 * structAlpha);
@@ -212,23 +358,13 @@ export function mountBootHomeBackdrop(scene, opts = {}) {
   drawLayerBase(base, W, H, gTop, gBot);
   layers.push(base);
 
-  // 強い側（左上）・弱い側（右下）で別レイヤーに分け、強い側のみ微揺らぎ tween
-  const gWeak   = scene.add.graphics();
-  gWeak.setDepth(depthBase + 1);
-  const gStrong = scene.add.graphics();
-  gStrong.setDepth(depthBase + 1);
-  drawLayerStructure(gStrong, gWeak, W, H, structAlpha, rnd);
-  layers.push(gWeak, gStrong);
+  // 斜め勾配グリッド: 線ごとに個別 Graphics、連続勾配でα・線幅を決定
+  const { lines: gridLines, accents } = buildDiagonalGrid(scene, W, H, structAlpha, depthBase, rnd);
+  gridLines.forEach((entry) => layers.push(entry.g));
+  accents.forEach((g) => layers.push(g));
 
-  // 強い側だけゆっくり α 変化（弱い側はほぼ静止）
-  scene.tweens.add({
-    targets:  gStrong,
-    alpha:    { from: 0.82, to: 1.0 },
-    duration: 2800 + Math.floor(rnd() * 1400),
-    ease:     'Sine.easeInOut',
-    yoyo:     true,
-    repeat:   -1,
-  });
+  // 断続グリッチループ
+  const glitch = startGlitchLoop(scene, gridLines, rnd);
 
   const noise = scene.add.graphics();
   noise.setDepth(depthBase + 2);
@@ -243,6 +379,7 @@ export function mountBootHomeBackdrop(scene, opts = {}) {
   return {
     layers,
     destroy() {
+      glitch.stop();
       for (let i = layers.length - 1; i >= 0; i -= 1) {
         layers[i]?.destroy?.();
       }
