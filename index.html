@@ -375,38 +375,80 @@
         }
 
         create() {
+          // ---------- background (崩壊の残留として薄く残す) ----------
           this._homeBackdrop = mountBootHomeBackdrop(this, {
             width: WORLD_W,
             height: WORLD_H,
             seed: 0xcafe404,
             depthBase: -55,
-            structureAlpha: 0.95,
-            noiseAlpha: 0.92,
-            fragmentAlpha: 0.9,
-            noiseDots: 78,
+            structureAlpha: 0.32,
+            noiseAlpha: 0.28,
+            fragmentAlpha: 0.25,
+            noiseDots: 52,
           });
 
           const cx = WORLD_W / 2;
           const cy = WORLD_H / 2;
 
-          this.add.text(cx, cy - 12, 'START', {
-            fontFamily: 'system-ui, sans-serif',
-            fontSize: '44px',
-            fontStyle: 'bold',
-            color: '#eef3ff',
+          // ---------- layout constants ----------
+          const startW = Math.round(WORLD_W * 0.67);   // ≈362
+          const startH = 80;
+          const subW   = Math.round(startW * 0.55);    // ≈199
+          const subH   = Math.round(startH * 0.44);    // ≈35
+          const subGap = 18;  // vertical gap between sub buttons
+
+          // START button sits at vertical center
+          const startY  = cy;
+          const startTop = startY - startH / 2;
+
+          // sub-buttons begin below START with some breathing room
+          const subGroupTop = startY + startH / 2 + 52;
+          const subLabels   = ['ENHANCE', 'LOG', 'OPTION'];
+
+          // ---------- accent color ----------
+          const CYAN_LINE  = 0x4af0e4;
+          const CYAN_TEXT  = '#4af0e4';
+          const SUB_LINE   = 0x2ec8be;
+          const SUB_TEXT   = '#2ec8be';
+
+          // ---------- START button ----------
+          const gStart = this.add.graphics().setDepth(4);
+          gStart.lineStyle(1.8, CYAN_LINE, 1.0);
+          gStart.strokeRect(cx - startW / 2, startTop, startW, startH);
+
+          this.add.text(cx, startY, 'START', {
+            fontFamily: 'monospace, system-ui, sans-serif',
+            fontSize: '32px',
+            fontStyle: 'normal',
+            color: CYAN_TEXT,
+            letterSpacing: 8,
           }).setOrigin(0.5).setDepth(5);
 
-          this.add.text(cx, cy + 44, 'Tap to play', {
-            fontFamily: 'system-ui, sans-serif',
-            fontSize: '18px',
-            color: '#9aaccc',
-          }).setOrigin(0.5).setDepth(5);
+          // ---------- sub buttons ----------
+          subLabels.forEach((label, i) => {
+            const btnY  = subGroupTop + i * (subH + subGap) + subH / 2;
+            const btnTop = btnY - subH / 2;
 
+            const g = this.add.graphics().setDepth(4);
+            g.lineStyle(1.2, SUB_LINE, 0.78);
+            g.strokeRect(cx - subW / 2, btnTop, subW, subH);
+
+            this.add.text(cx, btnY, label, {
+              fontFamily: 'monospace, system-ui, sans-serif',
+              fontSize: '14px',
+              color: SUB_TEXT,
+              letterSpacing: 4,
+              alpha: 0.78,
+            }).setOrigin(0.5).setDepth(5).setAlpha(0.78);
+          });
+
+          // ---------- lifecycle ----------
           this.events.once('shutdown', () => {
             this._homeBackdrop?.destroy?.();
             this._homeBackdrop = null;
           });
 
+          // START ボタンエリアのみゲーム遷移（中身は未実装なので全体タップで代用）
           this.input.once('pointerdown', () => {
             this._homeBackdrop?.destroy?.();
             this._homeBackdrop = null;
