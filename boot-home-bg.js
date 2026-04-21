@@ -84,13 +84,13 @@ function buildDiagonalGrid(scene, W, H, structAlpha, depthBase, rnd) {
     const t   = diagT(mx, my);           // 0=左上端, 1=右下端
 
     // 連続勾配: 左上(t=0)が最大強度、右下(t=1)が最小強度
-    // α range: 0.034 (強) → 0.010 (弱)  * structAlpha
-    const alphaStrong = 0.034 * structAlpha;
-    const alphaWeak   = 0.010 * structAlpha;
+    // α range: 0.072 (強) → 0.018 (弱)  * structAlpha
+    const alphaStrong = 0.072 * structAlpha;
+    const alphaWeak   = 0.018 * structAlpha;
     const baseAlpha   = alphaStrong + (alphaWeak - alphaStrong) * t;
 
-    // 線幅: 強側 2.0 → 弱側 1.0
-    const baseWidth = 2.0 - t * 1.0;
+    // 線幅: 強側 2.6 → 弱側 0.9
+    const baseWidth = 2.6 - t * 1.7;
 
     const g = scene.add.graphics();
     g.setDepth(depthBase + 1);
