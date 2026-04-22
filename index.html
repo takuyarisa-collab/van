@@ -431,13 +431,15 @@
         }
 
         create() {
-          // ── accent colors (unchanged) ────────────────────────────────────────
-          const FRAME_LW  = 2.2;
-          const CYAN_LINE = 0x4af0e4;
-          const CYAN_TEXT = '#4af0e4';
-          const SUB_LW    = 1.4;
-          const SUB_LINE  = 0x2ec8be;
-          const SUB_TEXT  = '#2ec8be';
+          // ── accent colors ────────────────────────────────────────────────────
+          // START uses a salmon palette; sub-buttons keep the original cyan tones
+          const FRAME_LW       = 2.3;
+          const START_FILL_HEX = 0xf47b6a;   // salmon fill
+          const START_LINE_HEX = 0xd45a47;   // slightly deeper frame line
+          const START_TEXT_COL = '#f47b6a';
+          const SUB_LW         = 1.4;
+          const SUB_LINE       = 0x2ec8be;
+          const SUB_TEXT       = '#2ec8be';
 
           // ── background ───────────────────────────────────────────────────────
           this._homeBackdrop = mountBootHomeBackdrop(this, {
@@ -465,11 +467,11 @@
           this._gStartFill = this.add.graphics().setDepth(3);
           this._gStartFrame = this.add.graphics().setDepth(4);
           this._startText = this.add.text(0, 0, 'START', {
-            fontFamily: 'monospace, system-ui, sans-serif',
-            fontSize: '32px',
-            fontStyle: 'normal',
-            color: CYAN_TEXT,
-            letterSpacing: 8,
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontSize: '34px',
+            fontStyle: 'bold',
+            color: START_TEXT_COL,
+            letterSpacing: 6,
           }).setOrigin(0.5).setDepth(5);
 
           this._subFrames = HOME_LAYOUT.labels.map(() =>
@@ -485,9 +487,9 @@
           );
 
           // stash style constants for use in _redrawHomeUI
-          this._style = { FRAME_LW, CYAN_LINE, SUB_LW, SUB_LINE };
+          this._style = { FRAME_LW, START_FILL_HEX, START_LINE_HEX, SUB_LW, SUB_LINE };
           // separate state for the START fill flash (not part of collapse delta)
-          this._startFillAlpha = 0.06;
+          this._startFillAlpha = 0.12;
 
           // ── initial draw ─────────────────────────────────────────────────────
           this._redrawHomeUI();
@@ -502,10 +504,10 @@
             const hh = (L.startHeight * d.scaleY) / 2;
             if (pointer.x >= cx - hw && pointer.x <= cx + hw &&
                 pointer.y >= cy - hh && pointer.y <= cy + hh) {
-              this._startFillAlpha = 0.14;
+              this._startFillAlpha = 0.24;
               this._redrawHomeUI();
               this.time.delayedCall(80, () => {
-                this._startFillAlpha = 0.06;
+                this._startFillAlpha = 0.12;
                 this._redrawHomeUI();
               });
             }
@@ -528,7 +530,8 @@
         // Call this whenever any delta value changes.
         _redrawHomeUI() {
           const L = HOME_LAYOUT;
-          const { FRAME_LW, CYAN_LINE, SUB_LW, SUB_LINE } = this._style;
+          const { FRAME_LW, START_FILL_HEX, START_LINE_HEX, SUB_LW, SUB_LINE } = this._style;
+          const START_CORNER_R = 8;
 
           // ── START frame ────────────────────────────────────────────────────
           {
@@ -538,13 +541,13 @@
                                     L.startWidth, L.startHeight, d);
             this._gStartFill.clear();
             this._gStartFill.setAlpha(r.alpha);
-            this._gStartFill.fillStyle(CYAN_LINE, this._startFillAlpha);
-            this._gStartFill.fillRect(r.x, r.y, r.w, r.h);
+            this._gStartFill.fillStyle(START_FILL_HEX, this._startFillAlpha);
+            this._gStartFill.fillRoundedRect(r.x, r.y, r.w, r.h, START_CORNER_R);
 
             this._gStartFrame.clear();
             this._gStartFrame.setAlpha(r.alpha);
-            this._gStartFrame.lineStyle(FRAME_LW, CYAN_LINE, 1.0);
-            this._gStartFrame.strokeRect(r.x, r.y, r.w, r.h);
+            this._gStartFrame.lineStyle(FRAME_LW, START_LINE_HEX, 1.0);
+            this._gStartFrame.strokeRoundedRect(r.x, r.y, r.w, r.h, START_CORNER_R);
           }
 
           // ── START label ────────────────────────────────────────────────────
