@@ -392,6 +392,30 @@
         // top-left Y of the first sub-button row
         const subButtonsTopY    = startCenterY + startHeight / 2 + 48;
         const labels = ['ENHANCE', 'LOADOUT', 'LOG'];
+
+        // ── outerFrame: 6-part decomposition of one outer border ────────────
+        // padding from world edges
+        const ofPad    = 28;
+        const ofLeft   = ofPad;
+        const ofRight  = WORLD_W - ofPad;
+        const ofTop    = ofPad;
+        const ofBottom = WORLD_H - ofPad;
+        // vertical split at screen centre
+        const ofMidY   = WORLD_H / 2;
+        const outerFrame = Object.freeze({
+          // horizontal bars (full width between left/right corners)
+          top:          Object.freeze({ x1: ofLeft,  y1: ofTop,    x2: ofRight, y2: ofTop    }),
+          bottom:       Object.freeze({ x1: ofLeft,  y1: ofBottom, x2: ofRight, y2: ofBottom }),
+          // left vertical – upper half
+          leftTop:      Object.freeze({ x1: ofLeft,  y1: ofTop,    x2: ofLeft,  y2: ofMidY   }),
+          // left vertical – lower half
+          leftBottom:   Object.freeze({ x1: ofLeft,  y1: ofMidY,   x2: ofLeft,  y2: ofBottom }),
+          // right vertical – upper half
+          rightTop:     Object.freeze({ x1: ofRight, y1: ofTop,    x2: ofRight, y2: ofMidY   }),
+          // right vertical – lower half
+          rightBottom:  Object.freeze({ x1: ofRight, y1: ofMidY,   x2: ofRight, y2: ofBottom }),
+        });
+
         return Object.freeze({
           centerX,
           startCenterY,
@@ -402,6 +426,7 @@
           subButtonSpacing,
           subButtonsTopY,
           labels,
+          outerFrame,
         });
       })();
 
@@ -423,6 +448,16 @@
           alpha:    delta.alpha,
           rotation: delta.rotation,
         };
+      }
+
+      // Merge a layout line segment with a delta → { x1, y1, x2, y2, alpha }
+      // offsetX/Y shift the whole segment; scaleX/Y extend from the midpoint.
+      function _applySegmentDelta(seg, delta) {
+        const mx = (seg.x1 + seg.x2) * 0.5 + delta.offsetX;
+        const my = (seg.y1 + seg.y2) * 0.5 + delta.offsetY;
+        const hx = (seg.x2 - seg.x1) * 0.5 * delta.scaleX;
+        const hy = (seg.y2 - seg.y1) * 0.5 * delta.scaleY;
+        return { x1: mx - hx, y1: my - hy, x2: mx + hx, y2: my + hy, alpha: delta.alpha };
       }
 
       class HomeScene extends Phaser.Scene {
@@ -461,6 +496,14 @@
               frame: createHomeDelta(),
               label: createHomeDelta(),
             })),
+            outerFrame: {
+              top:         createHomeDelta(),
+              bottom:      createHomeDelta(),
+              leftTop:     createHomeDelta(),
+              leftBottom:  createHomeDelta(),
+              rightTop:    createHomeDelta(),
+              rightBottom: createHomeDelta(),
+            },
           };
 
           // ── Phaser display objects (allocated once, redrawn by _redrawHomeUI) ─
@@ -485,6 +528,18 @@
               letterSpacing: 4,
             }).setOrigin(0.5).setDepth(5)
           );
+
+          // ── outerFrame: 6 independent segment graphics ───────────────────────
+          // depth 1 → above grid (-54), below everything else (3+)
+          const _ofDepth = 1;
+          this._outerFrameGfx = {
+            top:         this.add.graphics().setDepth(_ofDepth),
+            bottom:      this.add.graphics().setDepth(_ofDepth),
+            leftTop:     this.add.graphics().setDepth(_ofDepth),
+            leftBottom:  this.add.graphics().setDepth(_ofDepth),
+            rightTop:    this.add.graphics().setDepth(_ofDepth),
+            rightBottom: this.add.graphics().setDepth(_ofDepth),
+          };
 
           // stash style constants for use in _redrawHomeUI
           this._style = { FRAME_LW, START_FILL_HEX, START_LINE_HEX, SUB_LW, SUB_LINE };
@@ -614,6 +669,31 @@
               this._subTexts[i].setScale(d.scaleX, d.scaleY);
             }
           });
+
+          // ── outerFrame (6 segments) ───────────────────────────────────────
+          {
+            const OF_LW    = 1.4;
+            const OF_COLOR = 0x5c7cad;
+            const OF_ALPHA = 0.50;
+            const of       = L.outerFrame;
+            const gfx      = this._outerFrameGfx;
+            const dof      = this._delta.outerFrame;
+
+            const _drawSeg = (g, seg, delta) => {
+              const s = _applySegmentDelta(seg, delta);
+              g.clear();
+              g.setAlpha(s.alpha * OF_ALPHA);
+              g.lineStyle(OF_LW, OF_COLOR, 1.0);
+              g.lineBetween(s.x1, s.y1, s.x2, s.y2);
+            };
+
+            _drawSeg(gfx.top,         of.top,         dof.top);
+            _drawSeg(gfx.bottom,      of.bottom,      dof.bottom);
+            _drawSeg(gfx.leftTop,     of.leftTop,     dof.leftTop);
+            _drawSeg(gfx.leftBottom,  of.leftBottom,  dof.leftBottom);
+            _drawSeg(gfx.rightTop,    of.rightTop,    dof.rightTop);
+            _drawSeg(gfx.rightBottom, of.rightBottom, dof.rightBottom);
+          }
         }
       }
 
