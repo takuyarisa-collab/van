@@ -136,7 +136,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.8';
-      const BUILD_TIMESTAMP = '2026-04-22 23:30';
+      const BUILD_TIMESTAMP = '2026-04-22 23:55';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -549,20 +549,26 @@
           this._startFillAlpha = 0.12;
 
           // ── initial draw ─────────────────────────────────────────────────────
-          // outerFrame collapse state
+          // outerFrame collapse state (強め崩壊)
+          this._delta.outerFrame.leftTop.alpha = 0;
           this._delta.outerFrame.rightTop.alpha = 0;
           this._delta.outerFrame.bottom.alpha = 0;
-          this._delta.outerFrame.leftBottom.offsetY = 6;
-          this._delta.outerFrame.rightBottom.offsetX = 6;
-          this._delta.outerFrame.top.offsetX = -4;
+          this._delta.outerFrame.leftBottom.offsetY = 12;
+          this._delta.outerFrame.rightBottom.offsetX = 12;
+          this._delta.outerFrame.top.offsetX = -8;
           // START button collapse state
-          this._delta.startFrame.offsetX = 6;
-          this._delta.startFrame.alpha = 0.92;
-          this._delta.startLabel.offsetX = -3;
+          this._delta.startFrame.offsetX = 12;
+          this._delta.startFrame.offsetY = -6;
+          this._delta.startFrame.alpha = 0.75;
+          this._delta.startLabel.offsetX = -8;
+          this._delta.startLabel.offsetY = 4;
+          this._delta.startLabel.alpha = 0.85;
           // sub-button collapse state
-          this._delta.sub[0].frame.offsetX = 4;
-          this._delta.sub[1].frame.alpha = 0.85;
-          this._delta.sub[2].frame.offsetY = 5;
+          this._delta.sub[0].frame.alpha = 0;
+          this._delta.sub[1].frame.offsetX = 14;
+          this._delta.sub[1].frame.offsetY = 6;
+          this._delta.sub[1].frame.alpha = 0.6;
+          this._delta.sub[2].frame.alpha = 0;
           this._redrawHomeUI();
 
           // ── lifecycle ────────────────────────────────────────────────────────
