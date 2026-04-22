@@ -168,35 +168,48 @@ function drawLayerUiFrags(g, W, H, fragAlpha, rnd) {
   }
 }
 
-/** Home 用: ベース + 整列グリッドの2層のみ */
+/**
+ * Home 用: 単一 Graphics による静的弱グラデーション背景
+ * - 上 → 下 の縦グラデーション1オブジェクトのみ
+ * - グリッド・ノイズ・Tween なし
+ */
 export function mountBootHomeBackdrop(scene, opts = {}) {
   const W = opts.width ?? scene.scale.width;
   const H = opts.height ?? scene.scale.height;
-
   const depthBase = opts.depthBase ?? -60;
-  const structAlpha = Phaser.Math.Clamp(opts.structureAlpha ?? 1, 0, 2);
 
-  const gTop = opts.gradientTop ?? 0x020611;
-  const gBot = opts.gradientBottom ?? 0x020611;
+  const gTop = opts.gradientTop ?? 0xf3f5f7;
+  const gBot = opts.gradientBottom ?? 0xe6eaee;
 
-  const layers = [];
+  const g = scene.add.graphics();
+  g.setDepth(depthBase);
 
-  const base = scene.add.graphics();
-  base.setDepth(depthBase);
-  drawLayerBase(base, W, H, gTop, gBot);
-  layers.push(base);
+  // Phaser の fillGradientStyle は四隅指定（topLeft, topRight, bottomLeft, bottomRight）
+  // 上半分・下半分の2矩形に分割して連続グラデーションを近似する
+  const mid = Math.round(H / 2);
+  const gMid = interpolateColor(gTop, gBot, 0.5);
 
-  const grid = buildCleanGrid(scene, W, H, structAlpha, depthBase);
-  layers.push(grid);
+  g.fillGradientStyle(gTop, gTop, gMid, gMid, 1, 1, 1, 1);
+  g.fillRect(0, 0, W, mid);
+
+  g.fillGradientStyle(gMid, gMid, gBot, gBot, 1, 1, 1, 1);
+  g.fillRect(0, mid, W, H - mid);
 
   return {
-    layers,
+    layers: [g],
     destroy() {
-      for (let i = layers.length - 1; i >= 0; i -= 1) {
-        layers[i]?.destroy?.();
-      }
+      g.destroy();
     },
   };
+}
+
+function interpolateColor(c1, c2, t) {
+  const r1 = (c1 >> 16) & 0xff, g1 = (c1 >> 8) & 0xff, b1 = c1 & 0xff;
+  const r2 = (c2 >> 16) & 0xff, g2 = (c2 >> 8) & 0xff, b2 = c2 & 0xff;
+  const r = Math.round(r1 + (r2 - r1) * t);
+  const g = Math.round(g1 + (g2 - g1) * t);
+  const b = Math.round(b1 + (b2 - b1) * t);
+  return (r << 16) | (g << 8) | b;
 }
 
 /**
