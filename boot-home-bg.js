@@ -178,8 +178,8 @@ export function mountBootHomeBackdrop(scene, opts = {}) {
   const H = opts.height ?? scene.scale.height;
   const depthBase = opts.depthBase ?? -60;
 
-  const gTop = opts.gradientTop ?? 0xeceff2;
-  const gBot = opts.gradientBottom ?? 0xdadfe5;
+  const gTop = opts.gradientTop ?? 0xF2F4F7;
+  const gBot = opts.gradientBottom ?? 0x8F9BA8;
 
   const g = scene.add.graphics();
   g.setDepth(depthBase);
