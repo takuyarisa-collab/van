@@ -136,7 +136,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.8';
-      const BUILD_TIMESTAMP = '2026-04-22 21:30';
+      const BUILD_TIMESTAMP = '2026-04-22 22:00';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -551,6 +551,9 @@
           // ── initial draw ─────────────────────────────────────────────────────
           this._delta.outerFrame.rightTop.alpha = 0;
           this._delta.outerFrame.bottom.alpha = 0;
+          this._delta.outerFrame.leftBottom.offsetY = 6;
+          this._delta.outerFrame.rightBottom.offsetX = 6;
+          this._delta.outerFrame.top.offsetX = -4;
           this._redrawHomeUI();
 
           // ── lifecycle ────────────────────────────────────────────────────────
