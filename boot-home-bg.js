@@ -1,6 +1,6 @@
 /**
  * Boot / Home 用背景（Phaser Graphics）
- * - mountBootHomeBackdrop … 静的4層（Home）＋空間グラデーション＋斜め勾配グリッド＋断続グリッチ
+ * - mountBootHomeBackdrop … 静的2層（Base + 整列グリッド）
  * - mountBootCollapsedBackdrop … Boot 崩壊（レイヤーズレ＋微動→収束）
  * - mountHomeParticles … 微粒子フェードアニメ（Home 専用）
  */
@@ -15,351 +15,66 @@ function mulberry32(seed) {
 }
 
 /**
- * 3ストップ空間グラデーション:  上 #020611 → 中 #071a2f → 下 #020611
- * 中央に縦グラデーション光帯（画面幅の35%）を追加
+ * ベース背景: 単色ダーク塗りつぶし
  */
 function drawLayerBase(g, W, H, gTop, gBot) {
   const gMid = 0x071a2f;
   const half = Math.round(H / 2);
-  // 上半分: gTop → gMid
   g.fillGradientStyle(gTop, gTop, gMid, gMid, 1, 1, 1, 1);
   g.fillRect(0, 0, W, half);
-  // 下半分: gMid → gBot
   g.fillGradientStyle(gMid, gMid, gBot, gBot, 1, 1, 1, 1);
   g.fillRect(0, half, W, H - half);
-
-  // 中央縦光帯（画面幅35%・横グラデ近似：左右→中央が明るい）
-  const bandW = Math.round(W * 0.35);
-  const bandX = Math.round((W - bandW) / 2);
-  const bandMid = Math.round(bandW / 2);
-  // 左半分: 透明 → 0b2a4a
-  g.fillGradientStyle(0x0b2a4a, 0x0b2a4a, 0x0b2a4a, 0x0b2a4a, 0, 0, 0.18, 0.18);
-  g.fillRect(bandX, 0, bandMid, H);
-  // 右半分: 0b2a4a → 透明
-  g.fillGradientStyle(0x0b2a4a, 0x0b2a4a, 0x0b2a4a, 0x0b2a4a, 0.18, 0.18, 0, 0);
-  g.fillRect(bandX + bandMid, 0, bandW - bandMid, H);
-
-  // コーナーダークニング
-  g.fillStyle(0x000308, 0.28);
-  g.beginPath();
-  g.moveTo(0, 0);
-  g.lineTo(W, 0);
-  g.lineTo(0, H * 0.55);
-  g.closePath();
-  g.fillPath();
-  g.fillStyle(0x020814, 0.22);
-  g.beginPath();
-  g.moveTo(W, H);
-  g.lineTo(W, 0);
-  g.lineTo(0, H);
-  g.closePath();
-  g.fillPath();
 }
 
 /**
- * 斜め勾配グリッド用: 全グリッド線のメタデータを事前計算して配列で返す。
- * 各線は独自の Graphics を持ち、グリッチ時に個別に差し替えられる。
- *
- * A. 勾配: 非線形(t^1.7)で左上に強さを寄せ、中央帯を12%減光、強弱差を拡大。
- * B. 間隔崩し: 密度偏り(左上詰め/右下広げ) + 連続ズレ塊 + 5〜10%欠落。
+ * 整列グリッド: 完全等間隔・統一線幅・欠けなし・ランダム性なし
  *
  * @param {Phaser.Scene} scene
  * @param {number} W
  * @param {number} H
  * @param {number} structAlpha
  * @param {number} depthBase
- * @param {Function} rnd
- * @returns {{ lines: Array, accents: Array }}
+ * @returns {Phaser.GameObjects.Graphics}
  */
-function buildDiagonalGrid(scene, W, H, structAlpha, depthBase, rnd) {
-  const baseStep = 52;
-  const diagLen  = Math.hypot(W, H);
+function buildCleanGrid(scene, W, H, structAlpha, depthBase) {
+  const step = 52;
+  const lineColor = 0x5c7cad;
+  const lineWidth = 1.2;
+  const lineAlpha = 0.10 * structAlpha;
 
-  // 左上→右下軸上の正規化位置 [0,1]
-  const diagT = (x, y) => (x * W + y * H) / (diagLen * diagLen);
+  const g = scene.add.graphics();
+  g.setDepth(depthBase + 1);
+  g.lineStyle(lineWidth, lineColor, lineAlpha);
 
-  // ---------------------------------------------------------------------------
-  // B-1: 間隔崩しポジション列を生成するヘルパー
-  //   - 左上(tPos<0.5)は基本間隔を-15%詰め、右下は+15%広げて密度を傾ける
-  //   - 全体の32%をランダム選択し、2〜3本の連続ブロック単位でズレを発生させる
-  //   - 8%のラインを欠落（生成しない）させる
-  // ---------------------------------------------------------------------------
-  const buildPositions = (maxCoord, isHorizontal) => {
-    // まず等間隔の基本位置を算出（密度偏りをこの段階で適用）
-    const rawPositions = [];
-    let pos = 0;
-    while (pos <= maxCoord + baseStep) {
-      // ラインの左上→右下軸上の位置 tPos を概算
-      const tPos = isHorizontal
-        ? diagT(W * 0.5, pos)   // 水平線: y=pos の中点
-        : diagT(pos, H * 0.5);  // 垂直線: x=pos の中点
-      // 左上側は詰め(-15%)、右下側は広げ(+15%)
-      const densityFactor = 1.0 - 0.15 + 0.30 * Math.min(tPos, 1);
-      const step = Math.round(baseStep * densityFactor);
-      rawPositions.push(pos);
-      pos += step;
-    }
-
-    // ランダムズレを「連続ブロック」で適用（単発ではなく2〜3本まとめて）
-    // 対象: 全体の32% をブロック選択
-    const jitterMap = new Map();  // index → jitter offset
-
-    let i = 0;
-    while (i < rawPositions.length) {
-      if (rnd() < 0.32) {
-        const blockLen = 2 + (rnd() < 0.4 ? 1 : 0); // 2〜3本
-        // ブロック内で共通方向、大きさは個別にばらつかせる
-        const sign   = rnd() < 0.5 ? 1 : -1;
-        const baseMag = (0.10 + rnd() * 0.15) * baseStep; // 10〜25%
-        for (let b = 0; b < blockLen && i + b < rawPositions.length; b += 1) {
-          const mag = baseMag * (0.8 + rnd() * 0.4);
-          jitterMap.set(i + b, sign * mag);
-        }
-        i += blockLen;
-      } else {
-        i += 1;
-      }
-    }
-
-    // 欠落: 8%をスキップ（欠落率は左上側を低く、右下側をやや高く）
-    const finalPositions = [];
-    for (let j = 0; j < rawPositions.length; j += 1) {
-      const tPos = isHorizontal
-        ? diagT(W * 0.5, rawPositions[j])
-        : diagT(rawPositions[j], H * 0.5);
-      // 右下ほど欠落しやすい: 0.04(左上) 〜 0.12(右下)
-      const dropChance = 0.04 + 0.08 * Math.min(tPos, 1);
-      if (rnd() < dropChance) continue;
-
-      const jitter = jitterMap.get(j) ?? 0;
-      finalPositions.push(rawPositions[j] + jitter);
-    }
-    return finalPositions;
-  };
-
-  // ---------------------------------------------------------------------------
-  // A. 勾配パラメータ計算
-  // ---------------------------------------------------------------------------
-  const alphaStrong = 0.11 * structAlpha;
-  const alphaWeak   = 0.013 * structAlpha;
-  const widthStrong = 3.2;
-  const widthWeak   = 0.7;
-  const GAMMA       = 1.7;   // 非線形指数: 左上に強さを寄せる
-
-  const lineAlpha = (t) => {
-    const tg = Math.pow(t, GAMMA);
-    let a = alphaStrong + (alphaWeak - alphaStrong) * tg;
-    // 中央帯(t=0.35〜0.65)を12%減光してSTART周辺の視認性を確保
-    if (t > 0.35 && t < 0.65) {
-      const mid = 1 - Math.abs(t - 0.5) / 0.15;  // 0→1→0
-      a *= (1 - 0.12 * Math.min(mid, 1));
-    }
-    return Math.max(a, 0.003);
-  };
-
-  const lineWidth = (t) => {
-    const tg = Math.pow(t, GAMMA);
-    return widthStrong + (widthWeak - widthStrong) * tg;
-  };
-
-  // ---------------------------------------------------------------------------
-  // ライン生成
-  // ---------------------------------------------------------------------------
-  const lines = [];
-
-  // 全ラインの6%を「異常ライン」として強制強調
-  const ANOMALY_RATE = 0.06;
-
-  const addLine = (x0, y0, x1, y1) => {
-    const mx  = (x0 + x1) * 0.5;
-    const my  = (y0 + y1) * 0.5;
-    const t   = Math.min(diagT(mx, my), 1);
-
-    const isVertical = (x0 === x1);
-
-    // 1. 異常ライン: 勾配無視で強制強調（右下でも強く出る）
-    const isAnomaly = rnd() < ANOMALY_RATE;
-    let baseAlpha, baseWidth;
-    if (isAnomaly) {
-      baseAlpha = (0.18 + rnd() * 0.07) * structAlpha;
-      baseWidth = 3.5 + rnd() * 1.0;
-    } else {
-      baseAlpha = lineAlpha(t);
-      baseWidth = lineWidth(t);
-    }
-
-    // 2. 途中で切れる線: 右下(t>0.55)で高確率、左上(t<0.45)でも低確率
-    const truncChance = t > 0.55 ? 0.28 : (t < 0.45 ? 0.06 : 0.10);
-    let ax0 = x0, ay0 = y0, ax1 = x1, ay1 = y1;
-    if (rnd() < truncChance) {
-      const ratio = 0.30 + rnd() * 0.30; // 30〜60%の長さで止める
-      if (rnd() < 0.65) {
-        // 遠い側(右/下)を切る
-        ax1 = ax0 + (x1 - x0) * ratio;
-        ay1 = ay0 + (y1 - y0) * ratio;
-      } else {
-        // 近い側(左/上)から始める
-        const sf = 1.0 - ratio;
-        ax0 = x0 + (x1 - x0) * sf;
-        ay0 = y0 + (y1 - y0) * sf;
-      }
-    }
-
-    // 3. 交点ズレ: 15%のラインに垂線方向 2〜6px オフセット
-    if (rnd() < 0.15) {
-      const perpOff = (rnd() < 0.5 ? -1 : 1) * (2 + rnd() * 4);
-      if (isVertical) { ax0 += perpOff; ax1 += perpOff; }
-      else             { ay0 += perpOff; ay1 += perpOff; }
-    }
-
-    const g = scene.add.graphics();
-    g.setDepth(depthBase + 1);
-    g.lineStyle(baseWidth, 0x5c7cad, baseAlpha);
-    g.lineBetween(ax0, ay0, ax1, ay1);
-
-    lines.push({ g, x0: ax0, y0: ay0, x1: ax1, y1: ay1, baseAlpha, baseWidth, baseOffsetX: 0, diagT: t });
-  };
-
-  // 垂直ライン (x が変化, y は 0〜H 固定)
-  const vPositions = buildPositions(W, false);
-  for (const x of vPositions) {
-    if (x >= 0 && x <= W + baseStep) addLine(x, 0, x, H);
+  for (let x = 0; x <= W; x += step) {
+    g.lineBetween(x, 0, x, H);
+  }
+  for (let y = 0; y <= H; y += step) {
+    g.lineBetween(0, y, W, y);
   }
 
-  // 水平ライン (y が変化, x は 0〜W 固定)
-  const hPositions = buildPositions(H, true);
-  for (const y of hPositions) {
-    if (y >= 0 && y <= H + baseStep) addLine(0, y, W, y);
+  return g;
+}
+
+function drawLayerNoise(g, W, H, noiseAlpha, noiseDots, rnd) {
+  for (let i = 0; i < noiseDots; i += 1) {
+    const nx = rnd() * W;
+    const ny = rnd() * H;
+    const r = rnd() > 0.8 ? 1.5 + rnd() * 1.0 : 0.45 + rnd() * 1.35;
+    const a = (0.15 + rnd() * 0.25) * noiseAlpha;
+    g.fillStyle(0xc2d6f5, a);
+    g.fillCircle(nx, ny, r);
+    if (rnd() > 0.58) {
+      g.lineStyle(0.6, 0x8ea0c8, a * 0.75);
+      const lx = (rnd() - 0.5) * 18;
+      const ly = (rnd() - 0.5) * 18;
+      g.lineBetween(nx, ny, nx + lx, ny + ly);
+    }
   }
-
-  // 縦アクセントライン 2本（グリッチ対象外の装飾層）
-  const vx1 = Math.round(W * 0.22);
-  const vx2 = Math.round(W * 0.81);
-  const acc1 = scene.add.graphics();
-  acc1.setDepth(depthBase + 1);
-  acc1.lineStyle(1, 0x4af0e4, 0.09 * structAlpha);
-  acc1.lineBetween(vx1, 0, vx1, H);
-  const acc2 = scene.add.graphics();
-  acc2.setDepth(depthBase + 1);
-  acc2.lineStyle(1, 0x4af0e4, 0.08 * structAlpha);
-  acc2.lineBetween(vx2, Math.round(H * 0.12), vx2, Math.round(H * 0.88));
-
-  return { lines, accents: [acc1, acc2] };
 }
 
 /**
- * グリッチループ: 0.4〜0.8秒に1回ランダム発火、5〜15本を対象に
- * 4種エフェクト（シフト／α増幅／消去／線幅増大）のいずれか1つを適用し
- * 40〜120ms で必ず元に戻す。やや斜め方向（左上→右下）に偏った選択。
- *
- * @param {Phaser.Scene} scene
- * @param {Array} lines  buildDiagonalGrid が返す lines 配列
- * @param {Function} rnd
- * @returns {{ stop: () => void }}
- */
-function startGlitchLoop(scene, lines, rnd) {
-  let timer = null;
-  let active = true;
-
-  const scheduleNext = () => {
-    if (!active) return;
-    const delay = 400 + rnd() * 400;   // 400〜800ms
-    timer = scene.time.delayedCall(delay, fire);
-  };
-
-  const redrawLine = (entry, offsetX, alphaOverride, widthOverride) => {
-    const { g, x0, y0, x1, y1 } = entry;
-    const ox = offsetX ?? entry.baseOffsetX;
-    const a  = alphaOverride ?? entry.baseAlpha;
-    const w  = widthOverride ?? entry.baseWidth;
-    g.clear();
-    g.lineStyle(w, 0x5c7cad, a);
-    g.lineBetween(x0 + ox, y0, x1 + ox, y1);
-  };
-
-  const fire = () => {
-    if (!active) return;
-
-    const count = 5 + Math.floor(rnd() * 11);   // 5〜15本
-
-    // 偏り: 左上寄りを基本としつつ、右下にも強破壊スポットを作る
-    // U字型: 左上(t→0)と右下(t→1)の両端で選ばれやすく、中間は低め
-    const weights = lines.map((l) => {
-      const tl = l.diagT;
-      const leftBias  = Math.pow(1 - tl * 0.7, 1.5) + 0.15;   // 従来の左上寄り
-      const rightSpike = Math.pow(tl, 3) * 0.8;                 // 右下にも強スパイク
-      return leftBias + rightSpike;
-    });
-
-    // ルーレット選択で count 本を非重複ピック
-    const chosen = [];
-    const pool = lines.map((l, i) => ({ l, i, w: weights[i] }));
-    for (let pick = 0; pick < count && pool.length > 0; pick += 1) {
-      const totalW = pool.reduce((s, p) => s + p.w, 0);
-      let rv = rnd() * totalW;
-      let idx = 0;
-      while (idx < pool.length - 1 && rv > pool[idx].w) {
-        rv -= pool[idx].w;
-        idx += 1;
-      }
-      chosen.push(pool[idx]);
-      pool.splice(idx, 1);
-    }
-
-    // エフェクト種別をランダム選択（全選択ラインで同一種別）
-    const effectType = Math.floor(rnd() * 4);
-    // 0: 横シフト(2〜6px)  1: α増幅(1.5〜2x)  2: 消去  3: 線幅増大
-
-    const restores = chosen.map(({ l }) => {
-      switch (effectType) {
-        case 0: {
-          const shift = (rnd() < 0.5 ? -1 : 1) * (2 + rnd() * 4);
-          redrawLine(l, shift, null, null);
-          return () => redrawLine(l, 0, null, null);
-        }
-        case 1: {
-          const boost = 1.5 + rnd() * 0.5;
-          redrawLine(l, 0, Math.min(l.baseAlpha * boost, 1), null);
-          return () => redrawLine(l, 0, l.baseAlpha, null);
-        }
-        case 2: {
-          l.g.clear();
-          return () => redrawLine(l, 0, null, null);
-        }
-        case 3: {
-          const extra = 1.5 + rnd() * 2.0;
-          redrawLine(l, 0, null, l.baseWidth + extra);
-          return () => redrawLine(l, 0, null, l.baseWidth);
-        }
-        default:
-          return () => {};
-      }
-    });
-
-    // 40〜120ms 後に全て戻す
-    const restoreDelay = 40 + rnd() * 80;
-    scene.time.delayedCall(restoreDelay, () => {
-      restores.forEach((fn) => fn());
-      scheduleNext();
-    });
-  };
-
-  scheduleNext();
-
-  return {
-    stop() {
-      active = false;
-      if (timer) {
-        timer.remove(false);
-        timer = null;
-      }
-    },
-  };
-}
-
-/**
- * Boot/Collapsed 用: 静的2レイヤーグリッド（shimmer tween 付き）。
- * mountBootCollapsedBackdrop からのみ使用。
+ * Boot/Collapsed 用: 静的2レイヤーグリッド（shimmer tween 付き）
  */
 function drawLayerStructure(gStrong, gWeak, W, H, structAlpha, rnd) {
   const gridStep  = 52;
@@ -419,24 +134,6 @@ function drawLayerStructure(gStrong, gWeak, W, H, structAlpha, rnd) {
   gStrong.lineBetween(vx2, Math.round(H * 0.12), vx2, Math.round(H * 0.88));
 }
 
-function drawLayerNoise(g, W, H, noiseAlpha, noiseDots, rnd) {
-  for (let i = 0; i < noiseDots; i += 1) {
-    const nx = rnd() * W;
-    const ny = rnd() * H;
-    // たまに3px
-    const r = rnd() > 0.8 ? 1.5 + rnd() * 1.0 : 0.45 + rnd() * 1.35;
-    const a = (0.15 + rnd() * 0.25) * noiseAlpha;  // α 0.15〜0.40
-    g.fillStyle(0xc2d6f5, a);
-    g.fillCircle(nx, ny, r);
-    if (rnd() > 0.58) {
-      g.lineStyle(0.6, 0x8ea0c8, a * 0.75);
-      const lx = (rnd() - 0.5) * 18;
-      const ly = (rnd() - 0.5) * 18;
-      g.lineBetween(nx, ny, nx + lx, ny + ly);
-    }
-  }
-}
-
 function drawLayerUiFrags(g, W, H, fragAlpha, rnd) {
   const nArcs = 10;
   for (let i = 0; i < nArcs; i += 1) {
@@ -471,17 +168,13 @@ function drawLayerUiFrags(g, W, H, fragAlpha, rnd) {
   }
 }
 
-/** 静的4層（Home 等） */
+/** Home 用: ベース + 整列グリッドの2層のみ */
 export function mountBootHomeBackdrop(scene, opts = {}) {
   const W = opts.width ?? scene.scale.width;
   const H = opts.height ?? scene.scale.height;
-  const rnd = mulberry32((opts.seed >>> 0) || 0x5eed001);
 
   const depthBase = opts.depthBase ?? -60;
   const structAlpha = Phaser.Math.Clamp(opts.structureAlpha ?? 1, 0, 2);
-  const noiseAlpha = Phaser.Math.Clamp(opts.noiseAlpha ?? 1, 0, 2);
-  const fragAlpha = Phaser.Math.Clamp(opts.fragmentAlpha ?? 1, 0, 2);
-  const noiseDots = Phaser.Math.Clamp(Math.floor(opts.noiseDots ?? 88), 24, 200);
 
   const gTop = opts.gradientTop ?? 0x020611;
   const gBot = opts.gradientBottom ?? 0x020611;
@@ -493,28 +186,12 @@ export function mountBootHomeBackdrop(scene, opts = {}) {
   drawLayerBase(base, W, H, gTop, gBot);
   layers.push(base);
 
-  // 斜め勾配グリッド: 線ごとに個別 Graphics、連続勾配でα・線幅を決定
-  const { lines: gridLines, accents } = buildDiagonalGrid(scene, W, H, structAlpha, depthBase, rnd);
-  gridLines.forEach((entry) => layers.push(entry.g));
-  accents.forEach((g) => layers.push(g));
-
-  // 断続グリッチループ
-  const glitch = startGlitchLoop(scene, gridLines, rnd);
-
-  const noise = scene.add.graphics();
-  noise.setDepth(depthBase + 2);
-  drawLayerNoise(noise, W, H, noiseAlpha, noiseDots, rnd);
-  layers.push(noise);
-
-  const uiFrags = scene.add.graphics();
-  uiFrags.setDepth(depthBase + 3);
-  drawLayerUiFrags(uiFrags, W, H, fragAlpha, rnd);
-  layers.push(uiFrags);
+  const grid = buildCleanGrid(scene, W, H, structAlpha, depthBase);
+  layers.push(grid);
 
   return {
     layers,
     destroy() {
-      glitch.stop();
       for (let i = layers.length - 1; i >= 0; i -= 1) {
         layers[i]?.destroy?.();
       }
@@ -533,16 +210,15 @@ export function mountHomeParticles(scene, opts = {}) {
   const depthBase = opts.depthBase ?? -52;
   const rnd = mulberry32(((opts.seed >>> 0) || 0xdead00) ^ 0xbeef);
 
-  const count = Math.round(50 + rnd() * 30);  // 50〜80
+  const count = Math.round(50 + rnd() * 30);
   const dots = [];
   const tweens = [];
 
   for (let i = 0; i < count; i += 1) {
     const px = rnd() * W;
     const py = rnd() * H;
-    // たまに3px
     const r  = rnd() > 0.75 ? 1.5 + rnd() * 1.0 : 0.5 + rnd() * 1.0;
-    const peakAlpha = 0.15 + rnd() * 0.25;  // 0.15〜0.40
+    const peakAlpha = 0.15 + rnd() * 0.25;
 
     const g = scene.add.graphics();
     g.setDepth(depthBase);
@@ -574,7 +250,7 @@ export function mountHomeParticles(scene, opts = {}) {
     },
   };
 }
- 
+
 
 /**
  * Boot: base / structure / noise / ui を別 Container に載せ、ズレ＋微動後に (0,0) へ収束
@@ -662,7 +338,6 @@ export function mountBootCollapsedBackdrop(scene, opts = {}) {
       containers.forEach((c) => c?.destroy?.());
       containers.length = 0;
     },
-    /** 各レイヤーTween完了時に onEachComplete を呼ぶ（4回） */
     convergeLayers(durationMs, ease, easeParams, onEachComplete) {
       stopDrift();
       containers.forEach((c) => {
@@ -708,13 +383,11 @@ export function createScatteredBootTitle(scene, opts) {
     strokeThickness: Math.max(2, (styleOverlap.strokeThickness ?? 4) - 1),
   };
 
-  /** 2〜3レイヤー（ベース＋色干渉） */
   const nLayersFor = (baseN) => {
     const n = baseN + Math.floor(rnd() * 2);
     return Phaser.Math.Clamp(n, 2, 3);
   };
 
-  /** 各文字は収束先から maxR 以内（中央のブロックに密集） */
   const clampNearTarget = (tx, ty, px, py, maxR) => {
     const dx = px - tx;
     const dy = py - ty;
