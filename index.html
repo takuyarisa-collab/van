@@ -525,6 +525,30 @@
               });
             }
           });
+
+          // ── 下ボタン個別クリック処理（ENHANCE / LOADOUT / LOG）─────────────
+          const _subHandlers = [
+            () => { console.log('[HOME] ENHANCE pressed'); },
+            () => { console.log('[HOME] LOADOUT pressed'); },
+            () => { console.log('[HOME] LOG pressed'); },
+          ];
+
+          this.input.on('pointerdown', (pointer) => {
+            const L = HOME_LAYOUT;
+            HOME_LAYOUT.labels.forEach((_, i) => {
+              const d     = this._delta.sub[i].frame;
+              const baseCY = L.subButtonsTopY + i * (L.subButtonHeight + L.subButtonSpacing)
+                             + L.subButtonHeight / 2;
+              const cx = L.centerX + d.offsetX;
+              const cy = baseCY   + d.offsetY;
+              const hw = (L.subButtonWidth  * d.scaleX) / 2;
+              const hh = (L.subButtonHeight * d.scaleY) / 2;
+              if (pointer.x >= cx - hw && pointer.x <= cx + hw &&
+                  pointer.y >= cy - hh && pointer.y <= cy + hh) {
+                _subHandlers[i]();
+              }
+            });
+          });
         }
 
         // Redraws all home UI elements from HOME_LAYOUT + current deltas.
