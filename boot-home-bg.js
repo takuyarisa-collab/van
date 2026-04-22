@@ -1,6 +1,6 @@
 /**
  * Boot / Home 用背景（Phaser Graphics）
- * - mountBootHomeBackdrop … 静的2層（Base + 整列グリッド）
+ * - mountBootHomeBackdrop … 静的単色背景
  * - mountBootCollapsedBackdrop … Boot 崩壊（レイヤーズレ＋微動→収束）
  * - mountHomeParticles … 微粒子フェードアニメ（Home 専用）
  */
@@ -169,31 +169,20 @@ function drawLayerUiFrags(g, W, H, fragAlpha, rnd) {
 }
 
 /**
- * Home 用: 単一 Graphics による静的弱グラデーション背景
- * - 上 → 下 の縦グラデーション1オブジェクトのみ
- * - グリッド・ノイズ・Tween なし
+ * Home 用: 単一 Graphics による静的単色背景
+ * - グラデーションなし・グリッド・ノイズ・Tween なし
  */
 export function mountBootHomeBackdrop(scene, opts = {}) {
   const W = opts.width ?? scene.scale.width;
   const H = opts.height ?? scene.scale.height;
   const depthBase = opts.depthBase ?? -60;
 
-  const gTop = opts.gradientTop ?? 0xF2F4F7;
-  const gBot = opts.gradientBottom ?? 0x8F9BA8;
+  const bgColor = opts.bgColor ?? 0xE6EAEE;
 
   const g = scene.add.graphics();
   g.setDepth(depthBase);
-
-  // Phaser の fillGradientStyle は四隅指定（topLeft, topRight, bottomLeft, bottomRight）
-  // 上半分・下半分の2矩形に分割して連続グラデーションを近似する
-  const mid = Math.round(H / 2);
-  const gMid = interpolateColor(gTop, gBot, 0.5);
-
-  g.fillGradientStyle(gTop, gTop, gMid, gMid, 1, 1, 1, 1);
-  g.fillRect(0, 0, W, mid);
-
-  g.fillGradientStyle(gMid, gMid, gBot, gBot, 1, 1, 1, 1);
-  g.fillRect(0, mid, W, H - mid);
+  g.fillStyle(bgColor, 1);
+  g.fillRect(0, 0, W, H);
 
   return {
     layers: [g],

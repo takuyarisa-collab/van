@@ -136,7 +136,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.8';
-      const BUILD_TIMESTAMP = '2026-04-22 00:00';
+      const BUILD_TIMESTAMP = '2026-04-22 14:30';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -484,8 +484,7 @@
           this._homeBackdrop = mountBootHomeBackdrop(this, {
             width: WORLD_W,
             height: WORLD_H,
-            gradientTop: 0xf3f5f7,
-            gradientBottom: 0xe6eaee,
+            bgColor: 0xE6EAEE,
           });
           console.log('[HomeScene] backdrop created (depthBase default -60, mountBootHomeBackdrop only)');
 
