@@ -136,7 +136,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.8';
-      const BUILD_TIMESTAMP = '2026-04-22 23:55';
+      const BUILD_TIMESTAMP = '2026-04-22 24:00';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -492,7 +492,10 @@
           // All neutral now (normal state).  Mutate these + call _redrawHomeUI()
           // to drive collapse / rebuild animations without touching layout.
           this._delta = {
-            startFrame: createHomeDelta(),
+            startFrameTop:    createHomeDelta(),
+            startFrameBottom: createHomeDelta(),
+            startFrameLeft:   createHomeDelta(),
+            startFrameRight:  createHomeDelta(),
             startLabel: createHomeDelta(),
             sub: HOME_LAYOUT.labels.map(() => ({
               frame: createHomeDelta(),
@@ -510,7 +513,10 @@
 
           // ── Phaser display objects (allocated once, redrawn by _redrawHomeUI) ─
           this._gStartFill = this.add.graphics().setDepth(3);
-          this._gStartFrame = this.add.graphics().setDepth(4);
+          this._gStartFrameTop    = this.add.graphics().setDepth(4);
+          this._gStartFrameBottom = this.add.graphics().setDepth(4);
+          this._gStartFrameLeft   = this.add.graphics().setDepth(4);
+          this._gStartFrameRight  = this.add.graphics().setDepth(4);
           this._startText = this.add.text(0, 0, 'START', {
             fontFamily: 'system-ui, -apple-system, sans-serif',
             fontSize: '34px',
@@ -557,9 +563,18 @@
           this._delta.outerFrame.rightBottom.offsetX = 12;
           this._delta.outerFrame.top.offsetX = -8;
           // START button collapse state
-          this._delta.startFrame.offsetX = 12;
-          this._delta.startFrame.offsetY = -6;
-          this._delta.startFrame.alpha = 0.75;
+          this._delta.startFrameTop.offsetX    = 12;
+          this._delta.startFrameTop.offsetY    = -6;
+          this._delta.startFrameTop.alpha      = 0.75;
+          this._delta.startFrameBottom.offsetX = 12;
+          this._delta.startFrameBottom.offsetY = -6;
+          this._delta.startFrameBottom.alpha   = 0.75;
+          this._delta.startFrameLeft.offsetX   = 12;
+          this._delta.startFrameLeft.offsetY   = -6;
+          this._delta.startFrameLeft.alpha     = 0.75;
+          this._delta.startFrameRight.offsetX  = 12;
+          this._delta.startFrameRight.offsetY  = -6;
+          this._delta.startFrameRight.alpha    = 0.75;
           this._delta.startLabel.offsetX = -8;
           this._delta.startLabel.offsetY = 4;
           this._delta.startLabel.alpha = 0.85;
@@ -582,7 +597,7 @@
           let _startFired = false;
           this.input.on('pointerdown', (pointer) => {
             const L  = HOME_LAYOUT;
-            const d  = this._delta.startFrame;
+            const d  = this._delta.startFrameTop;
             const cx = L.centerX + d.offsetX;
             const cy = L.startCenterY + d.offsetY;
             const hw = (L.startWidth  * d.scaleX) / 2;
@@ -635,21 +650,71 @@
           const { FRAME_LW, START_FILL_HEX, START_LINE_HEX, SUB_LW, SUB_LINE } = this._style;
           const START_CORNER_R = 8;
 
-          // ── START frame ────────────────────────────────────────────────────
+          // ── START frame (4 independent sides) ─────────────────────────────
           {
-            const d   = this._delta.startFrame;
-            const r   = _applyDelta(L.centerX - L.startWidth / 2,
-                                    L.startCenterY - L.startHeight / 2,
-                                    L.startWidth, L.startHeight, d);
-            this._gStartFill.clear();
-            this._gStartFill.setAlpha(r.alpha);
-            this._gStartFill.fillStyle(START_FILL_HEX, this._startFillAlpha);
-            this._gStartFill.fillRoundedRect(r.x, r.y, r.w, r.h, START_CORNER_R);
+            const bx = L.centerX - L.startWidth  / 2;
+            const by = L.startCenterY - L.startHeight / 2;
+            const bw = L.startWidth;
+            const bh = L.startHeight;
+            const lw = FRAME_LW;
+            const lc = START_LINE_HEX;
 
-            this._gStartFrame.clear();
-            this._gStartFrame.setAlpha(r.alpha);
-            this._gStartFrame.lineStyle(FRAME_LW, START_LINE_HEX, 1.0);
-            this._gStartFrame.strokeRoundedRect(r.x, r.y, r.w, r.h, START_CORNER_R);
+            // fill uses startFrameTop delta as reference for position/alpha
+            {
+              const r = _applyDelta(bx, by, bw, bh, this._delta.startFrameTop);
+              this._gStartFill.clear();
+              this._gStartFill.setAlpha(r.alpha);
+              this._gStartFill.fillStyle(START_FILL_HEX, this._startFillAlpha);
+              this._gStartFill.fillRoundedRect(r.x, r.y, r.w, r.h, START_CORNER_R);
+            }
+
+            // top side
+            {
+              const r = _applyDelta(bx, by, bw, bh, this._delta.startFrameTop);
+              this._gStartFrameTop.clear();
+              this._gStartFrameTop.setAlpha(r.alpha);
+              this._gStartFrameTop.lineStyle(lw, lc, 1.0);
+              this._gStartFrameTop.beginPath();
+              this._gStartFrameTop.moveTo(r.x + START_CORNER_R, r.y);
+              this._gStartFrameTop.lineTo(r.x + r.w - START_CORNER_R, r.y);
+              this._gStartFrameTop.strokePath();
+            }
+
+            // bottom side
+            {
+              const r = _applyDelta(bx, by, bw, bh, this._delta.startFrameBottom);
+              this._gStartFrameBottom.clear();
+              this._gStartFrameBottom.setAlpha(r.alpha);
+              this._gStartFrameBottom.lineStyle(lw, lc, 1.0);
+              this._gStartFrameBottom.beginPath();
+              this._gStartFrameBottom.moveTo(r.x + START_CORNER_R, r.y + r.h);
+              this._gStartFrameBottom.lineTo(r.x + r.w - START_CORNER_R, r.y + r.h);
+              this._gStartFrameBottom.strokePath();
+            }
+
+            // left side
+            {
+              const r = _applyDelta(bx, by, bw, bh, this._delta.startFrameLeft);
+              this._gStartFrameLeft.clear();
+              this._gStartFrameLeft.setAlpha(r.alpha);
+              this._gStartFrameLeft.lineStyle(lw, lc, 1.0);
+              this._gStartFrameLeft.beginPath();
+              this._gStartFrameLeft.moveTo(r.x, r.y + START_CORNER_R);
+              this._gStartFrameLeft.lineTo(r.x, r.y + r.h - START_CORNER_R);
+              this._gStartFrameLeft.strokePath();
+            }
+
+            // right side
+            {
+              const r = _applyDelta(bx, by, bw, bh, this._delta.startFrameRight);
+              this._gStartFrameRight.clear();
+              this._gStartFrameRight.setAlpha(r.alpha);
+              this._gStartFrameRight.lineStyle(lw, lc, 1.0);
+              this._gStartFrameRight.beginPath();
+              this._gStartFrameRight.moveTo(r.x + r.w, r.y + START_CORNER_R);
+              this._gStartFrameRight.lineTo(r.x + r.w, r.y + r.h - START_CORNER_R);
+              this._gStartFrameRight.strokePath();
+            }
           }
 
           // ── START label ────────────────────────────────────────────────────
