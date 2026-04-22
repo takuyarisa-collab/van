@@ -369,13 +369,77 @@
         }
       }
 
+      // ─────────────────────────────────────────────────────────────────────────
+      // HOME UI — layout + delta system
+      //
+      // HOME_LAYOUT  : canonical positions/sizes for the normal state
+      // createHomeDelta() : neutral delta object per element (offsetX/Y,
+      //                     scaleX/Y, alpha, rotation)
+      // _applyDelta()     : merges layout + delta → actual draw coords
+      //
+      // To collapse or rebuild the UI, change only the delta values and call
+      // _redrawHomeUI().  The layout object never changes.
+      // ─────────────────────────────────────────────────────────────────────────
+
+      const HOME_LAYOUT = (() => {
+        const centerX       = WORLD_W / 2;
+        const startCenterY  = WORLD_H / 2;
+        const startWidth    = Math.round(WORLD_W * 0.55);
+        const startHeight   = 88;
+        const subButtonWidth    = Math.round(startWidth * 0.82);
+        const subButtonHeight   = Math.round(startHeight * 0.46);
+        const subButtonSpacing  = 16;
+        // top-left Y of the first sub-button row
+        const subButtonsTopY    = startCenterY + startHeight / 2 + 48;
+        const labels = ['ENHANCE', 'LOADOUT', 'LOG'];
+        return Object.freeze({
+          centerX,
+          startCenterY,
+          startWidth,
+          startHeight,
+          subButtonWidth,
+          subButtonHeight,
+          subButtonSpacing,
+          subButtonsTopY,
+          labels,
+        });
+      })();
+
+      // Returns a neutral (no-op) delta object.
+      // Collapse / rebuild: set fields on this object then call _redrawHomeUI().
+      // fillAlpha is an optional extra field used only on the START fill layer;
+      // when present it overrides the default base fill opacity.
+      function createHomeDelta() {
+        return { offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1, alpha: 1, rotation: 0 };
+      }
+
+      // Merge a layout rect with a delta → { x, y, w, h, alpha, rotation }
+      function _applyDelta(baseX, baseY, baseW, baseH, delta) {
+        return {
+          x:        baseX + delta.offsetX,
+          y:        baseY + delta.offsetY,
+          w:        baseW * delta.scaleX,
+          h:        baseH * delta.scaleY,
+          alpha:    delta.alpha,
+          rotation: delta.rotation,
+        };
+      }
+
       class HomeScene extends Phaser.Scene {
         constructor() {
           super('home');
         }
 
         create() {
-          // ---------- background ----------
+          // ── accent colors (unchanged) ────────────────────────────────────────
+          const FRAME_LW  = 2.2;
+          const CYAN_LINE = 0x4af0e4;
+          const CYAN_TEXT = '#4af0e4';
+          const SUB_LW    = 1.4;
+          const SUB_LINE  = 0x2ec8be;
+          const SUB_TEXT  = '#2ec8be';
+
+          // ── background ───────────────────────────────────────────────────────
           this._homeBackdrop = mountBootHomeBackdrop(this, {
             width: WORLD_W,
             height: WORLD_H,
@@ -385,45 +449,22 @@
             gradientBottom: 0x020611,
           });
 
-          const cx = WORLD_W / 2;
-          const cy = WORLD_H / 2;
+          // ── deltas (one per independent element) ─────────────────────────────
+          // All neutral now (normal state).  Mutate these + call _redrawHomeUI()
+          // to drive collapse / rebuild animations without touching layout.
+          this._delta = {
+            startFrame: createHomeDelta(),
+            startLabel: createHomeDelta(),
+            sub: HOME_LAYOUT.labels.map(() => ({
+              frame: createHomeDelta(),
+              label: createHomeDelta(),
+            })),
+          };
 
-          // ---------- layout ----------
-          const startW = Math.round(WORLD_W * 0.55);
-          const startH = 88;
-          const subW   = Math.round(startW * 0.82);
-          const subH   = Math.round(startH * 0.46);
-          const subGap = 16;
-          const startY      = cy;
-          const startTop    = startY - startH / 2;
-          const subGroupTop = startY + startH / 2 + 48;
-          const subLabels   = ['ENHANCE', 'LOADOUT', 'LOG'];
-
-          // ---------- accent colors ----------
-          const FRAME_LW   = 2.2;
-          const CYAN_LINE  = 0x4af0e4;
-          const CYAN_TEXT  = '#4af0e4';
-          const SUB_LW     = 1.4;
-          const SUB_LINE   = 0x2ec8be;
-          const SUB_TEXT   = '#2ec8be';
-
-          // ---------- START button — single clean rect ----------
-          const sL = cx - startW / 2;
-          const sR = cx + startW / 2;
-          const sT = startTop;
-          const sB = startTop + startH;
-
-          // 薄い塗り（α低め・単色）
-          const gStartFill = this.add.graphics().setDepth(3);
-          gStartFill.fillStyle(CYAN_LINE, 0.06);
-          gStartFill.fillRect(sL, sT, startW, startH);
-
-          // 単一矩形の外枠
-          const gStart = this.add.graphics().setDepth(4);
-          gStart.lineStyle(FRAME_LW, CYAN_LINE, 1.0);
-          gStart.strokeRect(sL, sT, startW, startH);
-
-          const startText = this.add.text(cx, startY, 'START', {
+          // ── Phaser display objects (allocated once, redrawn by _redrawHomeUI) ─
+          this._gStartFill = this.add.graphics().setDepth(3);
+          this._gStartFrame = this.add.graphics().setDepth(4);
+          this._startText = this.add.text(0, 0, 'START', {
             fontFamily: 'monospace, system-ui, sans-serif',
             fontSize: '32px',
             fontStyle: 'normal',
@@ -431,39 +472,46 @@
             letterSpacing: 8,
           }).setOrigin(0.5).setDepth(5);
 
-          // ---------- sub buttons ----------
-          subLabels.forEach((label, i) => {
-            const btnY = subGroupTop + i * (subH + subGap) + subH / 2;
-            const bL   = cx - subW / 2;
-            const bT   = btnY - subH / 2;
-
-            const g = this.add.graphics().setDepth(4);
-            g.lineStyle(SUB_LW, SUB_LINE, 0.55);
-            g.strokeRect(bL, bT, subW, subH);
-
-            this.add.text(cx, btnY, label, {
+          this._subFrames = HOME_LAYOUT.labels.map(() =>
+            this.add.graphics().setDepth(4)
+          );
+          this._subTexts = HOME_LAYOUT.labels.map((label) =>
+            this.add.text(0, 0, label, {
               fontFamily: 'monospace, system-ui, sans-serif',
               fontSize: '14px',
               color: SUB_TEXT,
               letterSpacing: 4,
-            }).setOrigin(0.5).setDepth(5).setAlpha(0.55);
-          });
+            }).setOrigin(0.5).setDepth(5)
+          );
 
-          // ---------- tap feedback ----------
+          // stash style constants for use in _redrawHomeUI
+          this._style = { FRAME_LW, CYAN_LINE, SUB_LW, SUB_LINE };
+          // separate state for the START fill flash (not part of collapse delta)
+          this._startFillAlpha = 0.06;
+
+          // ── initial draw ─────────────────────────────────────────────────────
+          this._redrawHomeUI();
+
+          // ── tap feedback on START ─────────────────────────────────────────────
           this.input.on('pointerdown', (pointer) => {
-            if (pointer.x >= sL && pointer.x <= sR && pointer.y >= sT && pointer.y <= sB) {
-              gStartFill.clear();
-              gStartFill.fillStyle(CYAN_LINE, 0.14);
-              gStartFill.fillRect(sL, sT, startW, startH);
+            const L  = HOME_LAYOUT;
+            const d  = this._delta.startFrame;
+            const cx = L.centerX + d.offsetX;
+            const cy = L.startCenterY + d.offsetY;
+            const hw = (L.startWidth  * d.scaleX) / 2;
+            const hh = (L.startHeight * d.scaleY) / 2;
+            if (pointer.x >= cx - hw && pointer.x <= cx + hw &&
+                pointer.y >= cy - hh && pointer.y <= cy + hh) {
+              this._startFillAlpha = 0.14;
+              this._redrawHomeUI();
               this.time.delayedCall(80, () => {
-                gStartFill.clear();
-                gStartFill.fillStyle(CYAN_LINE, 0.06);
-                gStartFill.fillRect(sL, sT, startW, startH);
+                this._startFillAlpha = 0.06;
+                this._redrawHomeUI();
               });
             }
           });
 
-          // ---------- lifecycle ----------
+          // ── lifecycle ────────────────────────────────────────────────────────
           const cleanupHome = () => {
             this._homeBackdrop?.destroy?.();
             this._homeBackdrop = null;
@@ -473,6 +521,70 @@
           this.input.once('pointerdown', () => {
             cleanupHome();
             this.scene.start('game');
+          });
+        }
+
+        // Redraws all home UI elements from HOME_LAYOUT + current deltas.
+        // Call this whenever any delta value changes.
+        _redrawHomeUI() {
+          const L = HOME_LAYOUT;
+          const { FRAME_LW, CYAN_LINE, SUB_LW, SUB_LINE } = this._style;
+
+          // ── START frame ────────────────────────────────────────────────────
+          {
+            const d   = this._delta.startFrame;
+            const r   = _applyDelta(L.centerX - L.startWidth / 2,
+                                    L.startCenterY - L.startHeight / 2,
+                                    L.startWidth, L.startHeight, d);
+            this._gStartFill.clear();
+            this._gStartFill.setAlpha(r.alpha);
+            this._gStartFill.fillStyle(CYAN_LINE, this._startFillAlpha);
+            this._gStartFill.fillRect(r.x, r.y, r.w, r.h);
+
+            this._gStartFrame.clear();
+            this._gStartFrame.setAlpha(r.alpha);
+            this._gStartFrame.lineStyle(FRAME_LW, CYAN_LINE, 1.0);
+            this._gStartFrame.strokeRect(r.x, r.y, r.w, r.h);
+          }
+
+          // ── START label ────────────────────────────────────────────────────
+          {
+            const d = this._delta.startLabel;
+            const x = L.centerX    + d.offsetX;
+            const y = L.startCenterY + d.offsetY;
+            this._startText.setPosition(x, y);
+            this._startText.setAlpha(d.alpha);
+            this._startText.setAngle(d.rotation);
+            this._startText.setScale(d.scaleX, d.scaleY);
+          }
+
+          // ── sub-buttons ────────────────────────────────────────────────────
+          L.labels.forEach((_, i) => {
+            const baseCY = L.subButtonsTopY + i * (L.subButtonHeight + L.subButtonSpacing)
+                           + L.subButtonHeight / 2;
+
+            // frame
+            {
+              const d = this._delta.sub[i].frame;
+              const r = _applyDelta(L.centerX - L.subButtonWidth / 2,
+                                    baseCY - L.subButtonHeight / 2,
+                                    L.subButtonWidth, L.subButtonHeight, d);
+              this._subFrames[i].clear();
+              this._subFrames[i].setAlpha(r.alpha * 0.55);
+              this._subFrames[i].lineStyle(SUB_LW, SUB_LINE, 1.0);
+              this._subFrames[i].strokeRect(r.x, r.y, r.w, r.h);
+            }
+
+            // label
+            {
+              const d = this._delta.sub[i].label;
+              const x = L.centerX + d.offsetX;
+              const y = baseCY   + d.offsetY;
+              this._subTexts[i].setPosition(x, y);
+              this._subTexts[i].setAlpha(d.alpha * 0.55);
+              this._subTexts[i].setAngle(d.rotation);
+              this._subTexts[i].setScale(d.scaleX, d.scaleY);
+            }
           });
         }
       }
