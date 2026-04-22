@@ -177,7 +177,7 @@ export function mountBootHomeBackdrop(scene, opts = {}) {
   const H = opts.height ?? scene.scale.height;
   const depthBase = opts.depthBase ?? -60;
 
-  const bgColor = opts.bgColor ?? 0xE6EAEE;
+  const bgColor = opts.bgColor ?? 0xD8E6F2;
 
   const g = scene.add.graphics();
   g.setDepth(depthBase);
