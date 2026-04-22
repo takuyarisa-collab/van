@@ -494,7 +494,15 @@
           // ── initial draw ─────────────────────────────────────────────────────
           this._redrawHomeUI();
 
-          // ── tap feedback on START ─────────────────────────────────────────────
+          // ── lifecycle ────────────────────────────────────────────────────────
+          const cleanupHome = () => {
+            this._homeBackdrop?.destroy?.();
+            this._homeBackdrop = null;
+          };
+          this.events.once('shutdown', cleanupHome);
+
+          // ── STARTボタン専用クリック処理（全画面タップは廃止）────────────────
+          let _startFired = false;
           this.input.on('pointerdown', (pointer) => {
             const L  = HOME_LAYOUT;
             const d  = this._delta.startFrame;
@@ -504,25 +512,18 @@
             const hh = (L.startHeight * d.scaleY) / 2;
             if (pointer.x >= cx - hw && pointer.x <= cx + hw &&
                 pointer.y >= cy - hh && pointer.y <= cy + hh) {
+              // フィードバック
               this._startFillAlpha = 0.24;
               this._redrawHomeUI();
+              if (_startFired) return;
+              _startFired = true;
               this.time.delayedCall(80, () => {
                 this._startFillAlpha = 0.12;
                 this._redrawHomeUI();
+                cleanupHome();
+                this.scene.start('game');
               });
             }
-          });
-
-          // ── lifecycle ────────────────────────────────────────────────────────
-          const cleanupHome = () => {
-            this._homeBackdrop?.destroy?.();
-            this._homeBackdrop = null;
-          };
-          this.events.once('shutdown', cleanupHome);
-
-          this.input.once('pointerdown', () => {
-            cleanupHome();
-            this.scene.start('game');
           });
         }
 
