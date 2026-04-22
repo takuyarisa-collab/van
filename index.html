@@ -312,6 +312,7 @@
             this._bootTitle?.destroy?.();
             this._bootBackdrop = null;
             this._bootTitle = null;
+            console.log('[BootScene] boot backdrop destroyed → starting home');
             this.scene.start('home');
           };
 
@@ -477,13 +478,16 @@
           const SUB_TEXT       = '#2ec8be';
 
           // ── background ───────────────────────────────────────────────────────
+          // depthBase は mountBootHomeBackdrop のデフォルト(-60) を使う。
+          // Boot の暗い背景 (depthBase -55) より確実に下に配置するため
+          // ここで上書きしない。
           this._homeBackdrop = mountBootHomeBackdrop(this, {
             width: WORLD_W,
             height: WORLD_H,
-            depthBase: -55,
             gradientTop: 0xf3f5f7,
             gradientBottom: 0xe6eaee,
           });
+          console.log('[HomeScene] backdrop created (depthBase default -60, mountBootHomeBackdrop only)');
 
           // ── deltas (one per independent element) ─────────────────────────────
           // All neutral now (normal state).  Mutate these + call _redrawHomeUI()
