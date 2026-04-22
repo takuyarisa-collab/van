@@ -167,20 +167,57 @@ function buildDiagonalGrid(scene, W, H, structAlpha, depthBase, rnd) {
   // ---------------------------------------------------------------------------
   const lines = [];
 
+  // 全ラインの6%を「異常ライン」として強制強調
+  const ANOMALY_RATE = 0.06;
+
   const addLine = (x0, y0, x1, y1) => {
     const mx  = (x0 + x1) * 0.5;
     const my  = (y0 + y1) * 0.5;
     const t   = Math.min(diagT(mx, my), 1);
 
-    const baseAlpha = lineAlpha(t);
-    const baseWidth = lineWidth(t);
+    const isVertical = (x0 === x1);
+
+    // 1. 異常ライン: 勾配無視で強制強調（右下でも強く出る）
+    const isAnomaly = rnd() < ANOMALY_RATE;
+    let baseAlpha, baseWidth;
+    if (isAnomaly) {
+      baseAlpha = (0.18 + rnd() * 0.07) * structAlpha;
+      baseWidth = 3.5 + rnd() * 1.0;
+    } else {
+      baseAlpha = lineAlpha(t);
+      baseWidth = lineWidth(t);
+    }
+
+    // 2. 途中で切れる線: 右下(t>0.55)で高確率、左上(t<0.45)でも低確率
+    const truncChance = t > 0.55 ? 0.28 : (t < 0.45 ? 0.06 : 0.10);
+    let ax0 = x0, ay0 = y0, ax1 = x1, ay1 = y1;
+    if (rnd() < truncChance) {
+      const ratio = 0.30 + rnd() * 0.30; // 30〜60%の長さで止める
+      if (rnd() < 0.65) {
+        // 遠い側(右/下)を切る
+        ax1 = ax0 + (x1 - x0) * ratio;
+        ay1 = ay0 + (y1 - y0) * ratio;
+      } else {
+        // 近い側(左/上)から始める
+        const sf = 1.0 - ratio;
+        ax0 = x0 + (x1 - x0) * sf;
+        ay0 = y0 + (y1 - y0) * sf;
+      }
+    }
+
+    // 3. 交点ズレ: 15%のラインに垂線方向 2〜6px オフセット
+    if (rnd() < 0.15) {
+      const perpOff = (rnd() < 0.5 ? -1 : 1) * (2 + rnd() * 4);
+      if (isVertical) { ax0 += perpOff; ax1 += perpOff; }
+      else             { ay0 += perpOff; ay1 += perpOff; }
+    }
 
     const g = scene.add.graphics();
     g.setDepth(depthBase + 1);
     g.lineStyle(baseWidth, 0x5c7cad, baseAlpha);
-    g.lineBetween(x0, y0, x1, y1);
+    g.lineBetween(ax0, ay0, ax1, ay1);
 
-    lines.push({ g, x0, y0, x1, y1, baseAlpha, baseWidth, baseOffsetX: 0, diagT: t });
+    lines.push({ g, x0: ax0, y0: ay0, x1: ax1, y1: ay1, baseAlpha, baseWidth, baseOffsetX: 0, diagT: t });
   };
 
   // 垂直ライン (x が変化, y は 0〜H 固定)
@@ -245,8 +282,14 @@ function startGlitchLoop(scene, lines, rnd) {
 
     const count = 5 + Math.floor(rnd() * 11);   // 5〜15本
 
-    // 斜め偏り: diagT が小さいほど（左上に近いほど）選ばれやすい
-    const weights = lines.map((l) => Math.pow(1 - l.diagT * 0.7, 1.5) + 0.15);
+    // 偏り: 左上寄りを基本としつつ、右下にも強破壊スポットを作る
+    // U字型: 左上(t→0)と右下(t→1)の両端で選ばれやすく、中間は低め
+    const weights = lines.map((l) => {
+      const tl = l.diagT;
+      const leftBias  = Math.pow(1 - tl * 0.7, 1.5) + 0.15;   // 従来の左上寄り
+      const rightSpike = Math.pow(tl, 3) * 0.8;                 // 右下にも強スパイク
+      return leftBias + rightSpike;
+    });
 
     // ルーレット選択で count 本を非重複ピック
     const chosen = [];
