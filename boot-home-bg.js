@@ -176,10 +176,11 @@ function drawLayerUiFrags(g, W, H, fragAlpha, rnd) {
  *   2. 背景パッチ (depthBase+1 = -59) … 中間
  *   3. UI                             … 前面 (depth 1+ は HomeScene 側)
  *
- * 上側 (再構築):
- *   Row1 = 完全な矩形 1 枚 (x:0, y:0〜0.18H, w:0.7W, h:0.16〜0.18H)
- *   Row2 = 途中矩形 1 枚 (x:0.05W, y:0.22〜0.32H, w:0.35〜0.42W)
- *          右端を段差状デジタル欠損 (step 6〜12px、途中で止める)
+ * 上側 (再構築): グリッド step=52 のタイル単位で構成
+ *   Row1 = 完全タイル群 (x:0〜0.7W, y:0〜0.18H) — 欠損なし・全面埋める
+ *   Row2 = 密度漸減タイル群 (x:0.05W〜, y:0.22〜0.32H)
+ *          左(0〜40%): 密度90〜100% / 中(40〜70%): 60〜80% / 右(70%〜): 20〜40%
+ *          完全な直線カット禁止・グリッドスナップ・回転なし
  *
  * 下側 (残骸):
  *   ポリゴン 2 個のみ・rect 禁止
@@ -205,60 +206,76 @@ export function mountBootHomeBackdrop(scene, opts = {}) {
   const gPatch = scene.add.graphics();
   gPatch.setDepth(depthBase + 1);
 
-  // ── Row 1: 完成矩形（欠損なし）───────────────────────────────────────
-  // x:0, y:0, width:0.7W, height:0.17H (0.16〜0.18H の中央値)
+  const tileStep = step; // 52px — グリッド 1 マス
+  const tileGap  = 1;    // 微小欠け(1px) — デジタル感維持
+
+  const rndTile = mulberry32(0xc0de7a1e);
+
+  // ── Row 1: 完成タイル群（欠損なし）────────────────────────────────────
+  // x:0〜0.7W, y:0〜0.18H — グリッドにスナップ、全タイル描画
   const r1X = 0;
   const r1Y = 0;
   const r1W = Math.round(W * 0.70);
-  const r1H = Math.round(H * 0.17);
+  const r1H = Math.round(H * 0.18);
   gPatch.fillStyle(0xCDD8E8, 0.80);
-  gPatch.fillRect(r1X, r1Y, r1W, r1H);
 
-  // ── Row 2: 途中矩形（右端をデジタル段差欠損）─────────────────────────
-  // x:0.05W, y:0.25H (0.22〜0.32H), width:0.39W (0.35〜0.42W), height:0.06H
-  const r2X  = Math.round(W * 0.05);
-  const r2Y  = Math.round(H * 0.25);
-  const r2W  = Math.round(W * 0.39);
-  const r2H  = Math.round(H * 0.06);
-  const r2Color = 0xB2C6DA;
-  const r2Alpha = 0.62;
-
-  // 段差エッジ: step 幅 6〜12px、行ごとに固定オフセット（ランダムではなく段差状）
-  // solidEnd まで完全塗りつぶし、そこから数段だけ段差を刻んで途中で止める
-  const stepMin   = 6;
-  const stepMax   = 12;
-  // 右端から数えて何段階分だけ欠損を刻むか（途中で止めるため全行は欠損させない）
-  const nSteps    = 4; // 段差の段数（完全ギザギザにしない）
-  const tileH     = Math.round(r2H / (nSteps * 2)); // 各行の高さ (段差が全高の半分に収まる)
-  const solidEndX = r2X + r2W - stepMax * (nSteps + 1); // 完全塗りつぶし終点
-
-  gPatch.fillStyle(r2Color, r2Alpha);
-  // まず solidEnd まで全高を一括塗り
-  if (solidEndX > r2X) {
-    gPatch.fillRect(r2X, r2Y, solidEndX - r2X, r2H);
-  }
-  // 段差ゾーン: 各段は固定パターン（行インデックスで決まる段差幅）
-  // 段差テーブル: 上から i 番の段は solidEndX + offset(i) まで伸びる
-  // offset は単調増加 → 左側がより長く残る（自然な割れ感）
-  const offsets = [
-    stepMax * 3,
-    stepMax * 2 + stepMin,
-    stepMax + stepMin * 2,
-    stepMin * 2,
-  ];
-  for (let si = 0; si < nSteps; si++) {
-    const sy = r2Y + si * tileH;
-    const sh = (si < nSteps - 1) ? tileH : (r2Y + r2H) - sy;
-    if (sh <= 0) break;
-    const extW = offsets[si] ?? 0;
-    if (extW > 0) {
-      gPatch.fillRect(solidEndX, sy, extW, sh);
+  for (let ty = r1Y; ty < r1Y + r1H; ty += tileStep) {
+    const th = Math.min(tileStep - tileGap, (r1Y + r1H) - ty);
+    if (th <= 0) continue;
+    for (let tx = r1X; tx < r1X + r1W; tx += tileStep) {
+      const tw = Math.min(tileStep - tileGap, (r1X + r1W) - tx);
+      if (tw <= 0) continue;
+      gPatch.fillRect(tx, ty, tw, th);
     }
   }
-  // 段差以降 (nSteps*tileH 〜 r2H): 完全塗りつぶし（下半分は欠損なし）
-  const stepsBottom = r2Y + nSteps * tileH;
-  if (stepsBottom < r2Y + r2H) {
-    gPatch.fillRect(r2X, stepsBottom, r2W, (r2Y + r2H) - stepsBottom);
+
+  // ── Row 2: 密度漸減タイル群（再構築途中）──────────────────────────────
+  // x:0.05W〜, y:0.22H〜0.32H — x 位置に応じて描画確率を変える
+  // 左(0〜40%): 90〜100% / 中(40〜70%): 60〜80% / 右(70%〜): 20〜40%
+  const r2StartX = Math.round(W * 0.05);
+  const r2EndX   = W; // 密度で自然にフェードさせるため右端は画面端まで走査
+  const r2Y      = Math.round(H * 0.22);
+  const r2EndY   = Math.round(H * 0.32);
+  const r2Color  = 0xB2C6DA;
+  const r2Alpha  = 0.62;
+
+  // グリッドスナップ: r2StartX を tileStep の倍数に揃える
+  const r2SnapX = Math.floor(r2StartX / tileStep) * tileStep;
+  const r2SnapY = Math.floor(r2Y / tileStep) * tileStep;
+
+  gPatch.fillStyle(r2Color, r2Alpha);
+
+  for (let ty = r2SnapY; ty < r2EndY; ty += tileStep) {
+    if (ty + tileStep <= r2Y) continue; // 上端クリップ
+    const th = Math.min(tileStep - tileGap, r2EndY - Math.max(ty, r2Y));
+    if (th <= 0) continue;
+    const drawY = Math.max(ty, r2Y);
+
+    for (let tx = r2SnapX; tx < r2EndX; tx += tileStep) {
+      if (tx + tileStep <= r2StartX) continue; // 左端クリップ
+
+      // 0〜1 範囲の x 進行率（r2StartX 基点）
+      const xRatio = (tx - r2StartX) / (W * 0.70 - r2StartX);
+      const xNorm  = Math.max(0, Math.min(1, xRatio));
+
+      // 密度: 左0〜0.4 → 0.95, 中0.4〜0.7 → 0.70, 右0.7〜1.0 → 0.30
+      let density;
+      if (xNorm < 0.40) {
+        density = 0.90 + xNorm * 0.125; // 0.90→0.95
+      } else if (xNorm < 0.70) {
+        const t = (xNorm - 0.40) / 0.30;
+        density = 0.80 - t * 0.20;      // 0.80→0.60
+      } else {
+        const t = (xNorm - 0.70) / 0.30;
+        density = 0.40 - t * 0.20;      // 0.40→0.20
+      }
+
+      if (rndTile() > density) continue;
+
+      const tw = Math.min(tileStep - tileGap, r2EndX - tx);
+      if (tw <= 0) continue;
+      gPatch.fillRect(tx, drawY, tw, th);
+    }
   }
 
   // ── 下側: 残骸ポリゴン 2 個（rect 禁止・中央 0.3W〜0.7W は空白）─────────
