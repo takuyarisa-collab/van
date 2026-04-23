@@ -229,53 +229,58 @@ export function mountBootHomeBackdrop(scene, opts = {}) {
     }
   }
 
-  // ── Row 2: 密度漸減タイル群（再構築途中）──────────────────────────────
-  // x:0.05W〜, y:0.22H〜0.32H — x 位置に応じて描画確率を変える
-  // 左(0〜40%): 90〜100% / 中(40〜70%): 60〜80% / 右(70%〜): 20〜40%
-  const r2StartX = Math.round(W * 0.05);
-  const r2EndX   = W; // 密度で自然にフェードさせるため右端は画面端まで走査
-  const r2Y      = Math.round(H * 0.22);
-  const r2EndY   = Math.round(H * 0.32);
-  const r2Color  = 0xB2C6DA;
-  const r2Alpha  = 0.62;
+  // ── Row 2: 面を描いてから右側を削る（再構築途中）──────────────────────
+  const row2X = Math.round(W * 0.05);
+  const row2Y = Math.round(H * 0.25);
+  const row2W = Math.round(W * 0.39);
+  const row2H = Math.round(H * 0.06);
 
-  // グリッドスナップ: r2StartX を tileStep の倍数に揃える
-  const r2SnapX = Math.floor(r2StartX / tileStep) * tileStep;
-  const r2SnapY = Math.floor(r2Y / tileStep) * tileStep;
+  const cell = tileStep; // 52px — グリッドに合わせる
 
-  gPatch.fillStyle(r2Color, r2Alpha);
+  // 1. 先に1枚の面を描く
+  gPatch.fillStyle(0xd0e2f0, 1);
+  gPatch.fillRect(row2X, row2Y, row2W, row2H);
 
-  for (let ty = r2SnapY; ty < r2EndY; ty += tileStep) {
-    if (ty + tileStep <= r2Y) continue; // 上端クリップ
-    const th = Math.min(tileStep - tileGap, r2EndY - Math.max(ty, r2Y));
-    if (th <= 0) continue;
-    const drawY = Math.max(ty, r2Y);
+  // 2. 右30%を削る（背景色で上書き）
+  const bgColor = 0x08122a;
+  gPatch.fillStyle(bgColor, 1);
 
-    for (let tx = r2SnapX; tx < r2EndX; tx += tileStep) {
-      if (tx + tileStep <= r2StartX) continue; // 左端クリップ
+  const solidEndX = row2X + Math.floor(row2W * 0.7);
 
-      // 0〜1 範囲の x 進行率（r2StartX 基点）
-      const xRatio = (tx - r2StartX) / (W * 0.70 - r2StartX);
-      const xNorm  = Math.max(0, Math.min(1, xRatio));
+  const startCol  = Math.floor((solidEndX - row2X) / cell);
+  const totalCols = Math.ceil(row2W / cell);
+  const rows2     = Math.ceil(row2H / cell);
 
-      // 密度: 左0〜0.4 → 0.95, 中0.4〜0.7 → 0.70, 右0.7〜1.0 → 0.30
-      let density;
-      if (xNorm < 0.40) {
-        density = 0.90 + xNorm * 0.125; // 0.90→0.95
-      } else if (xNorm < 0.70) {
-        const t = (xNorm - 0.40) / 0.30;
-        density = 0.80 - t * 0.20;      // 0.80→0.60
-      } else {
-        const t = (xNorm - 0.70) / 0.30;
-        density = 0.40 - t * 0.20;      // 0.40→0.20
+  for (let col = startCol; col < totalCols; col++) {
+    const x = row2X + col * cell;
+    const t = (col - startCol) / Math.max(1, totalCols - startCol - 1);
+
+    let cutChance = 0.3;
+    if (t > 0.3) cutChance = 0.5;
+    if (t > 0.6) cutChance = 0.7;
+    if (t > 0.8) cutChance = 0.9;
+
+    for (let row = 0; row < rows2; row++) {
+      const y    = row2Y + row * cell;
+      const seed = (col * 17 + row * 31) % 100;
+      if (seed < cutChance * 100) {
+        gPatch.fillRect(
+          x,
+          y,
+          Math.min(cell, row2X + row2W - x),
+          Math.min(cell, row2Y + row2H - y),
+        );
       }
-
-      if (rndTile() > density) continue;
-
-      const tw = Math.min(tileStep - tileGap, r2EndX - tx);
-      if (tw <= 0) continue;
-      gPatch.fillRect(tx, drawY, tw, th);
     }
+  }
+
+  // 3. 右端に細かい欠損を追加（復元精度が落ちる感じ）
+  for (let i = 0; i < 6; i++) {
+    const w2 = 6 + (i % 3) * 4;
+    const h2 = 4 + (i % 2) * 3;
+    const x2 = row2X + row2W - 36 + i * 5;
+    const y2 = row2Y + ((i * 7) % Math.max(6, row2H - h2));
+    gPatch.fillRect(x2, y2, w2, h2);
   }
 
   // ── 下側: 残骸ポリゴン 2 個（rect 禁止・中央 0.3W〜0.7W は空白）─────────
