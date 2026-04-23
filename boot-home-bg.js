@@ -169,58 +169,138 @@ function drawLayerUiFrags(g, W, H, fragAlpha, rnd) {
 }
 
 /**
- * Home 用背景: 下=残骸 / 上=再構築途中
+ * Home 背景: 3レイヤー構成
  *
- * 下エリア（残骸）: H の 55%〜100% あたりに 2〜3 個の大矩形。
- *   色は #D8E6F2 より暗いトーン。黒（Phaser backgroundColor）が透けて見える。
- * 上エリア（再構築途中）: H の 0%〜45% あたりに 2〜3 個の矩形パッチ。
- *   色は #D8E6F2 またはやや明るめ。隙間あり。
- * 中央は未描画（UIが浮く状態）。
+ * レイヤー順:
+ *   1. グリッド (depthBase = -60)     … 最背面・弱め
+ *   2. 背景パッチ (depthBase+1 = -59) … 中間
+ *   3. UI                             … 前面 (depth 1+ は HomeScene 側)
+ *
+ * 上側:
+ *   Row1 = 再構築済み大矩形、Row2 = 再構築途中
+ *   左から70%地点でデジタル段差カットオフ
+ *
+ * 下側 (subButtonsTopY ≈ H/2 + 92 以下):
+ *   崩壊ポリゴン破片 + ひび割れライン、少量
+ *
+ * 中央: 未描画（UIが浮く）
  */
 export function mountBootHomeBackdrop(scene, opts = {}) {
   const W = opts.width ?? scene.scale.width;
   const H = opts.height ?? scene.scale.height;
   const depthBase = opts.depthBase ?? -60;
 
-  const g = scene.add.graphics();
-  g.setDepth(depthBase);
+  // subButtonsTopY = H/2 + startHeight/2 + 48 = H/2 + 44 + 48
+  const RUINS_Y   = Math.round(H / 2 + 92);
+  // デジタルカットオフ: 左から70%
+  const CUTOFF_X  = Math.round(W * 0.70);
 
-  // ── 下エリア: 残骸（暗めトーン）──────────────────────────────────────────
-  // #D8E6F2 = 0xD8E6F2。暗めに: 0xA8BAC8 / 0x8FAABB / 0xB5C8D8
-  const ruinPatches = [
-    // 左寄り・大きめ
-    { x: -10,        y: H * 0.60, w: W * 0.65, h: H * 0.38, color: 0xA8BAC8 },
-    // 右寄り・下端
-    { x: W * 0.38,   y: H * 0.72, w: W * 0.68, h: H * 0.32, color: 0x8FAABB },
-    // 中央下・細め（補完）
-    { x: W * 0.12,   y: H * 0.84, w: W * 0.52, h: H * 0.18, color: 0xB5C8D8 },
-  ];
+  // ── Layer 1: グリッド（最背面・主張しない）──────────────────────────────
+  const gGrid = scene.add.graphics();
+  gGrid.setDepth(depthBase);
+  gGrid.lineStyle(1.0, 0x4a6a9a, 0.065);
+  const step = 52;
+  for (let x = 0; x <= W; x += step) gGrid.lineBetween(x, 0, x, H);
+  for (let y = 0; y <= H; y += step) gGrid.lineBetween(0, y, W, y);
 
-  for (const p of ruinPatches) {
-    g.fillStyle(p.color, 1);
-    g.fillRect(p.x, p.y, p.w, p.h);
+  // ── Layer 2: 背景パッチ（中間）──────────────────────────────────────────
+  const gPatch = scene.add.graphics();
+  gPatch.setDepth(depthBase + 1);
+
+  // 上側パッチをデジタル段差カットオフ付きで描画
+  // solidRight まで塗りつぶし、その後 stepZone 内で段差を刻む
+  function drawPatchDigitalCutoff(x, y, w, h, color, alpha) {
+    const right     = x + w;
+    const stepZone  = 20; // 段差エッジの幅(px)
+    const solidEnd  = CUTOFF_X - stepZone;
+
+    if (right <= solidEnd) {
+      // カットオフより完全に左 → 通常描画
+      gPatch.fillStyle(color, alpha);
+      gPatch.fillRect(x, y, w, h);
+      return;
+    }
+
+    // ソリッド部分
+    if (solidEnd > x) {
+      gPatch.fillStyle(color, alpha);
+      gPatch.fillRect(x, y, solidEnd - x, h);
+    }
+
+    // デジタル段差: 高さ方向に8pxステップで幅をランダムに変える
+    const tileH = 8;
+    const rows  = Math.ceil(h / tileH);
+    for (let ri = 0; ri < rows; ri++) {
+      const sy = y + ri * tileH;
+      const sh = Math.min(tileH, y + h - sy);
+      if (sh <= 0) break;
+      // 決定論的なランダム幅(ステップ0〜stepZone)
+      const seed = (ri * 13 + Math.round(x / 10) * 7) & 0xf;
+      const sw   = stepZone - (seed % 5) * 4; // 0, 4, 8, 12, 16 を引く
+      if (sw > 0 && solidEnd + sw <= right) {
+        gPatch.fillStyle(color, alpha);
+        gPatch.fillRect(solidEnd, sy, sw, sh);
+      }
+    }
   }
 
-  // ── 上エリア: 再構築途中（#D8E6F2 またはやや明るめ）────────────────────
-  // 隙間を残し、全面を埋めない
-  const rebuildPatches = [
-    // 左上角
-    { x: -8,       y: -4,      w: W * 0.55, h: H * 0.22, color: 0xD8E6F2 },
-    // 右上寄り
-    { x: W * 0.45, y: H * 0.04, w: W * 0.60, h: H * 0.18, color: 0xE4EEF8 },
-    // 上中央やや下（隙間あり）
-    { x: W * 0.10, y: H * 0.28, w: W * 0.48, h: H * 0.12, color: 0xD0E2F0 },
-  ];
+  // ── Row 1: 再構築済み（大きめ矩形）────────────────────────────────────
+  drawPatchDigitalCutoff(0,          0,          W * 0.74, H * 0.175, 0xCDD8E8, 0.80);
+  drawPatchDigitalCutoff(W * 0.06,   H * 0.175,  W * 0.60, H * 0.085, 0xC4D2E4, 0.72);
 
-  for (const p of rebuildPatches) {
-    g.fillStyle(p.color, 1);
-    g.fillRect(p.x, p.y, p.w, p.h);
-  }
+  // ── Row 2: 再構築途中（小さめ・隙間あり）──────────────────────────────
+  drawPatchDigitalCutoff(0,          H * 0.27,   W * 0.38, H * 0.065, 0xB2C6DA, 0.58);
+  drawPatchDigitalCutoff(W * 0.44,   H * 0.295,  W * 0.28, H * 0.048, 0xBACADE, 0.48);
+
+  // ── 下側: 残骸（RUINS_Y 以下・アナログ崩壊感）──────────────────────────
+  // 大破片 A: 左寄り、上右コーナー欠け
+  gPatch.fillStyle(0x9AAFC4, 0.76);
+  gPatch.fillPoints([
+    { x: 0,             y: RUINS_Y + H * 0.055 + H * 0.10 },
+    { x: 0,             y: RUINS_Y + H * 0.055 },
+    { x: W * 0.48,      y: RUINS_Y + H * 0.055 },
+    { x: W * 0.58,      y: RUINS_Y + H * 0.055 + H * 0.04 },
+    { x: W * 0.50,      y: RUINS_Y + H * 0.055 + H * 0.10 },
+  ], true);
+
+  // 大破片 B: 右寄り・ずれた平行四辺形
+  gPatch.fillStyle(0x88A0B8, 0.66);
+  gPatch.fillPoints([
+    { x: W * 0.42,      y: RUINS_Y + H * 0.155 + 10 },
+    { x: W * 1.02,      y: RUINS_Y + H * 0.155 },
+    { x: W * 1.02,      y: RUINS_Y + H * 0.155 + H * 0.105 },
+    { x: W * 0.36,      y: RUINS_Y + H * 0.155 + H * 0.105 + 8 },
+  ], true);
+
+  // 中破片: 中央左寄り・欠けた三角上辺
+  gPatch.fillStyle(0x7A94AC, 0.58);
+  gPatch.fillPoints([
+    { x: W * 0.16,      y: RUINS_Y + H * 0.275 },
+    { x: W * 0.52,      y: RUINS_Y + H * 0.275 + H * 0.022 },
+    { x: W * 0.55,      y: RUINS_Y + H * 0.275 + H * 0.085 },
+    { x: W * 0.10,      y: RUINS_Y + H * 0.275 + H * 0.085 },
+    { x: W * 0.05,      y: RUINS_Y + H * 0.275 + H * 0.055 },
+  ], true);
+
+  // ひび割れ A: 大破片 A を横切る 3 節折れ線
+  gPatch.lineStyle(1.4, 0x5878A0, 0.52);
+  gPatch.lineBetween(W * 0.08,  RUINS_Y + H * 0.065,
+                     W * 0.22,  RUINS_Y + H * 0.090);
+  gPatch.lineBetween(W * 0.22,  RUINS_Y + H * 0.090,
+                     W * 0.32,  RUINS_Y + H * 0.082);
+
+  // ひび割れ B: 大破片 B 内
+  gPatch.lineStyle(1.1, 0x486080, 0.42);
+  gPatch.lineBetween(W * 0.58,  RUINS_Y + H * 0.185,
+                     W * 0.72,  RUINS_Y + H * 0.215);
+  gPatch.lineBetween(W * 0.72,  RUINS_Y + H * 0.215,
+                     W * 0.66,  RUINS_Y + H * 0.235);
 
   return {
-    layers: [g],
+    layers: [gGrid, gPatch],
     destroy() {
-      g.destroy();
+      gGrid.destroy();
+      gPatch.destroy();
     },
   };
 }
