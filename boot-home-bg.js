@@ -169,20 +169,53 @@ function drawLayerUiFrags(g, W, H, fragAlpha, rnd) {
 }
 
 /**
- * Home 用: 単一 Graphics による静的単色背景
- * - グラデーションなし・グリッド・ノイズ・Tween なし
+ * Home 用背景: 下=残骸 / 上=再構築途中
+ *
+ * 下エリア（残骸）: H の 55%〜100% あたりに 2〜3 個の大矩形。
+ *   色は #D8E6F2 より暗いトーン。黒（Phaser backgroundColor）が透けて見える。
+ * 上エリア（再構築途中）: H の 0%〜45% あたりに 2〜3 個の矩形パッチ。
+ *   色は #D8E6F2 またはやや明るめ。隙間あり。
+ * 中央は未描画（UIが浮く状態）。
  */
 export function mountBootHomeBackdrop(scene, opts = {}) {
   const W = opts.width ?? scene.scale.width;
   const H = opts.height ?? scene.scale.height;
   const depthBase = opts.depthBase ?? -60;
 
-  const bgColor = opts.bgColor ?? 0xD8E6F2;
-
   const g = scene.add.graphics();
   g.setDepth(depthBase);
-  g.fillStyle(bgColor, 1);
-  g.fillRect(0, 0, W, H);
+
+  // ── 下エリア: 残骸（暗めトーン）──────────────────────────────────────────
+  // #D8E6F2 = 0xD8E6F2。暗めに: 0xA8BAC8 / 0x8FAABB / 0xB5C8D8
+  const ruinPatches = [
+    // 左寄り・大きめ
+    { x: -10,        y: H * 0.60, w: W * 0.65, h: H * 0.38, color: 0xA8BAC8 },
+    // 右寄り・下端
+    { x: W * 0.38,   y: H * 0.72, w: W * 0.68, h: H * 0.32, color: 0x8FAABB },
+    // 中央下・細め（補完）
+    { x: W * 0.12,   y: H * 0.84, w: W * 0.52, h: H * 0.18, color: 0xB5C8D8 },
+  ];
+
+  for (const p of ruinPatches) {
+    g.fillStyle(p.color, 1);
+    g.fillRect(p.x, p.y, p.w, p.h);
+  }
+
+  // ── 上エリア: 再構築途中（#D8E6F2 またはやや明るめ）────────────────────
+  // 隙間を残し、全面を埋めない
+  const rebuildPatches = [
+    // 左上角
+    { x: -8,       y: -4,      w: W * 0.55, h: H * 0.22, color: 0xD8E6F2 },
+    // 右上寄り
+    { x: W * 0.45, y: H * 0.04, w: W * 0.60, h: H * 0.18, color: 0xE4EEF8 },
+    // 上中央やや下（隙間あり）
+    { x: W * 0.10, y: H * 0.28, w: W * 0.48, h: H * 0.12, color: 0xD0E2F0 },
+  ];
+
+  for (const p of rebuildPatches) {
+    g.fillStyle(p.color, 1);
+    g.fillRect(p.x, p.y, p.w, p.h);
+  }
 
   return {
     layers: [g],
