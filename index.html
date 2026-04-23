@@ -136,7 +136,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.8';
-      const BUILD_TIMESTAMP = '2026-04-23 10:30';
+      const BUILD_TIMESTAMP = '2026-04-23 15:00';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -572,33 +572,8 @@
           this._startFillAlpha = 0.12;
 
           // ── initial draw ─────────────────────────────────────────────────────
-          // outerFrame collapse state (強め崩壊)
-          this._delta.outerFrame.leftTop.alpha       = 0;
-          this._delta.outerFrame.rightTop.alpha      = 0;
-          this._delta.outerFrame.bottom.alpha        = 0;
-          this._delta.outerFrame.leftBottom.offsetY  = 14;
-          this._delta.outerFrame.rightBottom.offsetX = 14;
-          this._delta.outerFrame.top.offsetX         = -10;
-          // START button collapse state (分割フレーム)
-          this._delta.startFrameTop.alpha      = 0;
-          this._delta.startFrameBottom.alpha   = 0;
-          this._delta.startFrameRight.offsetX  = 10;
-          this._delta.startFrameLeft.offsetY   = -6;
-          this._delta.startFrame.offsetX = 12;
-          this._delta.startFrame.offsetY = -6;
-          this._delta.startFrame.alpha   = 0.7;
-          this._delta.startLabel.offsetX = -10;
-          this._delta.startLabel.offsetY = 6;
-          this._delta.startLabel.alpha   = 0.8;
-          // sub-button collapse state (分割フレーム)
-          this._delta.sub[0].alpha                = 0;
-          this._delta.sub[1].frameTop.alpha       = 0;
-          this._delta.sub[1].frameRight.offsetX   = 12;
-          this._delta.sub[1].frameLeft.offsetY    = -6;
-          this._delta.sub[1].offsetX              = 16;
-          this._delta.sub[1].offsetY              = 8;
-          this._delta.sub[1].alpha                = 0.5;
-          this._delta.sub[2].alpha                = 0;
+          // すべてのデルタは createHomeDelta() の中立値（正常状態）のまま使用する。
+          // 崩壊・再構築表現は一切加えない。
           this._redrawHomeUI();
 
           // ── lifecycle ────────────────────────────────────────────────────────

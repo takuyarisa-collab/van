@@ -169,160 +169,42 @@ function drawLayerUiFrags(g, W, H, fragAlpha, rnd) {
 }
 
 /**
- * Home 背景: 3レイヤー構成
+ * Home 背景: 正常状態（クリーン版）
  *
  * レイヤー順:
- *   1. グリッド (depthBase = -60)     … 最背面・弱め
- *   2. 背景パッチ (depthBase+1 = -59) … 中間
- *   3. UI                             … 前面 (depth 1+ は HomeScene 側)
+ *   1. 塗りつぶし背景 (depthBase)     … ライトブルーグラデーション
+ *   2. グリッド (depthBase+1)         … 最背面・主張しない (alpha 0.10)
  *
- * 上側 (再構築): グリッド step=52 のタイル単位で構成
- *   Row1 = 完全タイル群 (x:0〜0.7W, y:0〜0.18H) — 欠損なし・全面埋める
- *   Row2 = 密度漸減タイル群 (x:0.05W〜, y:0.22〜0.32H)
- *          左(0〜40%): 密度90〜100% / 中(40〜70%): 60〜80% / 右(70%〜): 20〜40%
- *          完全な直線カット禁止・グリッドスナップ・回転なし
- *
- * 下側 (残骸):
- *   ポリゴン 2 個のみ・rect 禁止
- *   左下 (x:0〜0.3W, y:0.7H 以降)、右下 (x:0.7W〜W, y:0.7H 以降)
- *   頂点 5〜7、軽く歪んだ形、一部鋭角
- *
- * 中央 (0.3W〜0.7W): 何も置かない
+ * 崩壊・再構築表現は一切含まない。
  */
 export function mountBootHomeBackdrop(scene, opts = {}) {
   const W = opts.width ?? scene.scale.width;
   const H = opts.height ?? scene.scale.height;
   const depthBase = opts.depthBase ?? -60;
 
-  // ── Layer 1: グリッド（最背面・主張しない）──────────────────────────────
-  const gGrid = scene.add.graphics();
-  gGrid.setDepth(depthBase);
-  gGrid.lineStyle(1.0, 0x4a6a9a, 0.065);
-  const step = 52;
-  for (let x = 0; x <= W; x += step) gGrid.lineBetween(x, 0, x, H);
-  for (let y = 0; y <= H; y += step) gGrid.lineBetween(0, y, W, y);
+  // ── Layer 1: ライトブルーグラデーション背景 ─────────────────────────────
+  const gBg = scene.add.graphics();
+  gBg.setDepth(depthBase);
 
-  // ── Layer 2: 背景パッチ（中間）──────────────────────────────────────────
-  const gPatch = scene.add.graphics();
-  gPatch.setDepth(depthBase + 1);
+  // 上部中央: 明るい水色 / 下部: やや深めのスチールブルー
+  const colorTop    = 0xd6e8f8;
+  const colorMid    = 0xbdd1e8;
+  const colorBottom = 0xa8bfd8;
+  const half = Math.round(H / 2);
 
-  const tileStep = step; // 52px — グリッド 1 マス
-  const tileGap  = 1;    // 微小欠け(1px) — デジタル感維持
+  gBg.fillGradientStyle(colorTop, colorTop, colorMid, colorMid, 1, 1, 1, 1);
+  gBg.fillRect(0, 0, W, half);
+  gBg.fillGradientStyle(colorMid, colorMid, colorBottom, colorBottom, 1, 1, 1, 1);
+  gBg.fillRect(0, half, W, H - half);
 
-  const rndTile = mulberry32(0xc0de7a1e);
-
-  // ── Row 1: 完成タイル群（欠損なし）────────────────────────────────────
-  // x:0〜0.7W, y:0〜0.18H — グリッドにスナップ、全タイル描画
-  const r1X = 0;
-  const r1Y = 0;
-  const r1W = Math.round(W * 0.70);
-  const r1H = Math.round(H * 0.18);
-  gPatch.fillStyle(0xCDD8E8, 0.80);
-
-  for (let ty = r1Y; ty < r1Y + r1H; ty += tileStep) {
-    const th = Math.min(tileStep - tileGap, (r1Y + r1H) - ty);
-    if (th <= 0) continue;
-    for (let tx = r1X; tx < r1X + r1W; tx += tileStep) {
-      const tw = Math.min(tileStep - tileGap, (r1X + r1W) - tx);
-      if (tw <= 0) continue;
-      gPatch.fillRect(tx, ty, tw, th);
-    }
-  }
-
-  // ── Row 2: 面を描いてから右側を削る（再構築途中）──────────────────────
-  const row2X = Math.round(W * 0.05);
-  const row2Y = Math.round(H * 0.25);
-  const row2W = Math.round(W * 0.39);
-  const row2H = Math.round(H * 0.06);
-
-  const cell = tileStep; // 52px — グリッドに合わせる
-
-  // 1. 先に1枚の面を描く
-  gPatch.fillStyle(0xd0e2f0, 1);
-  gPatch.fillRect(row2X, row2Y, row2W, row2H);
-
-  // 2. 右30%を削る（背景色で上書き）
-  const bgColor = 0x08122a;
-  gPatch.fillStyle(bgColor, 1);
-
-  const solidEndX = row2X + Math.floor(row2W * 0.7);
-
-  const startCol  = Math.floor((solidEndX - row2X) / cell);
-  const totalCols = Math.ceil(row2W / cell);
-  const rows2     = Math.ceil(row2H / cell);
-
-  for (let col = startCol; col < totalCols; col++) {
-    const x = row2X + col * cell;
-    const t = (col - startCol) / Math.max(1, totalCols - startCol - 1);
-
-    let cutChance = 0.3;
-    if (t > 0.3) cutChance = 0.5;
-    if (t > 0.6) cutChance = 0.7;
-    if (t > 0.8) cutChance = 0.9;
-
-    for (let row = 0; row < rows2; row++) {
-      const y    = row2Y + row * cell;
-      const seed = (col * 17 + row * 31) % 100;
-      if (seed < cutChance * 100) {
-        gPatch.fillRect(
-          x,
-          y,
-          Math.min(cell, row2X + row2W - x),
-          Math.min(cell, row2Y + row2H - y),
-        );
-      }
-    }
-  }
-
-  // 3. 右端に細かい欠損を追加（復元精度が落ちる感じ）
-  for (let i = 0; i < 6; i++) {
-    const w2 = 6 + (i % 3) * 4;
-    const h2 = 4 + (i % 2) * 3;
-    const x2 = row2X + row2W - 36 + i * 5;
-    const y2 = row2Y + ((i * 7) % Math.max(6, row2H - h2));
-    gPatch.fillRect(x2, y2, w2, h2);
-  }
-
-  // ── 下側: 残骸ポリゴン 2 個（rect 禁止・中央 0.3W〜0.7W は空白）─────────
-  // 残骸 A: 左下 (x:0〜0.3W, y:0.72H 以降) — 6頂点・一部鋭角
-  const ayBase = Math.round(H * 0.72);
-  gPatch.fillStyle(0x8FA5BC, 0.68);
-  gPatch.fillPoints([
-    { x: 0,              y: ayBase + Math.round(H * 0.072) },  // 左下
-    { x: 0,              y: ayBase + Math.round(H * 0.016) },  // 左上（やや内側）
-    { x: Math.round(W * 0.08),  y: ayBase },                   // 鋭角（上辺の切っ先）
-    { x: Math.round(W * 0.21),  y: ayBase + Math.round(H * 0.008) }, // 上右
-    { x: Math.round(W * 0.28),  y: ayBase + Math.round(H * 0.032) }, // 右上
-    { x: Math.round(W * 0.24),  y: ayBase + Math.round(H * 0.078) }, // 右下（内側）
-  ], true);
-
-  // ひび割れ A
-  gPatch.lineStyle(1.2, 0x4e6e96, 0.50);
-  gPatch.lineBetween(
-    Math.round(W * 0.05), ayBase + Math.round(H * 0.028),
-    Math.round(W * 0.14), ayBase + Math.round(H * 0.044),
-  );
-  gPatch.lineBetween(
-    Math.round(W * 0.14), ayBase + Math.round(H * 0.044),
-    Math.round(W * 0.19), ayBase + Math.round(H * 0.038),
-  );
-
-  // 残骸 B: 右下 (x:0.72W〜W, y:0.75H 以降) — 5頂点・割れ感
-  const byBase = Math.round(H * 0.75);
-  gPatch.fillStyle(0x7B94AC, 0.62);
-  gPatch.fillPoints([
-    { x: Math.round(W * 0.73),  y: byBase + Math.round(H * 0.010) }, // 左上
-    { x: Math.round(W * 0.86),  y: byBase },                          // 鋭角（上辺の切っ先）
-    { x: W,                     y: byBase + Math.round(H * 0.018) }, // 右上端
-    { x: W,                     y: byBase + Math.round(H * 0.068) }, // 右下端
-    { x: Math.round(W * 0.76),  y: byBase + Math.round(H * 0.062) }, // 左下（内側）
-  ], true);
+  // ── Layer 2: グリッド（最背面・主張しない）──────────────────────────────
+  const gGrid = buildCleanGrid(scene, W, H, 1, depthBase + 1);
 
   return {
-    layers: [gGrid, gPatch],
+    layers: [gBg, gGrid],
     destroy() {
+      gBg.destroy();
       gGrid.destroy();
-      gPatch.destroy();
     },
   };
 }
