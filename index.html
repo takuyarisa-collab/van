@@ -136,7 +136,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.8';
-      const BUILD_TIMESTAMP = '2026-04-22 24:00';
+      const BUILD_TIMESTAMP = '2026-04-23 00:00';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -491,14 +491,28 @@
           // ── deltas (one per independent element) ─────────────────────────────
           // All neutral now (normal state).  Mutate these + call _redrawHomeUI()
           // to drive collapse / rebuild animations without touching layout.
+          //
+          // START frame: startFrame = shared position/alpha for the whole button;
+          //   startFrameTop/Bottom/Left/Right = per-side visibility overrides.
+          //   Effective position of each side = startFrame.offset + side.offset.
+          //
+          // sub[i]: offsetX/offsetY/alpha = whole-button-level transform;
+          //   frameTop/Bottom/Left/Right = per-side visibility overrides.
           this._delta = {
+            startFrame:       createHomeDelta(),
             startFrameTop:    createHomeDelta(),
             startFrameBottom: createHomeDelta(),
             startFrameLeft:   createHomeDelta(),
             startFrameRight:  createHomeDelta(),
             startLabel: createHomeDelta(),
             sub: HOME_LAYOUT.labels.map(() => ({
-              frame: createHomeDelta(),
+              offsetX:    0,
+              offsetY:    0,
+              alpha:      1,
+              frameTop:    createHomeDelta(),
+              frameBottom: createHomeDelta(),
+              frameLeft:   createHomeDelta(),
+              frameRight:  createHomeDelta(),
               label: createHomeDelta(),
             })),
             outerFrame: {
@@ -525,9 +539,13 @@
             letterSpacing: 6,
           }).setOrigin(0.5).setDepth(5);
 
-          this._subFrames = HOME_LAYOUT.labels.map(() =>
-            this.add.graphics().setDepth(4)
-          );
+          // 4 independent side graphics per sub button (top, bottom, left, right)
+          this._subFrameSides = HOME_LAYOUT.labels.map(() => ({
+            top:    this.add.graphics().setDepth(4),
+            bottom: this.add.graphics().setDepth(4),
+            left:   this.add.graphics().setDepth(4),
+            right:  this.add.graphics().setDepth(4),
+          }));
           this._subTexts = HOME_LAYOUT.labels.map((label) =>
             this.add.text(0, 0, label, {
               fontFamily: 'monospace, system-ui, sans-serif',
@@ -556,34 +574,32 @@
 
           // ── initial draw ─────────────────────────────────────────────────────
           // outerFrame collapse state (強め崩壊)
-          this._delta.outerFrame.leftTop.alpha = 0;
-          this._delta.outerFrame.rightTop.alpha = 0;
-          this._delta.outerFrame.bottom.alpha = 0;
-          this._delta.outerFrame.leftBottom.offsetY = 12;
-          this._delta.outerFrame.rightBottom.offsetX = 12;
-          this._delta.outerFrame.top.offsetX = -8;
-          // START button collapse state
-          this._delta.startFrameTop.offsetX    = 12;
-          this._delta.startFrameTop.offsetY    = -6;
-          this._delta.startFrameTop.alpha      = 0.75;
-          this._delta.startFrameBottom.offsetX = 12;
-          this._delta.startFrameBottom.offsetY = -6;
-          this._delta.startFrameBottom.alpha   = 0.75;
-          this._delta.startFrameLeft.offsetX   = 12;
+          this._delta.outerFrame.leftTop.alpha       = 0;
+          this._delta.outerFrame.rightTop.alpha      = 0;
+          this._delta.outerFrame.bottom.alpha        = 0;
+          this._delta.outerFrame.leftBottom.offsetY  = 14;
+          this._delta.outerFrame.rightBottom.offsetX = 14;
+          this._delta.outerFrame.top.offsetX         = -10;
+          // START button collapse state (分割フレーム)
+          this._delta.startFrameTop.alpha      = 0;
+          this._delta.startFrameBottom.alpha   = 0;
+          this._delta.startFrameRight.offsetX  = 10;
           this._delta.startFrameLeft.offsetY   = -6;
-          this._delta.startFrameLeft.alpha     = 0.75;
-          this._delta.startFrameRight.offsetX  = 12;
-          this._delta.startFrameRight.offsetY  = -6;
-          this._delta.startFrameRight.alpha    = 0.75;
-          this._delta.startLabel.offsetX = -8;
-          this._delta.startLabel.offsetY = 4;
-          this._delta.startLabel.alpha = 0.85;
-          // sub-button collapse state
-          this._delta.sub[0].frame.alpha = 0;
-          this._delta.sub[1].frame.offsetX = 14;
-          this._delta.sub[1].frame.offsetY = 6;
-          this._delta.sub[1].frame.alpha = 0.6;
-          this._delta.sub[2].frame.alpha = 0;
+          this._delta.startFrame.offsetX = 12;
+          this._delta.startFrame.offsetY = -6;
+          this._delta.startFrame.alpha   = 0.7;
+          this._delta.startLabel.offsetX = -10;
+          this._delta.startLabel.offsetY = 6;
+          this._delta.startLabel.alpha   = 0.8;
+          // sub-button collapse state (分割フレーム)
+          this._delta.sub[0].alpha                = 0;
+          this._delta.sub[1].frameTop.alpha       = 0;
+          this._delta.sub[1].frameRight.offsetX   = 12;
+          this._delta.sub[1].frameLeft.offsetY    = -6;
+          this._delta.sub[1].offsetX              = 16;
+          this._delta.sub[1].offsetY              = 8;
+          this._delta.sub[1].alpha                = 0.5;
+          this._delta.sub[2].alpha                = 0;
           this._redrawHomeUI();
 
           // ── lifecycle ────────────────────────────────────────────────────────
@@ -597,7 +613,7 @@
           let _startFired = false;
           this.input.on('pointerdown', (pointer) => {
             const L  = HOME_LAYOUT;
-            const d  = this._delta.startFrameTop;
+            const d  = this._delta.startFrame;
             const cx = L.centerX + d.offsetX;
             const cy = L.startCenterY + d.offsetY;
             const hw = (L.startWidth  * d.scaleX) / 2;
@@ -628,13 +644,13 @@
           this.input.on('pointerdown', (pointer) => {
             const L = HOME_LAYOUT;
             HOME_LAYOUT.labels.forEach((_, i) => {
-              const d     = this._delta.sub[i].frame;
+              const sub    = this._delta.sub[i];
               const baseCY = L.subButtonsTopY + i * (L.subButtonHeight + L.subButtonSpacing)
                              + L.subButtonHeight / 2;
-              const cx = L.centerX + d.offsetX;
-              const cy = baseCY   + d.offsetY;
-              const hw = (L.subButtonWidth  * d.scaleX) / 2;
-              const hh = (L.subButtonHeight * d.scaleY) / 2;
+              const cx = L.centerX + sub.offsetX;
+              const cy = baseCY   + sub.offsetY;
+              const hw = L.subButtonWidth  / 2;
+              const hh = L.subButtonHeight / 2;
               if (pointer.x >= cx - hw && pointer.x <= cx + hw &&
                   pointer.y >= cy - hh && pointer.y <= cy + hh) {
                 _subHandlers[i]();
@@ -650,7 +666,9 @@
           const { FRAME_LW, START_FILL_HEX, START_LINE_HEX, SUB_LW, SUB_LINE } = this._style;
           const START_CORNER_R = 8;
 
-          // ── START frame (4 independent sides) ─────────────────────────────
+          // ── START frame (4 independent sides, shared startFrame base) ────────
+          // startFrame provides the whole-button position/alpha offset.
+          // Each side delta is composed on top: effective offset = sf + side.
           {
             const bx = L.centerX - L.startWidth  / 2;
             const by = L.startCenterY - L.startHeight / 2;
@@ -658,10 +676,21 @@
             const bh = L.startHeight;
             const lw = FRAME_LW;
             const lc = START_LINE_HEX;
+            const sf = this._delta.startFrame;
 
-            // fill uses startFrameTop delta as reference for position/alpha
+            // Compose startFrame base with a per-side delta
+            const _compose = (side) => ({
+              offsetX:  sf.offsetX  + side.offsetX,
+              offsetY:  sf.offsetY  + side.offsetY,
+              scaleX:   sf.scaleX   * side.scaleX,
+              scaleY:   sf.scaleY   * side.scaleY,
+              alpha:    sf.alpha    * side.alpha,
+              rotation: sf.rotation + side.rotation,
+            });
+
+            // fill: uses startFrame position, alpha is the product of sf.alpha
             {
-              const r = _applyDelta(bx, by, bw, bh, this._delta.startFrameTop);
+              const r = _applyDelta(bx, by, bw, bh, sf);
               this._gStartFill.clear();
               this._gStartFill.setAlpha(r.alpha);
               this._gStartFill.fillStyle(START_FILL_HEX, this._startFillAlpha);
@@ -670,7 +699,7 @@
 
             // top side
             {
-              const r = _applyDelta(bx, by, bw, bh, this._delta.startFrameTop);
+              const r = _applyDelta(bx, by, bw, bh, _compose(this._delta.startFrameTop));
               this._gStartFrameTop.clear();
               this._gStartFrameTop.setAlpha(r.alpha);
               this._gStartFrameTop.lineStyle(lw, lc, 1.0);
@@ -682,7 +711,7 @@
 
             // bottom side
             {
-              const r = _applyDelta(bx, by, bw, bh, this._delta.startFrameBottom);
+              const r = _applyDelta(bx, by, bw, bh, _compose(this._delta.startFrameBottom));
               this._gStartFrameBottom.clear();
               this._gStartFrameBottom.setAlpha(r.alpha);
               this._gStartFrameBottom.lineStyle(lw, lc, 1.0);
@@ -694,7 +723,7 @@
 
             // left side
             {
-              const r = _applyDelta(bx, by, bw, bh, this._delta.startFrameLeft);
+              const r = _applyDelta(bx, by, bw, bh, _compose(this._delta.startFrameLeft));
               this._gStartFrameLeft.clear();
               this._gStartFrameLeft.setAlpha(r.alpha);
               this._gStartFrameLeft.lineStyle(lw, lc, 1.0);
@@ -706,7 +735,7 @@
 
             // right side
             {
-              const r = _applyDelta(bx, by, bw, bh, this._delta.startFrameRight);
+              const r = _applyDelta(bx, by, bw, bh, _compose(this._delta.startFrameRight));
               this._gStartFrameRight.clear();
               this._gStartFrameRight.setAlpha(r.alpha);
               this._gStartFrameRight.lineStyle(lw, lc, 1.0);
@@ -719,39 +748,61 @@
 
           // ── START label ────────────────────────────────────────────────────
           {
-            const d = this._delta.startLabel;
-            const x = L.centerX    + d.offsetX;
-            const y = L.startCenterY + d.offsetY;
+            const sf = this._delta.startFrame;
+            const d  = this._delta.startLabel;
+            const x = L.centerX      + sf.offsetX + d.offsetX;
+            const y = L.startCenterY + sf.offsetY + d.offsetY;
             this._startText.setPosition(x, y);
-            this._startText.setAlpha(d.alpha);
-            this._startText.setAngle(d.rotation);
-            this._startText.setScale(d.scaleX, d.scaleY);
+            this._startText.setAlpha(sf.alpha * d.alpha);
+            this._startText.setAngle(sf.rotation + d.rotation);
+            this._startText.setScale(sf.scaleX * d.scaleX, sf.scaleY * d.scaleY);
           }
 
-          // ── sub-buttons ────────────────────────────────────────────────────
+          // ── sub-buttons (4 independent sides per button) ───────────────────
+          // sub[i].offsetX/Y/alpha = whole-button transform.
+          // sub[i].frameTop/Bottom/Left/Right = per-side visibility overrides.
           L.labels.forEach((_, i) => {
             const baseCY = L.subButtonsTopY + i * (L.subButtonHeight + L.subButtonSpacing)
                            + L.subButtonHeight / 2;
+            const sub = this._delta.sub[i];
+            const bx  = L.centerX - L.subButtonWidth / 2 + sub.offsetX;
+            const by  = baseCY - L.subButtonHeight / 2   + sub.offsetY;
+            const bw  = L.subButtonWidth;
+            const bh  = L.subButtonHeight;
+            const sides = this._subFrameSides[i];
 
-            // frame
-            {
-              const d = this._delta.sub[i].frame;
-              const r = _applyDelta(L.centerX - L.subButtonWidth / 2,
-                                    baseCY - L.subButtonHeight / 2,
-                                    L.subButtonWidth, L.subButtonHeight, d);
-              this._subFrames[i].clear();
-              this._subFrames[i].setAlpha(r.alpha * 0.55);
-              this._subFrames[i].lineStyle(SUB_LW, SUB_LINE, 1.0);
-              this._subFrames[i].strokeRect(r.x, r.y, r.w, r.h);
-            }
+            const _drawSubSide = (g, sideDelta, drawFn) => {
+              const effAlpha = sub.alpha * sideDelta.alpha;
+              const ex = bx + sideDelta.offsetX;
+              const ey = by + sideDelta.offsetY;
+              const ew = bw * sideDelta.scaleX;
+              const eh = bh * sideDelta.scaleY;
+              g.clear();
+              g.setAlpha(effAlpha * 0.55);
+              g.lineStyle(SUB_LW, SUB_LINE, 1.0);
+              drawFn(g, ex, ey, ew, eh);
+            };
+
+            _drawSubSide(sides.top,    sub.frameTop,    (g, x, y, w) => {
+              g.beginPath(); g.moveTo(x, y); g.lineTo(x + w, y); g.strokePath();
+            });
+            _drawSubSide(sides.bottom, sub.frameBottom, (g, x, y, w, h) => {
+              g.beginPath(); g.moveTo(x, y + h); g.lineTo(x + w, y + h); g.strokePath();
+            });
+            _drawSubSide(sides.left,   sub.frameLeft,   (g, x, y, w, h) => {
+              g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + h); g.strokePath();
+            });
+            _drawSubSide(sides.right,  sub.frameRight,  (g, x, y, w, h) => {
+              g.beginPath(); g.moveTo(x + w, y); g.lineTo(x + w, y + h); g.strokePath();
+            });
 
             // label
             {
-              const d = this._delta.sub[i].label;
-              const x = L.centerX + d.offsetX;
-              const y = baseCY   + d.offsetY;
+              const d = sub.label;
+              const x = L.centerX + sub.offsetX + d.offsetX;
+              const y = baseCY    + sub.offsetY + d.offsetY;
               this._subTexts[i].setPosition(x, y);
-              this._subTexts[i].setAlpha(d.alpha * 0.55);
+              this._subTexts[i].setAlpha(sub.alpha * d.alpha * 0.55);
               this._subTexts[i].setAngle(d.rotation);
               this._subTexts[i].setScale(d.scaleX, d.scaleY);
             }
