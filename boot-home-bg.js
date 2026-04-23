@@ -177,11 +177,11 @@ function drawLayerUiFrags(g, W, H, fragAlpha, rnd) {
  *   3. UI                             … 前面 (depth 1+ は HomeScene 側)
  *
  * 上側:
- *   Row1 = 再構築済み大矩形、Row2 = 再構築途中
- *   左から70%地点でデジタル段差カットオフ
+ *   Row1 = 再構築済み横長1枚（上部）、Row2 = 再構築途中1枚（左寄り）
+ *   左から70%地点でデジタル段差カットオフ（段差は弱め）
  *
  * 下側 (subButtonsTopY ≈ H/2 + 92 以下):
- *   崩壊ポリゴン破片 + ひび割れライン、少量
+ *   残骸最大2個・画面端寄せ・面積は旧比約半分
  *
  * 中央: 未描画（UIが浮く）
  */
@@ -208,35 +208,33 @@ export function mountBootHomeBackdrop(scene, opts = {}) {
   gPatch.setDepth(depthBase + 1);
 
   // 上側パッチをデジタル段差カットオフ付きで描画
-  // solidRight まで塗りつぶし、その後 stepZone 内で段差を刻む
+  // solidRight まで塗りつぶし、その後 stepZone 内で段差を刻む（弱め）
   function drawPatchDigitalCutoff(x, y, w, h, color, alpha) {
     const right     = x + w;
-    const stepZone  = 20; // 段差エッジの幅(px)
+    const stepZone  = 14; // 段差エッジの幅(px) — 以前より狭くして段差を弱める
     const solidEnd  = CUTOFF_X - stepZone;
 
     if (right <= solidEnd) {
-      // カットオフより完全に左 → 通常描画
       gPatch.fillStyle(color, alpha);
       gPatch.fillRect(x, y, w, h);
       return;
     }
 
-    // ソリッド部分
     if (solidEnd > x) {
       gPatch.fillStyle(color, alpha);
       gPatch.fillRect(x, y, solidEnd - x, h);
     }
 
-    // デジタル段差: 高さ方向に8pxステップで幅をランダムに変える
-    const tileH = 8;
+    // デジタル段差: 高さ方向に10pxステップ（増やして段差間隔を広げる）
+    const tileH = 10;
     const rows  = Math.ceil(h / tileH);
     for (let ri = 0; ri < rows; ri++) {
       const sy = y + ri * tileH;
       const sh = Math.min(tileH, y + h - sy);
       if (sh <= 0) break;
-      // 決定論的なランダム幅(ステップ0〜stepZone)
       const seed = (ri * 13 + Math.round(x / 10) * 7) & 0xf;
-      const sw   = stepZone - (seed % 5) * 4; // 0, 4, 8, 12, 16 を引く
+      // 段差幅を縮小: (seed % 3) * 3 で 0/3/6 の 3 段のみ
+      const sw   = stepZone - (seed % 3) * 5;
       if (sw > 0 && solidEnd + sw <= right) {
         gPatch.fillStyle(color, alpha);
         gPatch.fillRect(solidEnd, sy, sw, sh);
@@ -244,57 +242,40 @@ export function mountBootHomeBackdrop(scene, opts = {}) {
     }
   }
 
-  // ── Row 1: 再構築済み（大きめ矩形）────────────────────────────────────
-  drawPatchDigitalCutoff(0,          0,          W * 0.74, H * 0.175, 0xCDD8E8, 0.80);
-  drawPatchDigitalCutoff(W * 0.06,   H * 0.175,  W * 0.60, H * 0.085, 0xC4D2E4, 0.72);
+  // ── Row 1: 再構築済み（横長1枚・上部）────────────────────────────────
+  // 左端から画面幅の71%、高さはH*0.17（わずかに高さを変えて矩形感を弱める）
+  drawPatchDigitalCutoff(0, 0, W * 0.71, H * 0.170, 0xCDD8E8, 0.80);
 
-  // ── Row 2: 再構築途中（小さめ・隙間あり）──────────────────────────────
-  drawPatchDigitalCutoff(0,          H * 0.27,   W * 0.38, H * 0.065, 0xB2C6DA, 0.58);
-  drawPatchDigitalCutoff(W * 0.44,   H * 0.295,  W * 0.28, H * 0.048, 0xBACADE, 0.48);
+  // ── Row 2: 再構築途中（1枚・左寄り・やや短め）─────────────────────────
+  // 1枚だけ・高さもやや不規則
+  drawPatchDigitalCutoff(0, H * 0.265, W * 0.36, H * 0.058, 0xB2C6DA, 0.56);
 
-  // ── 下側: 残骸（RUINS_Y 以下・アナログ崩壊感）──────────────────────────
-  // 大破片 A: 左寄り、上右コーナー欠け
-  gPatch.fillStyle(0x9AAFC4, 0.76);
+  // ── 下側: 残骸（最大2個・画面端寄せ・面積は元の約半分）────────────────
+  // 残骸 A: 左端寄り・小さめ台形
+  gPatch.fillStyle(0x9AAFC4, 0.68);
   gPatch.fillPoints([
-    { x: 0,             y: RUINS_Y + H * 0.055 + H * 0.10 },
-    { x: 0,             y: RUINS_Y + H * 0.055 },
-    { x: W * 0.48,      y: RUINS_Y + H * 0.055 },
-    { x: W * 0.58,      y: RUINS_Y + H * 0.055 + H * 0.04 },
-    { x: W * 0.50,      y: RUINS_Y + H * 0.055 + H * 0.10 },
+    { x: 0,             y: RUINS_Y + H * 0.065 + H * 0.048 },
+    { x: 0,             y: RUINS_Y + H * 0.065 },
+    { x: W * 0.26,      y: RUINS_Y + H * 0.065 },
+    { x: W * 0.30,      y: RUINS_Y + H * 0.065 + H * 0.022 },
+    { x: W * 0.24,      y: RUINS_Y + H * 0.065 + H * 0.048 },
   ], true);
 
-  // 大破片 B: 右寄り・ずれた平行四辺形
-  gPatch.fillStyle(0x88A0B8, 0.66);
+  // 残骸 B: 右端寄り・細めの平行四辺形
+  gPatch.fillStyle(0x88A0B8, 0.60);
   gPatch.fillPoints([
-    { x: W * 0.42,      y: RUINS_Y + H * 0.155 + 10 },
-    { x: W * 1.02,      y: RUINS_Y + H * 0.155 },
-    { x: W * 1.02,      y: RUINS_Y + H * 0.155 + H * 0.105 },
-    { x: W * 0.36,      y: RUINS_Y + H * 0.155 + H * 0.105 + 8 },
+    { x: W * 0.72,      y: RUINS_Y + H * 0.165 + 6 },
+    { x: W * 1.01,      y: RUINS_Y + H * 0.165 },
+    { x: W * 1.01,      y: RUINS_Y + H * 0.165 + H * 0.052 },
+    { x: W * 0.68,      y: RUINS_Y + H * 0.165 + H * 0.052 + 5 },
   ], true);
 
-  // 中破片: 中央左寄り・欠けた三角上辺
-  gPatch.fillStyle(0x7A94AC, 0.58);
-  gPatch.fillPoints([
-    { x: W * 0.16,      y: RUINS_Y + H * 0.275 },
-    { x: W * 0.52,      y: RUINS_Y + H * 0.275 + H * 0.022 },
-    { x: W * 0.55,      y: RUINS_Y + H * 0.275 + H * 0.085 },
-    { x: W * 0.10,      y: RUINS_Y + H * 0.275 + H * 0.085 },
-    { x: W * 0.05,      y: RUINS_Y + H * 0.275 + H * 0.055 },
-  ], true);
-
-  // ひび割れ A: 大破片 A を横切る 3 節折れ線
-  gPatch.lineStyle(1.4, 0x5878A0, 0.52);
-  gPatch.lineBetween(W * 0.08,  RUINS_Y + H * 0.065,
-                     W * 0.22,  RUINS_Y + H * 0.090);
-  gPatch.lineBetween(W * 0.22,  RUINS_Y + H * 0.090,
-                     W * 0.32,  RUINS_Y + H * 0.082);
-
-  // ひび割れ B: 大破片 B 内
-  gPatch.lineStyle(1.1, 0x486080, 0.42);
-  gPatch.lineBetween(W * 0.58,  RUINS_Y + H * 0.185,
-                     W * 0.72,  RUINS_Y + H * 0.215);
-  gPatch.lineBetween(W * 0.72,  RUINS_Y + H * 0.215,
-                     W * 0.66,  RUINS_Y + H * 0.235);
+  // ひび割れ A: 残骸 A を横切る折れ線
+  gPatch.lineStyle(1.2, 0x5878A0, 0.46);
+  gPatch.lineBetween(W * 0.06,  RUINS_Y + H * 0.075,
+                     W * 0.16,  RUINS_Y + H * 0.092);
+  gPatch.lineBetween(W * 0.16,  RUINS_Y + H * 0.092,
+                     W * 0.22,  RUINS_Y + H * 0.086);
 
   return {
     layers: [gGrid, gPatch],
