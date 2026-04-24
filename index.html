@@ -138,7 +138,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.8';
-      const BUILD_TIMESTAMP = '2026-04-24 15:30';
+      const BUILD_TIMESTAMP = '2026-04-24 18:00';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -492,13 +492,12 @@
           });
           console.log('[HomeScene] backdrop created (mountHomeNormalBg: grid -60, image -59)');
 
-          // ── 上側マスク（正常面 + 再構築途中面）────────────────────────────
-          // depth -58: グリッド(-61)・背景画像(-59)より前面、UIより背面
+          // ── 上側マスク（GeometryMask: Row1+Row2のみ背景表示、以降グリッド露出）
           this._homeUpperMask = mountHomeUpperMask(this, {
             width: WORLD_W,
-            depthBase: -58,
             row1Cells: 3,
             row2Cells: 2,
+            targetImage: this._homeBackdrop.bgImage,
           });
 
           // ── deltas (one per independent element) ─────────────────────────────

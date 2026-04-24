@@ -170,85 +170,75 @@ function drawLayerUiFrags(g, W, H, fragAlpha, rnd) {
 }
 
 /**
- * Home 背景上側マスク（正常面 + 再構築途中面）
+ * Home 背景上側マスク（GeometryMask 反転方式）
  *
- * Row1: 完成面。高さ = gridSize × row1Cells（欠損なし）
- * Row2: 再構築途中。Row1 直下。高さ = gridSize × row2Cells。
- *       左側は連続した面を維持し、右に行くほど欠損量（gridSize/2 単位）を増やす。
+ * 背景画像に GeometryMask を適用し、表示範囲を限定する。
+ * maskG の塗り = 背景画像が見える、塗りなし = 透過 = グリッド露出。
  *
- * 欠損ルール:
- *   - 欠損単位 = gridSize / 2
- *   - 左側はほぼ欠損なし、右に行くほど欠損量が増える
- *   - タイル境界線は描かない（fill のみ）
+ * Row1: 完全表示（欠損なし）
+ * Row2: 再構築途中。gridSize/2 単位のタイルを確率的に表示。
+ *       左側はほぼ完成（95%）、右に向かって急激に崩壊（最右 2%）。
+ * Row3以降: 描画なし → 背景非表示 → グリッド露出。
  *
  * @param {Phaser.Scene} scene
  * @param {object} opts
  * @param {number}  [opts.width]
- * @param {number}  [opts.height]
- * @param {number}  [opts.depthBase=-58]  グリッドより前面、UIより背面
- * @param {number}  [opts.row1Cells=3]    Row1 の高さ（gridSize 単位）
- * @param {number}  [opts.row2Cells=2]    Row2 の高さ（gridSize 単位）
- * @param {number}  [opts.color=0x0d1e36]  面の色
- * @param {number}  [opts.alpha=0.82]      面の不透明度
- * @returns {{ graphic: Phaser.GameObjects.Graphics, destroy: () => void }}
+ * @param {number}  [opts.row1Cells=3]   Row1 の高さ（gridSize 単位）
+ * @param {number}  [opts.row2Cells=2]   Row2 の高さ（gridSize 単位）
+ * @param {Phaser.GameObjects.Image} [opts.targetImage]  マスクを適用する背景画像
+ * @returns {{ maskGraphics: Phaser.GameObjects.Graphics, destroy: () => void }}
  */
 export function mountHomeUpperMask(scene, opts = {}) {
-  const W         = opts.width    ?? scene.scale.width;
-  const depthBase = opts.depthBase ?? -58;
-  const gridSize  = 52;
-  const half      = gridSize / 2;
-  const color     = opts.color ?? 0x0d1e36;
-  const alpha     = opts.alpha ?? 0.82;
+  const W           = opts.width    ?? scene.scale.width;
+  const gridSize    = 52;
+  const sub         = gridSize / 2;
+  const row1Cells   = opts.row1Cells ?? 3;
+  const row2Cells   = opts.row2Cells ?? 2;
+  const row1H       = gridSize * row1Cells;
+  const row2H       = gridSize * row2Cells;
+  const row2Y       = row1H;
+  const targetImage = opts.targetImage ?? null;
 
-  const row1Cells = opts.row1Cells ?? 3;
-  const row2Cells = opts.row2Cells ?? 2;
+  const maskG = scene.make.graphics({ add: false });
 
-  const row1H = gridSize * row1Cells;
-  const row2H = gridSize * row2Cells;
+  // Row1: 完全表示
+  maskG.fillStyle(0xffffff, 1);
+  maskG.fillRect(0, 0, W, row1H);
 
-  const g = scene.add.graphics();
-  g.setDepth(depthBase);
+  // Row2: 再構築途中（サブグリッドタイル単位の確率表示）
+  for (let x = 0; x < W; x += sub) {
+    const t = x / W;
 
-  // ── Row1: 完成面（欠損なし）────────────────────────────────────────────
-  g.fillStyle(color, alpha);
-  g.fillRect(0, 0, W, row1H);
+    let show = 0.95;
+    if (t > 0.3)  show = 0.6;
+    if (t > 0.5)  show = 0.3;
+    if (t > 0.7)  show = 0.1;
+    if (t > 0.85) show = 0.02;
 
-  // ── Row2: 再構築途中（右側に欠損）──────────────────────────────────────
-  // Row2 を横方向に half 単位でスキャンし、列ごとに欠損高さを決める。
-  // x=0 付近: 欠損なし（full height）
-  // x=W 付近: 最大 row2H 分欠損（= ほぼ消える）
-  //
-  // 欠損は上端からではなく下端から削る（「面が下から崩れる」表現）。
-  // 列ごとの現存高さ: presentH = row2H - gapH
-  //   gapH は 0 〜 row2H の範囲で、右に行くほど増える。
-  //   gapH は half の整数倍に量子化する。
+    for (let y = 0; y < row2H; y += sub) {
+      const seed = (x * 13 + y * 7) % 100;
+      if (seed < show * 100) {
+        maskG.fillRect(x, row2Y + y, sub, sub);
+      }
+    }
+  }
 
-  const row2Y  = row1H;
-  const cols   = Math.ceil(W / half);
+  // Row3以降は描画なし → 背景非表示・グリッド露出
 
-  for (let ci = 0; ci < cols; ci += 1) {
-    const x = ci * half;
-    const colW = Math.min(half, W - x);
-    if (colW <= 0) break;
-
-    // 右端ほど欠損が大きくなる進行率 [0,1]
-    // 左 10% は欠損ゼロ保護ゾーン
-    const progress = Math.max(0, (x / W - 0.10) / 0.90);
-
-    // 欠損高さ: 二次カーブで右端に向けて急増
-    const rawGap  = row2H * Math.pow(progress, 1.8);
-    const gapH    = Math.round(rawGap / half) * half;
-    const presentH = row2H - gapH;
-
-    if (presentH <= 0) continue;
-
-    g.fillStyle(color, alpha);
-    g.fillRect(x, row2Y, colW, presentH);
+  if (targetImage) {
+    targetImage.setMask(maskG.createGeometryMask());
   }
 
   return {
-    graphic: g,
-    destroy() { g.destroy(); },
+    maskGraphics: maskG,
+    destroy() {
+      if (targetImage && !targetImage.destroyed) {
+        targetImage.clearMask();
+      }
+      if (!maskG.destroyed) {
+        maskG.destroy();
+      }
+    },
   };
 }
 
@@ -289,6 +279,7 @@ export function mountHomeNormalBg(scene, opts = {}) {
 
   return {
     layers: [gGrid, img],
+    bgImage: img,
     destroy() {
       gGrid.destroy();
       img.destroy();
