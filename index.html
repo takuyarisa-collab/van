@@ -42,6 +42,7 @@
       createScatteredBootTitle,
       mountBootCollapsedBackdrop,
       mountBootHomeBackdrop,
+      mountHomeNormalBg,
     } from './boot-home-bg.js';
     import {
       NEAR_ATTACK_FRONT_CONTACT_TUNING,
@@ -136,7 +137,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.8';
-      const BUILD_TIMESTAMP = '2026-04-23 15:00';
+      const BUILD_TIMESTAMP = '2026-04-24 12:00';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -466,6 +467,10 @@
           super('home');
         }
 
+        preload() {
+          this.load.image('home-bg-normal', 'assets/home-bg-normal.png');
+        }
+
         create() {
           // ── accent colors ────────────────────────────────────────────────────
           // START uses a salmon palette; sub-buttons keep the original cyan tones
@@ -478,14 +483,13 @@
           const SUB_TEXT       = '#2ec8be';
 
           // ── background ───────────────────────────────────────────────────────
-          // depthBase は mountBootHomeBackdrop のデフォルト(-60) を使う。
-          // Boot の暗い背景 (depthBase -55) より確実に下に配置するため
-          // ここで上書きしない。
-          this._homeBackdrop = mountBootHomeBackdrop(this, {
+          // グリッド (depthBase=-60) + 背景画像 (depthBase+1=-59) の2層構成。
+          // グラデーション塗りつぶしは使用しない（正常状態）。
+          this._homeBackdrop = mountHomeNormalBg(this, {
             width: WORLD_W,
             height: WORLD_H,
           });
-          console.log('[HomeScene] backdrop created (depthBase default -60, mountBootHomeBackdrop only)');
+          console.log('[HomeScene] backdrop created (mountHomeNormalBg: grid -60, image -59)');
 
           // ── deltas (one per independent element) ─────────────────────────────
           // All neutral now (normal state).  Mutate these + call _redrawHomeUI()

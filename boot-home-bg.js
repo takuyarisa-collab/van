@@ -1,8 +1,9 @@
 /**
  * Boot / Home 用背景（Phaser Graphics）
- * - mountBootHomeBackdrop … 静的単色背景
+ * - mountHomeNormalBg       … Home 正常背景（画像 + グリッド）
+ * - mountBootHomeBackdrop   … 静的単色背景（後方互換 / 非 Home 正常状態用）
  * - mountBootCollapsedBackdrop … Boot 崩壊（レイヤーズレ＋微動→収束）
- * - mountHomeParticles … 微粒子フェードアニメ（Home 専用）
+ * - mountHomeParticles      … 微粒子フェードアニメ（Home 専用）
  */
 
 function mulberry32(seed) {
@@ -166,6 +167,50 @@ function drawLayerUiFrags(g, W, H, fragAlpha, rnd) {
       sy + (rnd() - 0.5) * 26,
     );
   }
+}
+
+/**
+ * Home 正常背景（画像版）
+ *
+ * レイヤー順:
+ *   1. グリッド (depthBase)      … 最背面・主張しない (alpha 0.10)
+ *   2. 背景画像 (depthBase+1)    … グリッドより前面、UIより背面
+ *                                   cover 表示（アスペクト比維持）
+ *
+ * @param {Phaser.Scene} scene
+ * @param {object} opts
+ * @param {number}  [opts.width]
+ * @param {number}  [opts.height]
+ * @param {number}  [opts.depthBase=-60]
+ * @param {string}  [opts.textureKey='home-bg-normal']
+ * @returns {{ layers: Phaser.GameObjects.GameObject[], destroy: () => void }}
+ */
+export function mountHomeNormalBg(scene, opts = {}) {
+  const W = opts.width ?? scene.scale.width;
+  const H = opts.height ?? scene.scale.height;
+  const depthBase = opts.depthBase ?? -60;
+  const key = opts.textureKey ?? 'home-bg-normal';
+
+  // ── Layer 1: グリッド（最背面 depthBase=-60）─────────────────────────────
+  // buildCleanGrid は内部で setDepth(depthBase+1) するため depthBase-1 を渡す
+  const gGrid = buildCleanGrid(scene, W, H, 1, depthBase - 1);
+
+  // ── Layer 2: 背景画像（depthBase+1=-59、グリッドより前面・UIより背面）────
+  const img = scene.add.image(W / 2, H / 2, key);
+  img.setDepth(depthBase + 1);
+
+  // cover: アスペクト比を維持しつつ画面全体を覆うスケール
+  const scaleX = W / img.width;
+  const scaleY = H / img.height;
+  img.setScale(Math.max(scaleX, scaleY));
+
+  return {
+    layers: [gGrid, img],
+    destroy() {
+      gGrid.destroy();
+      img.destroy();
+    },
+  };
 }
 
 /**
