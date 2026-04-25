@@ -679,3 +679,130 @@ export function createScatteredBootTitle(scene, opts) {
     },
   };
 }
+
+/**
+ * Home 背景 再構築スキャン
+ *
+ * home-bg-normal 画像に GeometryMask を適用し、上から行単位・左から右へ
+ * ステップ移動で表示領域を広げていく。
+ *
+ * - グリッドは最背面のまま（触らない）
+ * - UI / outerFrame は触らない
+ * - 毎フレーム更新禁止: setTimeout ベースのステップ更新
+ * - マスク用 Graphics は 1 つだけ使い回す（clear → draw）
+ * - 大量オブジェクト生成禁止
+ *
+ * 挙動:
+ *   - 上から行単位でスキャン（最初は行0から）
+ *   - 各行は左から右へグリッド1列ぶんずつ進む
+ *   - 右端まで行ったら次の行へ進む
+ *   - 1行目（row=0）は約1秒で完了（列数≒11 で interval ≈ 91ms）
+ *   - 2行目以降: interval を指数関数的に延長（係数 SCAN_ROW_INTERVAL_SCALE）
+ *   - stopY まで到達したら完全停止（それ以下は未復元のまま）
+ *
+ * @param {Phaser.Scene} scene
+ * @param {object} opts
+ * @param {number}  [opts.width]          world 幅 (px)
+ * @param {number}  [opts.stopY]          この y より下は復元しない (px)
+ * @param {number}  [opts.gridStep=52]    グリッドのセルサイズ (px)
+ * @param {number}  [opts.row0IntervalMs=91]  row0 の 1 ステップ間隔 (ms)
+ * @param {number}  [opts.rowIntervalScale=3.5] 行ごとの間隔倍率
+ * @param {Phaser.GameObjects.Image} opts.targetImage  マスク適用先の画像
+ * @returns {{ destroy: () => void }}
+ */
+export function mountHomeScanMask(scene, opts = {}) {
+  const W              = opts.width      ?? scene.scale.width;
+  const gridStep       = opts.gridStep   ?? 52;
+  const row0Interval   = opts.row0IntervalMs   ?? 91;
+  const rowScale       = opts.rowIntervalScale ?? 3.5;
+  const targetImage    = opts.targetImage ?? null;
+  const stopY          = opts.stopY ?? Math.round(scene.scale.height * 0.40);
+
+  const cols           = Math.ceil(W / gridStep);
+  const stopRow        = Math.floor(stopY / gridStep); // 最後に完全表示する行(0-indexed)
+
+  // ── マスク用 Graphics（シーンに追加しない: make.graphics）──────────────
+  const maskG = scene.make.graphics({ add: false });
+
+  // GeometryMask は初回に1度だけ作成し、以降は maskG の clear→draw で更新
+  const geomMask = maskG.createGeometryMask();
+  if (targetImage && !targetImage.destroyed) {
+    targetImage.setMask(geomMask);
+  }
+
+  // ── 現在のスキャン位置 ───────────────────────────────────────────────
+  // (scanRow, scanCol) を進めるごとに maskG を clear → draw する
+  let scanRow = 0;
+  let scanCol = 0;   // 0 = 列未進行、cols = 行完了
+  let finished = false;
+  let _timer = null;
+
+  // マスクを再描画（完了済み行 + 現在行の scanCol 列まで）
+  function _redrawMask() {
+    maskG.clear();
+    maskG.fillStyle(0xffffff, 1);
+
+    // 完了済み行（scanRow 未満）: 全幅
+    if (scanRow > 0) {
+      maskG.fillRect(0, 0, W, scanRow * gridStep);
+    }
+
+    // 現在行: scanCol 列ぶん
+    if (scanCol > 0) {
+      const rowY = scanRow * gridStep;
+      maskG.fillRect(0, rowY, scanCol * gridStep, gridStep);
+    }
+  }
+
+  // 次ステップまでの待機時間（行ごとに指数増加）
+  function _intervalFor(row) {
+    return row0Interval * Math.pow(rowScale, row);
+  }
+
+  function _scheduleNext() {
+    if (finished) return;
+    const delay = _intervalFor(scanRow);
+    _timer = scene.time.delayedCall(delay, _step);
+  }
+
+  function _step() {
+    if (finished) return;
+    scanCol += 1;
+
+    if (scanCol >= cols) {
+      // 行完了 → 次の行へ
+      scanRow += 1;
+      scanCol = 0;
+
+      if (scanRow >= stopRow) {
+        // 停止: 完了済み行だけをマスクに描いて終了
+        finished = true;
+        maskG.clear();
+        maskG.fillStyle(0xffffff, 1);
+        maskG.fillRect(0, 0, W, stopRow * gridStep);
+        return;
+      }
+    }
+
+    _redrawMask();
+    _scheduleNext();
+  }
+
+  // 初期状態: マスクは空（画像は非表示）
+  _redrawMask();
+  _scheduleNext();
+
+  return {
+    destroy() {
+      finished = true;
+      if (_timer) {
+        _timer.remove(false);
+        _timer = null;
+      }
+      if (targetImage && !targetImage.destroyed) {
+        targetImage.clearMask();
+      }
+      maskG.destroy();
+    },
+  };
+}
