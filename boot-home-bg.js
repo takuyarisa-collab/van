@@ -170,110 +170,117 @@ function drawLayerUiFrags(g, W, H, fragAlpha, rnd) {
 }
 
 /**
- * Home 背景上側マスク（GeometryMask 反転方式）
+ * Home 背景上側マスク + パネルオーバーレイ
  *
- * 背景画像に GeometryMask を適用し、表示範囲を限定する。
- * maskG の塗り = 背景画像が見える、塗りなし = 透過 = グリッド露出。
- *
- * Row1: 完全表示（欠損なし）
- * Row2: 再構築途中。gridSize/2 単位のタイルを確率的に表示。
- *       左側はほぼ完成（95%）、右に向かって急激に崩壊（最右 2%）。
- * Row3以降: 描画なし → 背景非表示 → グリッド露出。
+ * Row1 / Row2 を「背景画像の面」として表示する。
+ * - GeometryMask は Row1+Row2 全体をベタ塗りで確保（黒穴を作らない）。
+ * - Row1 オーバーレイ: 上端ハイライト線 + 下端影 + 金属パネル立体感
+ * - Row2 オーバーレイ: 右に行くほど透明になる alpha グラデ面（欠損は補助のみ）
+ * - タイル境界線は描画しない
+ * - グリッドは最背面のまま（このメソッドは触らない）
  *
  * @param {Phaser.Scene} scene
  * @param {object} opts
  * @param {number}  [opts.width]
- * @param {number}  [opts.row1Cells=3]   Row1 の高さ（gridSize 単位）
- * @param {number}  [opts.row2Cells=2]   Row2 の高さ（gridSize 単位）
- * @param {Phaser.GameObjects.Image} [opts.targetImage]  マスクを適用する背景画像
- * @returns {{ maskGraphics: Phaser.GameObjects.Graphics, destroy: () => void }}
+ * @param {number}  [opts.row1Cells=3]
+ * @param {number}  [opts.row2Cells=2]
+ * @param {Phaser.GameObjects.Image} [opts.targetImage]
+ * @param {number}  [opts.overlayDepth=-58]  Row1/Row2 オーバーレイの depth
+ * @returns {{ maskGraphics: Phaser.GameObjects.Graphics, overlayGfx: Phaser.GameObjects.Graphics, destroy: () => void }}
  */
 export function mountHomeUpperMask(scene, opts = {}) {
-  const W           = opts.width    ?? scene.scale.width;
-  const gridSize    = 52;
-  const sub         = gridSize / 2;
-  const row1Cells   = opts.row1Cells ?? 3;
-  const row2Cells   = opts.row2Cells ?? 2;
-  const row1H       = gridSize * row1Cells;
-  const row2H       = gridSize * row2Cells;
-  const row2Y       = row1H;
-  const targetImage = opts.targetImage ?? null;
+  const W             = opts.width ?? scene.scale.width;
+  const gridSize      = 52;
+  const row1Cells     = opts.row1Cells ?? 3;
+  const row2Cells     = opts.row2Cells ?? 2;
+  const row1H         = gridSize * row1Cells;
+  const row2H         = gridSize * row2Cells;
+  const row2Y         = row1H;
+  const totalH        = row1H + row2H;
+  const targetImage   = opts.targetImage ?? null;
+  const overlayDepth  = opts.overlayDepth ?? -58;
 
+  // ── GeometryMask: Row1+Row2 全体をベタ塗り ──────────────────────────────
   const maskG = scene.make.graphics({ add: false });
-
-  // Row1: 完全表示
   maskG.fillStyle(0xffffff, 1);
-  maskG.fillRect(0, 0, W, row1H);
-
-  // Row2: 塊抜け（右に行くほど欠損塊が大きく・多くなる）
-  // 欠損は横方向に 2〜4 sub 幅、縦方向に 1〜2 sub 高さで連結する。
-  // 左側は連続した面を多めに残し、右端ほど密に抜ける。
-  const colCount  = Math.ceil(W / sub);
-  const rowCount  = Math.ceil(row2H / sub);
-
-  // 各サブセルの可視フラグを先に確定する（塊単位で欠損を決定）
-  const visible = Array.from({ length: colCount }, () => new Array(rowCount).fill(true));
-
-  // 擬似乱数（シード固定で毎回同じ見た目）
-  function seededRnd(s) { return ((s * 9301 + 49297) % 233280) / 233280; }
-
-  let col = 0;
-  while (col < colCount) {
-    const t = col / colCount; // 0 → 左端、1 → 右端
-
-    // 欠損塊を置く確率：右に行くほど高い
-    const gapProb = t < 0.25 ? 0.06
-                  : t < 0.45 ? 0.18
-                  : t < 0.60 ? 0.35
-                  : t < 0.75 ? 0.52
-                  : t < 0.88 ? 0.68
-                               : 0.82;
-
-    if (seededRnd(col * 17 + 3) < gapProb) {
-      // 欠損塊のサイズを決定（右ほど大きく）
-      const maxW  = t < 0.5 ? 2 : t < 0.75 ? 3 : 4;
-      const gapW  = 2 + Math.floor(seededRnd(col * 31 + 11) * (maxW - 1));
-      const gapH  = 1 + Math.floor(seededRnd(col * 23 + 7)  * 2); // 1〜2
-
-      // 塊の開始行をランダムに選ぶ
-      const startRow = Math.floor(seededRnd(col * 41 + 5) * Math.max(1, rowCount - gapH + 1));
-
-      for (let dc = 0; dc < gapW && col + dc < colCount; dc++) {
-        for (let dr = 0; dr < gapH && startRow + dr < rowCount; dr++) {
-          visible[col + dc][startRow + dr] = false;
-        }
-      }
-      col += gapW; // 欠損塊の幅分だけ列を進める
-    } else {
-      col++;
-    }
-  }
-
-  // 確定した可視フラグをもとにマスクを描画
-  maskG.fillStyle(0xffffff, 1);
-  for (let c = 0; c < colCount; c++) {
-    for (let r = 0; r < rowCount; r++) {
-      if (visible[c][r]) {
-        maskG.fillRect(c * sub, row2Y + r * sub, sub, sub);
-      }
-    }
-  }
-
-  // Row3以降は描画なし → 背景非表示・グリッド露出
+  maskG.fillRect(0, 0, W, totalH);
 
   if (targetImage) {
     targetImage.setMask(maskG.createGeometryMask());
   }
 
+  // ── オーバーレイ（背景画像の上、UI より下） ──────────────────────────────
+  const ov = scene.add.graphics();
+  ov.setDepth(overlayDepth);
+
+  // --- Row1: 金属パネル立体感 ---
+  // 上端ハイライト（明るい線）
+  ov.lineStyle(1.2, 0xd0e8ff, 0.28);
+  ov.lineBetween(0, 0, W, 0);
+  // 上から 1px 目の内側ハイライト（より薄め）
+  ov.lineStyle(0.8, 0xb8d4f0, 0.14);
+  ov.lineBetween(0, 1, W, 1);
+
+  // Row1 下端シャドウ（暗い線）
+  ov.lineStyle(1.2, 0x061220, 0.45);
+  ov.lineBetween(0, row1H - 1, W, row1H - 1);
+  ov.lineStyle(0.8, 0x0a1a2e, 0.22);
+  ov.lineBetween(0, row1H - 2, W, row1H - 2);
+
+  // Row1 全体に薄い上→下グラデ暗幕（金属パネルの影面）
+  // Phaser.Graphics.fillGradientStyle は矩形単位なので2分割で近似
+  const row1Mid = Math.round(row1H * 0.5);
+  ov.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0, 0, 0.08, 0.08);
+  ov.fillRect(0, 0, W, row1Mid);
+  ov.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0.08, 0.08, 0.18, 0.18);
+  ov.fillRect(0, row1Mid, W, row1H - row1Mid);
+
+  // --- Row2: 右へ行くほど透明になる alpha グラデ面 ---
+  // 縦長の短冊を横に並べて透明度を変える
+  const STRIP_W = 4; // px 単位の短冊幅
+  const nStrips = Math.ceil(W / STRIP_W);
+
+  for (let i = 0; i < nStrips; i++) {
+    const t = i / (nStrips - 1);            // 0 = 左端, 1 = 右端
+    // 右端近くほど暗幕が濃くなる（背景画像を隠して透けさせる）
+    // 左は alpha 0（オーバーレイなし）→ 右は alpha 0.82
+    const fadeAlpha = Math.pow(t, 1.6) * 0.82;
+    const sx = i * STRIP_W;
+    const sw = Math.min(STRIP_W, W - sx);
+    ov.fillStyle(0x11172a, fadeAlpha);
+    ov.fillRect(sx, row2Y, sw, row2H);
+  }
+
+  // Row2 補助欠損: 小さな矩形をランダムに alpha 1.0 で重ねて局所的に消す
+  // 黒ブロック感にならないよう右側に集中させ、数を少量に絞る
+  const nGaps = Math.floor(3 + Math.random() * 5); // 3〜7 個
+  for (let g = 0; g < nGaps; g++) {
+    const t = 0.55 + Math.random() * 0.45;         // 右 55% 以降だけ
+    const gx = Math.floor(t * (W - 32));
+    const gw = Math.floor(12 + Math.random() * 28); // 12〜40px 幅
+    const gy = row2Y + Math.floor(Math.random() * (row2H - 8));
+    const gh = Math.floor(6 + Math.random() * 14);  // 6〜20px 高
+    ov.fillStyle(0x11172a, 0.72 + Math.random() * 0.20);
+    ov.fillRect(gx, gy, gw, gh);
+  }
+
+  // Row2 上端ハイライト（Row1 との境界を示す薄い線）
+  ov.lineStyle(0.8, 0x7090c0, 0.18);
+  ov.lineBetween(0, row2Y, W, row2Y);
+
+  // Row2 下端フェードアウト補助（下端ほど暗い）
+  ov.lineStyle(1.0, 0x061220, 0.30);
+  ov.lineBetween(0, row2Y + row2H - 1, W, row2Y + row2H - 1);
+
   return {
     maskGraphics: maskG,
+    overlayGfx: ov,
     destroy() {
       if (targetImage && !targetImage.destroyed) {
         targetImage.clearMask();
       }
-      if (!maskG.destroyed) {
-        maskG.destroy();
-      }
+      if (!maskG.destroyed) maskG.destroy();
+      if (!ov.destroyed) ov.destroy();
     },
   };
 }
