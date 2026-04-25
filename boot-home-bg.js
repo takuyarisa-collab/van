@@ -205,20 +205,56 @@ export function mountHomeUpperMask(scene, opts = {}) {
   maskG.fillStyle(0xffffff, 1);
   maskG.fillRect(0, 0, W, row1H);
 
-  // Row2: 再構築途中（サブグリッドタイル単位の確率表示）
-  for (let x = 0; x < W; x += sub) {
-    const t = x / W;
+  // Row2: 塊抜け（右に行くほど欠損塊が大きく・多くなる）
+  // 欠損は横方向に 2〜4 sub 幅、縦方向に 1〜2 sub 高さで連結する。
+  // 左側は連続した面を多めに残し、右端ほど密に抜ける。
+  const colCount  = Math.ceil(W / sub);
+  const rowCount  = Math.ceil(row2H / sub);
 
-    let show = 0.95;
-    if (t > 0.3)  show = 0.6;
-    if (t > 0.5)  show = 0.3;
-    if (t > 0.7)  show = 0.1;
-    if (t > 0.85) show = 0.02;
+  // 各サブセルの可視フラグを先に確定する（塊単位で欠損を決定）
+  const visible = Array.from({ length: colCount }, () => new Array(rowCount).fill(true));
 
-    for (let y = 0; y < row2H; y += sub) {
-      const seed = (x * 13 + y * 7) % 100;
-      if (seed < show * 100) {
-        maskG.fillRect(x, row2Y + y, sub, sub);
+  // 擬似乱数（シード固定で毎回同じ見た目）
+  function seededRnd(s) { return ((s * 9301 + 49297) % 233280) / 233280; }
+
+  let col = 0;
+  while (col < colCount) {
+    const t = col / colCount; // 0 → 左端、1 → 右端
+
+    // 欠損塊を置く確率：右に行くほど高い
+    const gapProb = t < 0.25 ? 0.06
+                  : t < 0.45 ? 0.18
+                  : t < 0.60 ? 0.35
+                  : t < 0.75 ? 0.52
+                  : t < 0.88 ? 0.68
+                               : 0.82;
+
+    if (seededRnd(col * 17 + 3) < gapProb) {
+      // 欠損塊のサイズを決定（右ほど大きく）
+      const maxW  = t < 0.5 ? 2 : t < 0.75 ? 3 : 4;
+      const gapW  = 2 + Math.floor(seededRnd(col * 31 + 11) * (maxW - 1));
+      const gapH  = 1 + Math.floor(seededRnd(col * 23 + 7)  * 2); // 1〜2
+
+      // 塊の開始行をランダムに選ぶ
+      const startRow = Math.floor(seededRnd(col * 41 + 5) * Math.max(1, rowCount - gapH + 1));
+
+      for (let dc = 0; dc < gapW && col + dc < colCount; dc++) {
+        for (let dr = 0; dr < gapH && startRow + dr < rowCount; dr++) {
+          visible[col + dc][startRow + dr] = false;
+        }
+      }
+      col += gapW; // 欠損塊の幅分だけ列を進める
+    } else {
+      col++;
+    }
+  }
+
+  // 確定した可視フラグをもとにマスクを描画
+  maskG.fillStyle(0xffffff, 1);
+  for (let c = 0; c < colCount; c++) {
+    for (let r = 0; r < rowCount; r++) {
+      if (visible[c][r]) {
+        maskG.fillRect(c * sub, row2Y + r * sub, sub, sub);
       }
     }
   }
