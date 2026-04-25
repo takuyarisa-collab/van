@@ -688,16 +688,18 @@ export function createScatteredBootTitle(scene, opts) {
  *
  * - グリッドは最背面のまま（触らない）
  * - UI / outerFrame は触らない
- * - 毎フレーム更新禁止: setTimeout ベースのステップ更新
+ * - 毎フレーム更新禁止: delayedCall ベースのステップ更新
  * - マスク用 Graphics は 1 つだけ使い回す（clear → draw）
  * - 大量オブジェクト生成禁止
  *
  * 挙動:
  *   - 上から行単位でスキャン（最初は行0から）
- *   - 各行は左から右へグリッド1列ぶんずつ進む
- *   - 右端まで行ったら次の行へ進む
- *   - 1行目（row=0）は約1秒で完了（列数≒11 で interval ≈ 91ms）
- *   - 2行目以降: interval を指数関数的に延長（係数 SCAN_ROW_INTERVAL_SCALE）
+ *   - 各行は左から右へ gridStep/2 を基準単位として進む
+ *   - 1ステップの進行幅は 0.5〜1.5 セル相当（1〜3 サブステップ）でランダム
+ *   - 右端まで行ったら次の行へ（右方向へは必ず進む）
+ *   - 各ステップの間隔に ±40〜120ms のランダム揺れを加える
+ *   - 行が下がるほど遅くなる指数増加ルールは維持
+ *   - 現在行の各ブロックの高さを少しずらして端を不揃いにする
  *   - stopY まで到達したら完全停止（それ以下は未復元のまま）
  *
  * @param {Phaser.Scene} scene
@@ -711,15 +713,16 @@ export function createScatteredBootTitle(scene, opts) {
  * @returns {{ destroy: () => void }}
  */
 export function mountHomeScanMask(scene, opts = {}) {
-  const W              = opts.width      ?? scene.scale.width;
-  const gridStep       = opts.gridStep   ?? 52;
-  const row0Interval   = opts.row0IntervalMs   ?? 91;
-  const rowScale       = opts.rowIntervalScale ?? 3.5;
-  const targetImage    = opts.targetImage ?? null;
-  const stopY          = opts.stopY ?? Math.round(scene.scale.height * 0.40);
+  const W            = opts.width      ?? scene.scale.width;
+  const gridStep     = opts.gridStep   ?? 52;
+  const subStep      = gridStep / 2;                   // 基準単位: gridStep/2
+  const row0Interval = opts.row0IntervalMs   ?? 91;
+  const rowScale     = opts.rowIntervalScale ?? 3.5;
+  const targetImage  = opts.targetImage ?? null;
+  const stopY        = opts.stopY ?? Math.round(scene.scale.height * 0.40);
 
-  const cols           = Math.ceil(W / gridStep);
-  const stopRow        = Math.floor(stopY / gridStep); // 最後に完全表示する行(0-indexed)
+  const colsPerRow   = Math.ceil(W / subStep);         // subStep 単位の列数
+  const stopRow      = Math.floor(stopY / gridStep);   // 最後に完全表示する行(0-indexed)
 
   // ── マスク用 Graphics（シーンに追加しない: make.graphics）──────────────
   const maskG = scene.make.graphics({ add: false });
@@ -731,32 +734,48 @@ export function mountHomeScanMask(scene, opts = {}) {
   }
 
   // ── 現在のスキャン位置 ───────────────────────────────────────────────
-  // (scanRow, scanCol) を進めるごとに maskG を clear → draw する
   let scanRow = 0;
-  let scanCol = 0;   // 0 = 列未進行、cols = 行完了
+  let scanCol = 0;   // subStep 単位の列インデックス（0 = 未進行）
   let finished = false;
   let _timer = null;
 
-  // マスクを再描画（完了済み行 + 現在行の scanCol 列まで）
+  // 現在行の各 subStep ブロックに割り当てる高さオフセット（±数px）
+  // 行が変わるたびにリセットする
+  const _rowHeightOff = [];
+
+  function _assignHeightOffset(col) {
+    if (_rowHeightOff[col] === undefined) {
+      _rowHeightOff[col] = Math.round((Math.random() * 2 - 1) * 4);
+    }
+  }
+
+  // マスクを再描画（完了済み行 + 現在行の scanCol ブロックまで）
   function _redrawMask() {
     maskG.clear();
     maskG.fillStyle(0xffffff, 1);
 
-    // 完了済み行（scanRow 未満）: 全幅
+    // 完了済み行（scanRow 未満）: 全幅で一括描画
     if (scanRow > 0) {
       maskG.fillRect(0, 0, W, scanRow * gridStep);
     }
 
-    // 現在行: scanCol 列ぶん
+    // 現在行: 各 subStep ブロックを個別に描画（高さ揺れあり）
     if (scanCol > 0) {
       const rowY = scanRow * gridStep;
-      maskG.fillRect(0, rowY, scanCol * gridStep, gridStep);
+      for (let j = 0; j < scanCol; j++) {
+        _assignHeightOffset(j);
+        // +1px オーバーラップでブロック間の隙間を防ぐ
+        maskG.fillRect(j * subStep, rowY, subStep + 1, gridStep + _rowHeightOff[j]);
+      }
     }
   }
 
-  // 次ステップまでの待機時間（行ごとに指数増加）
+  // 次ステップまでの待機時間（行ごとに指数増加 + ランダム揺れ）
   function _intervalFor(row) {
-    return row0Interval * Math.pow(rowScale, row);
+    const base       = row0Interval * Math.pow(rowScale, row);
+    const jitterAmp  = 40 + Math.random() * 80;  // 40〜120ms
+    const jitter     = (Math.random() < 0.5 ? -1 : 1) * jitterAmp;
+    return Math.max(20, base + jitter);
   }
 
   function _scheduleNext() {
@@ -767,10 +786,14 @@ export function mountHomeScanMask(scene, opts = {}) {
 
   function _step() {
     if (finished) return;
-    scanCol += 1;
 
-    if (scanCol >= cols) {
+    // 0.5〜1.5 セル相当（1〜3 subStep）をランダムに進める
+    const advance = 1 + Math.floor(Math.random() * 3);
+    scanCol += advance;
+
+    if (scanCol >= colsPerRow) {
       // 行完了 → 次の行へ
+      _rowHeightOff.length = 0;
       scanRow += 1;
       scanCol = 0;
 
