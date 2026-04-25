@@ -721,8 +721,9 @@ export function mountHomeScanMask(scene, opts = {}) {
   const targetImage  = opts.targetImage ?? null;
   const stopY        = opts.stopY ?? Math.round(scene.scale.height * 0.40);
 
+  const rowHeight    = gridStep / 2;                   // 行高さ: gridStep の半分
   const colsPerRow   = Math.ceil(W / subStep);         // subStep 単位の列数
-  const stopRow      = Math.floor(stopY / gridStep);   // 最後に完全表示する行(0-indexed)
+  const stopRow      = Math.floor(stopY / rowHeight);  // 最後に完全表示する行(0-indexed)
 
   // ── マスク用 Graphics（シーンに追加しない: make.graphics）──────────────
   const maskG = scene.make.graphics({ add: false });
@@ -756,16 +757,16 @@ export function mountHomeScanMask(scene, opts = {}) {
 
     // 完了済み行（scanRow 未満）: 全幅で一括描画
     if (scanRow > 0) {
-      maskG.fillRect(0, 0, W, scanRow * gridStep);
+      maskG.fillRect(0, 0, W, scanRow * rowHeight);
     }
 
     // 現在行: 各 subStep ブロックを個別に描画（高さ揺れあり）
     if (scanCol > 0) {
-      const rowY = scanRow * gridStep;
+      const rowY = scanRow * rowHeight;
       for (let j = 0; j < scanCol; j++) {
         _assignHeightOffset(j);
         // +1px オーバーラップでブロック間の隙間を防ぐ
-        maskG.fillRect(j * subStep, rowY, subStep + 1, gridStep + _rowHeightOff[j]);
+        maskG.fillRect(j * subStep, rowY, subStep + 1, rowHeight + _rowHeightOff[j]);
       }
     }
   }
@@ -802,7 +803,7 @@ export function mountHomeScanMask(scene, opts = {}) {
         finished = true;
         maskG.clear();
         maskG.fillStyle(0xffffff, 1);
-        maskG.fillRect(0, 0, W, stopRow * gridStep);
+        maskG.fillRect(0, 0, W, stopRow * rowHeight);
         return;
       }
     }
