@@ -704,8 +704,9 @@ export function createScatteredBootTitle(scene, opts) {
  *   - stopY まで到達したら完全停止（それ以下は未復元のまま）
  *
  * 処理ヘッド:
- *   - 幅 2〜3px、基準行高さ固定（オフセット非追従）
- *   - ヘッド後方に 3〜8px の薄い尾を描画（基準高さ固定）
+ *   - 幅 3px 固定、基準行高さ固定
+ *   - DIFFERENCE ブレンドモードで対象ピクセルを反転（背景色非依存）
+ *   - 尾なし
  *
  * @param {Phaser.Scene} scene
  * @param {object} opts
@@ -743,9 +744,11 @@ export function mountHomeScanMask(scene, opts = {}) {
     targetImage.setMask(geomMask);
   }
 
-  // ── 処理ヘッド: スキャン先端を示す縦線 + 尾 ──────────────────────────
+  // ── 処理ヘッド: スキャン先端を示す反転縦帯 ────────────────────────────
   const _headDepth = opts.headDepth ?? ((targetImage ? targetImage.depth : -59) + 1);
-  const headGfx = scene.add.graphics().setDepth(_headDepth);
+  const headGfx = scene.add.graphics()
+    .setDepth(_headDepth)
+    .setBlendMode(Phaser.BlendModes.DIFFERENCE);
 
   // ── 現在のスキャン位置 ───────────────────────────────────────────────
   let scanRow = 0;
@@ -773,23 +776,15 @@ export function mountHomeScanMask(scene, opts = {}) {
     return Math.round(base * decay);
   }
 
-  // 処理ヘッドを現在のスキャン位置に再描画
+  // 処理ヘッドを現在のスキャン位置に再描画（反転帯: DIFFERENCE blend, 幅3px固定）
   function _redrawHead() {
     headGfx.clear();
     if (finished || scanCol === 0) return;
-    const headX   = scanCol * subStep;
-    const rowY    = scanRow * rowHeight;
-    const headW   = Math.random() < 0.5 ? 2 : 3;    // 2〜3px
-    const alpha   = 0.6 + Math.random() * 0.3;       // 0.6〜0.9
-
-    // 尾: ヘッド後方 3〜8px、薄い、基準高さ固定
-    const tailLen = 3 + Math.floor(Math.random() * 6);
-    headGfx.fillStyle(0xe0ffff, alpha * 0.3);
-    headGfx.fillRect(headX - tailLen, rowY, tailLen, rowHeight);
-
-    // ヘッド本体: 基準高さ固定（オフセット非追従）
-    headGfx.fillStyle(0xe0ffff, alpha);
-    headGfx.fillRect(headX, rowY, headW, rowHeight);
+    const headX = scanCol * subStep;
+    const rowY  = scanRow * rowHeight;
+    // DIFFERENCE blend + 白(0xffffff) = 対象ピクセルをそのまま反転
+    headGfx.fillStyle(0xffffff, 0.7);
+    headGfx.fillRect(headX, rowY, 3, rowHeight);
   }
 
   // マスクを再描画（完了済み行 + 現在行の scanCol ブロックまで）
