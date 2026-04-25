@@ -44,6 +44,7 @@
       mountBootHomeBackdrop,
       mountHomeNormalBg,
       mountHomeUpperMask,
+      mountHomeScanMask,
     } from './boot-home-bg.js';
     import {
       NEAR_ATTACK_FRONT_CONTACT_TUNING,
@@ -138,7 +139,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.8';
-      const BUILD_TIMESTAMP = '2026-04-25 00:40';
+      const BUILD_TIMESTAMP = '2026-04-25 03:04';
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -492,12 +493,19 @@
           });
           console.log('[HomeScene] backdrop created (mountHomeNormalBg: grid -60, image -59)');
 
-          // ── 上側マスク（GeometryMask: Row1+Row2のみ背景表示、以降グリッド露出）
-          this._homeUpperMask = mountHomeUpperMask(this, {
-            width: WORLD_W,
-            row1Cells: 3,
-            row2Cells: 2,
-            targetImage: this._homeBackdrop.bgImage,
+          // ── 再構築スキャンマスク（GeometryMask: 上から行単位でスキャン、STARTの少し上で停止）
+          // stopY: STARTボタン上端より1グリッド行分上（グリッド境界に合わせる）
+          const _scanGridStep = 52;
+          const _scanStopRow  = Math.ceil(
+            (HOME_LAYOUT.startCenterY - HOME_LAYOUT.startHeight / 2 - _scanGridStep) / _scanGridStep,
+          );
+          this._homeScanMask = mountHomeScanMask(this, {
+            width:            WORLD_W,
+            gridStep:         _scanGridStep,
+            stopY:            _scanStopRow * _scanGridStep,
+            row0IntervalMs:   91,
+            rowIntervalScale: 3.5,
+            targetImage:      this._homeBackdrop.bgImage,
           });
 
           // ── deltas (one per independent element) ─────────────────────────────
@@ -593,8 +601,8 @@
           const cleanupHome = () => {
             this._homeBackdrop?.destroy?.();
             this._homeBackdrop = null;
-            this._homeUpperMask?.destroy?.();
-            this._homeUpperMask = null;
+            this._homeScanMask?.destroy?.();
+            this._homeScanMask = null;
           };
           this.events.once('shutdown', cleanupHome);
 
