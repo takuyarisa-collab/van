@@ -710,6 +710,7 @@ export function createScatteredBootTitle(scene, opts) {
  * @param {number}  [opts.row0IntervalMs=91]  row0 の 1 ステップ間隔 (ms)
  * @param {number}  [opts.rowIntervalScale=3.5] 行ごとの間隔倍率
  * @param {Phaser.GameObjects.Image} opts.targetImage  マスク適用先の画像
+ * @param {number}  [opts.headDepth]  処理ヘッド Graphics の depth（省略時: targetImage.depth + 1）
  * @returns {{ destroy: () => void }}
  */
 export function mountHomeScanMask(scene, opts = {}) {
@@ -734,6 +735,10 @@ export function mountHomeScanMask(scene, opts = {}) {
     targetImage.setMask(geomMask);
   }
 
+  // ── 処理ヘッド: スキャン先端を示す細い縦線 ──────────────────────────
+  const _headDepth = opts.headDepth ?? ((targetImage ? targetImage.depth : -59) + 1);
+  const headGfx = scene.add.graphics().setDepth(_headDepth);
+
   // ── 現在のスキャン位置 ───────────────────────────────────────────────
   let scanRow = 0;
   let scanCol = 0;   // subStep 単位の列インデックス（0 = 未進行）
@@ -748,6 +753,19 @@ export function mountHomeScanMask(scene, opts = {}) {
     if (_rowHeightOff[col] === undefined) {
       _rowHeightOff[col] = Math.round((Math.random() * 2 - 1) * 4);
     }
+  }
+
+  // 処理ヘッドを現在のスキャン位置に再描画
+  function _redrawHead() {
+    headGfx.clear();
+    if (finished || scanCol === 0) return;
+    const headX  = scanCol * subStep;
+    const rowY   = scanRow * rowHeight;
+    const hOff   = _rowHeightOff[scanCol - 1] ?? 0;
+    const lineH  = rowHeight + hOff + 4;          // 行高さ + 少し延長して端を馴染ませる
+    const alpha  = 0.6 + Math.random() * 0.3;     // 0.6〜0.9
+    headGfx.fillStyle(0xe0ffff, alpha);            // 明るいシアン寄り白
+    headGfx.fillRect(headX, rowY, 2, lineH);
   }
 
   // マスクを再描画（完了済み行 + 現在行の scanCol ブロックまで）
@@ -769,6 +787,8 @@ export function mountHomeScanMask(scene, opts = {}) {
         maskG.fillRect(j * subStep, rowY, subStep + 1, rowHeight + _rowHeightOff[j]);
       }
     }
+
+    _redrawHead();
   }
 
   // 次ステップまでの待機時間（行ごとに指数増加 + ランダム揺れ）
@@ -804,6 +824,7 @@ export function mountHomeScanMask(scene, opts = {}) {
         maskG.clear();
         maskG.fillStyle(0xffffff, 1);
         maskG.fillRect(0, 0, W, stopRow * rowHeight);
+        headGfx.clear();
         return;
       }
     }
@@ -827,6 +848,7 @@ export function mountHomeScanMask(scene, opts = {}) {
         targetImage.clearMask();
       }
       maskG.destroy();
+      headGfx.destroy();
     },
   };
 }
