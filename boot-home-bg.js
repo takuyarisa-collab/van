@@ -699,8 +699,13 @@ export function createScatteredBootTitle(scene, opts) {
  *   - 右端まで行ったら次の行へ（右方向へは必ず進む）
  *   - 各ステップの間隔に ±40〜120ms のランダム揺れを加える
  *   - 行が下がるほど遅くなる指数増加ルールは維持
- *   - 現在行の各ブロックの高さを少しずらして端を不揃いにする
+ *   - 高さオフセットは先端付近で強く、後方へ距離減衰（DECAY_COLS 列で 0 に）
+ *   - 通過済みブロックのオフセットは 0 に近づく（行完了時に一括揃えなし）
  *   - stopY まで到達したら完全停止（それ以下は未復元のまま）
+ *
+ * 処理ヘッド:
+ *   - 幅 2〜3px、基準行高さ固定（オフセット非追従）
+ *   - ヘッド後方に 3〜8px の薄い尾を描画（基準高さ固定）
  *
  * @param {Phaser.Scene} scene
  * @param {object} opts
@@ -726,6 +731,9 @@ export function mountHomeScanMask(scene, opts = {}) {
   const colsPerRow   = Math.ceil(W / subStep);         // subStep 単位の列数
   const stopRow      = Math.floor(stopY / rowHeight);  // 最後に完全表示する行(0-indexed)
 
+  // オフセットが先端から何列で 0 に減衰するか
+  const DECAY_COLS = 6;
+
   // ── マスク用 Graphics（シーンに追加しない: make.graphics）──────────────
   const maskG = scene.make.graphics({ add: false });
 
@@ -735,7 +743,7 @@ export function mountHomeScanMask(scene, opts = {}) {
     targetImage.setMask(geomMask);
   }
 
-  // ── 処理ヘッド: スキャン先端を示す細い縦線 ──────────────────────────
+  // ── 処理ヘッド: スキャン先端を示す縦線 + 尾 ──────────────────────────
   const _headDepth = opts.headDepth ?? ((targetImage ? targetImage.depth : -59) + 1);
   const headGfx = scene.add.graphics().setDepth(_headDepth);
 
@@ -745,27 +753,43 @@ export function mountHomeScanMask(scene, opts = {}) {
   let finished = false;
   let _timer = null;
 
-  // 現在行の各 subStep ブロックに割り当てる高さオフセット（±数px）
+  // 現在行の各 subStep ブロックに割り当てるベース高さオフセット（±数px）
   // 行が変わるたびにリセットする
-  const _rowHeightOff = [];
+  const _rowBaseOff = [];
 
-  function _assignHeightOffset(col) {
-    if (_rowHeightOff[col] === undefined) {
-      _rowHeightOff[col] = Math.round((Math.random() * 2 - 1) * 4);
+  // 列 col のベースオフセットを取得（未割当なら初期化）
+  function _baseOffFor(col) {
+    if (_rowBaseOff[col] === undefined) {
+      _rowBaseOff[col] = Math.round((Math.random() * 2 - 1) * 4);
     }
+    return _rowBaseOff[col];
+  }
+
+  // 列 col の実効オフセット（先端距離に応じて減衰）
+  function _offsetFor(col) {
+    const base = _baseOffFor(col);
+    const dist  = (scanCol - 1) - col;              // 0: 先端, 増加: 後方
+    const decay = Math.max(0, 1 - dist / DECAY_COLS);
+    return Math.round(base * decay);
   }
 
   // 処理ヘッドを現在のスキャン位置に再描画
   function _redrawHead() {
     headGfx.clear();
     if (finished || scanCol === 0) return;
-    const headX  = scanCol * subStep;
-    const rowY   = scanRow * rowHeight;
-    const hOff   = _rowHeightOff[scanCol - 1] ?? 0;
-    const lineH  = rowHeight + hOff + 4;          // 行高さ + 少し延長して端を馴染ませる
-    const alpha  = 0.6 + Math.random() * 0.3;     // 0.6〜0.9
-    headGfx.fillStyle(0xe0ffff, alpha);            // 明るいシアン寄り白
-    headGfx.fillRect(headX, rowY, 2, lineH);
+    const headX   = scanCol * subStep;
+    const rowY    = scanRow * rowHeight;
+    const headW   = Math.random() < 0.5 ? 2 : 3;    // 2〜3px
+    const alpha   = 0.6 + Math.random() * 0.3;       // 0.6〜0.9
+
+    // 尾: ヘッド後方 3〜8px、薄い、基準高さ固定
+    const tailLen = 3 + Math.floor(Math.random() * 6);
+    headGfx.fillStyle(0xe0ffff, alpha * 0.3);
+    headGfx.fillRect(headX - tailLen, rowY, tailLen, rowHeight);
+
+    // ヘッド本体: 基準高さ固定（オフセット非追従）
+    headGfx.fillStyle(0xe0ffff, alpha);
+    headGfx.fillRect(headX, rowY, headW, rowHeight);
   }
 
   // マスクを再描画（完了済み行 + 現在行の scanCol ブロックまで）
@@ -773,18 +797,18 @@ export function mountHomeScanMask(scene, opts = {}) {
     maskG.clear();
     maskG.fillStyle(0xffffff, 1);
 
-    // 完了済み行（scanRow 未満）: 全幅で一括描画
+    // 完了済み行（scanRow 未満）: 全幅で一括描画（オフセットなし）
     if (scanRow > 0) {
       maskG.fillRect(0, 0, W, scanRow * rowHeight);
     }
 
-    // 現在行: 各 subStep ブロックを個別に描画（高さ揺れあり）
+    // 現在行: 各 subStep ブロックを個別に描画（距離減衰オフセットあり）
     if (scanCol > 0) {
       const rowY = scanRow * rowHeight;
       for (let j = 0; j < scanCol; j++) {
-        _assignHeightOffset(j);
+        const hOff = _offsetFor(j);
         // +1px オーバーラップでブロック間の隙間を防ぐ
-        maskG.fillRect(j * subStep, rowY, subStep + 1, rowHeight + _rowHeightOff[j]);
+        maskG.fillRect(j * subStep, rowY, subStep + 1, rowHeight + hOff);
       }
     }
 
@@ -813,8 +837,8 @@ export function mountHomeScanMask(scene, opts = {}) {
     scanCol += advance;
 
     if (scanCol >= colsPerRow) {
-      // 行完了 → 次の行へ
-      _rowHeightOff.length = 0;
+      // 行完了 → 次の行へ（ベースオフセットをリセット）
+      _rowBaseOff.length = 0;
       scanRow += 1;
       scanCol = 0;
 
