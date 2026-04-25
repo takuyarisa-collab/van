@@ -139,7 +139,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-25 21:14';
+      const BUILD_TIMESTAMP = '2026-04-25 14:05';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -516,11 +516,12 @@
           // ── 残骸PNG（画面下端に半埋め、背景より前・UIより後ろ）────────────
           // depth -5: グリッド(-60)・背景画像(-59)より前、UI(1+)より後ろ
           {
-            const _debrisTargetW = WORLD_W * 0.90;
+            const _debrisTex     = this.textures.get('home-debris').getSourceImage();
+            const _debrisScale   = (WORLD_W * 0.90) / _debrisTex.width;
             const _debrisRot     = (Math.random() * 3 - 1.5) * (Math.PI / 180);
-            this._homeDebris = this.add.image(WORLD_W / 2, WORLD_H + 12, 'home-debris')
+            this._homeDebris = this.add.image(WORLD_W / 2, WORLD_H + 8, 'home-debris')
               .setOrigin(0.5, 1)
-              .setDisplaySize(_debrisTargetW, undefined)
+              .setScale(_debrisScale)
               .setAlpha(0.82)
               .setRotation(_debrisRot)
               .setDepth(-5);
