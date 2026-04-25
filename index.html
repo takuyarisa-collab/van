@@ -42,7 +42,6 @@
       createScatteredBootTitle,
       mountBootCollapsedBackdrop,
       mountBootHomeBackdrop,
-      mountHomeBgFragments,
       mountHomeNormalBg,
       mountHomeUpperMask,
       mountHomeScanMask,
@@ -141,6 +140,7 @@
       };
       const APP_VERSION = '0.1.9';
       const BUILD_TIMESTAMP = '2026-04-25 21:14';
+
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
@@ -512,20 +512,15 @@
 
           // ── 背景切り出し破片（下端堆積）─────────────────────────────────────
           // bg より前 (depth -10〜-7) / UI より後ろ
-          this._homeBgFragments = mountHomeBgFragments(this, {
-            width:    WORLD_W,
-            height:   WORLD_H,
-            depthBase: -10,
-          });
 
           // ── 残骸PNG（画面下端に半埋め、背景より前・UIより後ろ）────────────
           // depth -5: グリッド(-60)・背景画像(-59)より前、UI(1+)より後ろ
           {
             const _debrisTargetW = WORLD_W * 0.90;
             const _debrisRot     = (Math.random() * 3 - 1.5) * (Math.PI / 180);
-            this._homeDebris = this.add.image(WORLD_W / 2, WORLD_H + 8, 'home-debris')
+            this._homeDebris = this.add.image(WORLD_W / 2, WORLD_H + 12, 'home-debris')
               .setOrigin(0.5, 1)
-              .setDisplaySize(_debrisTargetW, _debrisTargetW)
+              .setDisplaySize(_debrisTargetW, undefined)
               .setAlpha(0.82)
               .setRotation(_debrisRot)
               .setDepth(-5);
@@ -626,8 +621,6 @@
             this._homeBackdrop = null;
             this._homeScanMask?.destroy?.();
             this._homeScanMask = null;
-            this._homeBgFragments?.destroy?.();
-            this._homeBgFragments = null;
             this._homeDebris?.destroy?.();
             this._homeDebris = null;
           };
