@@ -434,6 +434,132 @@ export function mountHomeParticles(scene, opts = {}) {
 
 
 /**
+ * Home 下端: 背景切り出し破片（堆積表現）
+ *
+ * home-bg-normal テクスチャを setCrop で切り出した 2〜3 個の破片を
+ * 画面下端付近に固定配置。落下・堆積した「元の背景の残骸」に見せる。
+ *
+ * レイヤー:
+ *   depthBase (-10 デフォルト): 接地影（Graphics）
+ *   depthBase + 1〜3        : 各破片（後ろ→手前）
+ *
+ * 制約:
+ *   - グロー禁止 / 強い影禁止
+ *   - 中央（START 直下）には置かない
+ *   - 色変更なし（setCrop のみ使用）
+ *   - スキャン・UI は触らない
+ *
+ * @param {Phaser.Scene} scene
+ * @param {object} opts
+ * @param {number}  [opts.width]          world 幅 (px)
+ * @param {number}  [opts.height]         world 高さ (px)
+ * @param {number}  [opts.depthBase=-10]  最背面破片の depth (-10 = bg より前、UI(1) より後ろ)
+ * @param {string}  [opts.textureKey='home-bg-normal']
+ * @param {number}  [opts.seed=0xf4a9]
+ * @returns {{ layers: Phaser.GameObjects.GameObject[], destroy: () => void }}
+ */
+export function mountHomeBgFragments(scene, opts = {}) {
+  const W        = opts.width      ?? scene.scale.width;
+  const H        = opts.height     ?? scene.scale.height;
+  const depthBase = opts.depthBase ?? -10;
+  const key      = opts.textureKey ?? 'home-bg-normal';
+  const rnd      = mulberry32((opts.seed >>> 0) || 0xf4a9);
+
+  // テクスチャの実寸を確認（cover スケール係数と一致させる）
+  const tex = scene.textures.get(key);
+  const srcW = tex?.source[0]?.width  ?? W;
+  const srcH = tex?.source[0]?.height ?? H;
+
+  // cover スケール（mountHomeNormalBg と同じ計算）
+  const coverScale = Math.max(W / srcW, H / srcH);
+
+  // 破片定義（3 個）: 左側 / 右側 / 右寄り中段
+  // widthRatio: 画面幅に対する破片幅の比率 (0.12〜0.22)
+  // cropSrcYRatio: 切り出し元 Y の比率（上側〜中段）
+  // xOffRatio: 画面中央からの X オフセット比率（±）
+  const fragDefs = [
+    {
+      widthRatio:    0.19,
+      heightRatio:   0.14,
+      cropSrcYRatio: 0.08,
+      xOffRatio:     -0.34,   // 左寄り
+      rotDeg:        -(6 + rnd() * 6),
+      depthOff:      1,        // 最後段（一番下）
+      stackYOff:     0,        // 基準段
+    },
+    {
+      widthRatio:    0.22,
+      heightRatio:   0.12,
+      cropSrcYRatio: 0.20,
+      xOffRatio:     0.32,    // 右寄り
+      rotDeg:        5 + rnd() * 7,
+      depthOff:      2,
+      stackYOff:     -14,     // 1段上に乗る
+    },
+    {
+      widthRatio:    0.15,
+      heightRatio:   0.10,
+      cropSrcYRatio: 0.14,
+      xOffRatio:     -0.22,   // 左寄り中段
+      rotDeg:        -(9 + rnd() * 3),
+      depthOff:      3,        // 最前面
+      stackYOff:     -24,      // さらに上
+    },
+  ];
+
+  const layers = [];
+
+  fragDefs.forEach((def) => {
+    const fragW = Math.round(W * def.widthRatio);
+    const fragH = Math.round(H * def.heightRatio);
+
+    // 切り出し元の座標（srcW/srcH 空間、coverScale 適用前）
+    // cropSrcYRatio は上側〜中段を示す（画面 Y 上部から切る）
+    const cropX = Math.round((srcW - fragW / coverScale) * 0.5 + (def.xOffRatio * srcW * 0.15));
+    const cropY = Math.round(def.cropSrcYRatio * srcH);
+    const cropW = Math.round(fragW / coverScale);
+    const cropH = Math.round(fragH / coverScale);
+
+    // 配置 Y: 下端 + stackYOff（破片が重なって堆積する）
+    const sinkRatio = 0.72;   // 破片高さの何割が下端に沈むか
+    const baseY = H - fragH * sinkRatio + def.stackYOff;
+    const posX  = W / 2 + def.xOffRatio * W;
+    const posY  = baseY;
+
+    // ── 接地影（ごく薄い楕円 Graphics）────────────────────────────────────
+    const shadowG = scene.add.graphics();
+    shadowG.setDepth(depthBase);
+    const sw = fragW * 1.15;
+    const sh = 7;
+    shadowG.fillStyle(0x000000, 0.12);
+    shadowG.fillEllipse(posX, H - fragH * 0.12 + def.stackYOff, sw, sh);
+    layers.push(shadowG);
+
+    // ── 破片本体（setCrop で切り出し）──────────────────────────────────────
+    const img = scene.add.image(posX, posY, key);
+    img.setDepth(depthBase + def.depthOff);
+    img.setCrop(
+      Math.max(0, cropX),
+      Math.max(0, cropY),
+      Math.min(cropW, srcW - Math.max(0, cropX)),
+      Math.min(cropH, srcH - Math.max(0, cropY)),
+    );
+    // setCrop 後の表示サイズを fragW/fragH に合わせる
+    img.setDisplaySize(fragW, fragH);
+    img.setAngle(def.rotDeg);
+    layers.push(img);
+  });
+
+  return {
+    layers,
+    destroy() {
+      layers.forEach((l) => l?.destroy?.());
+      layers.length = 0;
+    },
+  };
+}
+
+/**
  * Boot: base / structure / noise / ui を別 Container に載せ、ズレ＋微動後に (0,0) へ収束
  */
 export function mountBootCollapsedBackdrop(scene, opts = {}) {
