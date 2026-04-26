@@ -139,7 +139,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-26 09:31';
+      const BUILD_TIMESTAMP = '2026-04-26 10:23';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -374,7 +374,7 @@
 
           // ── progress tween: Quart.easeOut で 0→1 / 1200ms ───────────────
           // Quart.easeOut = 1-(1-t)^4: 最初速く、p=0.85 以降は極端に遅くなる
-          this.tweens.add({
+          this._progressTween = this.tweens.add({
             targets: this,
             _progress: 1,
             duration: BOOT_DEBUG.bootDur,
@@ -391,6 +391,11 @@
               });
             },
           });
+
+          // progressOverride が指定されている場合は tween を即時一時停止
+          if (BOOT_DEBUG.progressOverride !== null) {
+            this._progressTween.pause();
+          }
 
           this.events.once('shutdown', () => this._cleanup());
         }
@@ -410,6 +415,15 @@
           let p = this._progress;
           if (BOOT_DEBUG.progressOverride !== null) {
             p = BOOT_DEBUG.progressOverride;
+            // tween を停止して表示と内部状態を一致させる
+            if (this._progressTween?.isPlaying()) {
+              this._progressTween.pause();
+            }
+          } else {
+            // override 解除時は tween を再開
+            if (this._progressTween?.isPaused()) {
+              this._progressTween.resume();
+            }
           }
           const W = WORLD_W;
           const H = WORLD_H;
