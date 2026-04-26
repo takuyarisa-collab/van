@@ -139,7 +139,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-26 10:33';
+      const BUILD_TIMESTAMP = '2026-04-26 13:26';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -293,6 +293,8 @@
         // progress を強制固定する値 (0〜1)。null なら tween に従う
         // 例: ?progressOverride=0.2 / ?progressOverride=0.5 / ?progressOverride=0.9
         progressOverride: window.BOOT_PARAM_getNum('progressOverride', null),
+        // 1 なら Boot 暗幕 (scanGfx) を非表示にして背景の視認性を確認できる
+        noBootOverlay:    window.BOOT_PARAM_getBool('noBootOverlay',    false),
       };
 
       // ─────────────────────────────────────────────────────────────────────────
@@ -443,9 +445,9 @@
           }
           const revealY = Math.round(H * revealFrac);
 
-          // 未表示エリアの暗幕
+          // 未表示エリアの暗幕 (?noBootOverlay=1 で無効化)
           this._scanGfx.clear();
-          if (revealY < H) {
+          if (!BOOT_DEBUG.noBootOverlay && revealY < H) {
             this._scanGfx.fillStyle(0x090b12, 0.97);
             this._scanGfx.fillRect(0, revealY, W, H - revealY);
           }
