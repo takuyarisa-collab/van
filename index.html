@@ -139,7 +139,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-26 13:26';
+      const BUILD_TIMESTAMP = '2026-04-26 13:47';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -295,6 +295,8 @@
         progressOverride: window.BOOT_PARAM_getNum('progressOverride', null),
         // 1 なら Boot 暗幕 (scanGfx) を非表示にして背景の視認性を確認できる
         noBootOverlay:    window.BOOT_PARAM_getBool('noBootOverlay',    false),
+        // 1 なら BootScene に home-bg-normal を強制表示してロード確認できる
+        showBootBg:       window.BOOT_PARAM_getBool('showBootBg',       false),
       };
 
       // ─────────────────────────────────────────────────────────────────────────
@@ -311,6 +313,14 @@
       class BootScene extends Phaser.Scene {
         constructor() {
           super('boot');
+        }
+
+        preload() {
+          // showBootBg=1 のときのみ home-bg-normal を先読みする
+          // （通常 HomeScene が担当するが Boot では未ロードのため）
+          if (BOOT_DEBUG.showBootBg && !this.textures.exists('home-bg-normal')) {
+            this.load.image('home-bg-normal', 'assets/home-bg-normal.png');
+          }
         }
 
         create() {
@@ -332,6 +342,20 @@
             fragmentAlpha: 1.02,
             noiseDots: 86,
           });
+
+          // ── [DEBUG] showBootBg=1: home-bg-normal をカバー表示して確認 ───────
+          // depth -51: 崩壊レイヤー(-55〜-52)より前、スキャンオーバーレイ(-40)より後ろ
+          this._bootBgDebug = null;
+          if (BOOT_DEBUG.showBootBg) {
+            const img = this.add.image(cx, cy, 'home-bg-normal');
+            const scaleX = WORLD_W / img.width;
+            const scaleY = WORLD_H / img.height;
+            img.setScale(Math.max(scaleX, scaleY));
+            img.setDepth(-51);
+            img.setAlpha(1);
+            img.setVisible(true);
+            this._bootBgDebug = img;
+          }
 
           // ── スキャンオーバーレイ: 未表示エリアを覆う暗幕 (depth -40) ─────
           // 背景レイヤー(-52)より前、タイトル(10+)より後ろ
@@ -410,7 +434,9 @@
           this._errorText?.destroy();
           this._overlapText?.destroy();
           this._overlapMaskGfx?.destroy();
+          this._bootBgDebug?.destroy();
           this._bootBackdrop = null;
+          this._bootBgDebug = null;
         }
 
         update() {
