@@ -139,7 +139,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-26 09:15';
+      const BUILD_TIMESTAMP = '2026-04-26 09:31';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -277,19 +277,22 @@
 
       const BOOT_DEBUG = {
         // Boot progress tween の duration (ms)
-        bootDur:     window.BOOT_PARAM_getNum('bootDur',     1200),
+        bootDur:          window.BOOT_PARAM_getNum('bootDur',          1200),
         // 背景高速スキャン終了 progress (0〜1)
-        bgFastEnd:   window.BOOT_PARAM_getNum('bgFastEnd',   0.5),
+        bgFastEnd:        window.BOOT_PARAM_getNum('bgFastEnd',        0.5),
         // 背景の最終 reveal 率 (0〜1)
-        bgRevealMax: window.BOOT_PARAM_getNum('bgRevealMax', 0.97),
+        bgRevealMax:      window.BOOT_PARAM_getNum('bgRevealMax',      0.97),
         // Overlap 表示開始 progress (0〜1)
-        titleStart:  window.BOOT_PARAM_getNum('titleStart',  0.5),
+        titleStart:       window.BOOT_PARAM_getNum('titleStart',       0.5),
         // Overlap マスクの最大表示率 (0〜1)
-        titleStop:   window.BOOT_PARAM_getNum('titleStop',   0.86),
+        titleStop:        window.BOOT_PARAM_getNum('titleStop',        0.86),
         // Error テキストの初期 alpha
-        errorAlpha:  window.BOOT_PARAM_getNum('errorAlpha',  0.15),
+        errorAlpha:       window.BOOT_PARAM_getNum('errorAlpha',       0.15),
         // 1 なら Overlap のマスクを外し全体を表示
-        noTitleMask: window.BOOT_PARAM_getBool('noTitleMask', false),
+        noTitleMask:      window.BOOT_PARAM_getBool('noTitleMask',     false),
+        // progress を強制固定する値 (0〜1)。null なら tween に従う
+        // 例: ?progressOverride=0.2 / ?progressOverride=0.5 / ?progressOverride=0.9
+        progressOverride: window.BOOT_PARAM_getNum('progressOverride', null),
       };
 
       // ─────────────────────────────────────────────────────────────────────────
@@ -404,7 +407,10 @@
         }
 
         update() {
-          const p = this._progress;
+          let p = this._progress;
+          if (BOOT_DEBUG.progressOverride !== null) {
+            p = BOOT_DEBUG.progressOverride;
+          }
           const W = WORLD_W;
           const H = WORLD_H;
           const cx = W / 2;
