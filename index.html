@@ -139,7 +139,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-25 15:09';
+      const BUILD_TIMESTAMP = '2026-04-26 07:33';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -255,6 +255,17 @@
       };
       const getActiveBuildTuning = () => BUILD_DIRECTION_TUNING[activeBuildDirection] || BUILD_DIRECTION_TUNING[BUILD_DIRECTION.SNAP];
 
+      // ─────────────────────────────────────────────────────────────────────────
+      // BOOT フェーズ 1〜3
+      //
+      // フェーズ1: progress 0→1, Quart.easeOut, 1200ms
+      // フェーズ2: 背景スキャン (上から下、オーバーレイ縮小)
+      //            p[0→0.5] → 0〜90% 高速  /  p[0.5→1.0] → 90〜97% 超低速
+      // フェーズ3: タイトル描画
+      //            Error  : 最初から alpha 0.15 で背面に常駐
+      //            Overlap: p=0.5〜 で左→右マスク展開、最後の1文字で停止
+      // 微違和感  : Overlap を cx+1px 固定オフセット
+      // ─────────────────────────────────────────────────────────────────────────
       class BootScene extends Phaser.Scene {
         constructor() {
           super('boot');
@@ -263,9 +274,12 @@
         create() {
           const cx = WORLD_W / 2;
           const cy = WORLD_H / 2;
-          const convergeMs = 260;
-          const settleHoldMs = 68;
 
+          // progress: 1つの値で全視覚状態を制御
+          this._progress = 0;
+          this._done = false;
+
+          // ── 背景: 崩壊レイヤー（ドリフト付き, depth -55〜-52） ────────────
           this._bootBackdrop = mountBootCollapsedBackdrop(this, {
             width: WORLD_W,
             height: WORLD_H,
@@ -277,101 +291,146 @@
             noiseDots: 86,
           });
 
-          const styleError = {
+          // ── スキャンオーバーレイ: 未表示エリアを覆う暗幕 (depth -40) ─────
+          // 背景レイヤー(-52)より前、タイトル(10+)より後ろ
+          this._scanGfx = this.add.graphics().setDepth(-40);
+
+          // スキャン先端ライン (depth -39)
+          this._scanLineGfx = this.add.graphics().setDepth(-39);
+
+          // ── "Error" タイトル: 最初から薄く背面に常駐 (alpha 0.15) ─────────
+          this._errorText = this.add.text(cx, cy - 27, 'Error', {
             fontFamily: 'system-ui, sans-serif',
             fontSize: '52px',
             fontStyle: 'bold',
             color: '#ff5a6a',
             stroke: '#3a1018',
             strokeThickness: 4,
-          };
-          const styleOverlap = {
+          }).setOrigin(0.5).setAlpha(0.15).setDepth(10);
+
+          // ── "Overlap" タイトル: p=0.5〜 で左→右マスク展開 ──────────────
+          // cx+1px: 意図的な微ズレ（微違和感）
+          this._overlapText = this.add.text(cx + 1, cy + 27, 'Overlap', {
             fontFamily: 'system-ui, sans-serif',
             fontSize: '52px',
             fontStyle: 'bold',
             color: '#58f0ff',
             stroke: '#0a2833',
             strokeThickness: 4,
-          };
+          }).setOrigin(0.5).setAlpha(0).setDepth(11);
 
-          this._bootTitle = createScatteredBootTitle(this, {
-            width: WORLD_W,
-            height: WORLD_H,
-            cx,
-            cy,
-            lineGap: 27,
-            seed: 0x70f701,
-            styleError,
-            styleOverlap,
+          // GeometryMask: 左→右へ展開する矩形で Overlap を段階表示
+          this._overlapMaskGfx = this.make.graphics({ add: false });
+          this._overlapMask = this._overlapMaskGfx.createGeometryMask();
+          this._overlapText.setMask(this._overlapMask);
+
+          // Overlap 描画先端の縦スキャンバー (depth 12)
+          this._titleScanGfx = this.add.graphics().setDepth(12);
+
+          // ── progress tween: Quart.easeOut で 0→1 / 1200ms ───────────────
+          // Quart.easeOut = 1-(1-t)^4: 最初速く、p=0.85 以降は極端に遅くなる
+          this.tweens.add({
+            targets: this,
+            _progress: 1,
+            duration: 1200,
+            ease: 'Quart.easeOut',
+            onComplete: () => {
+              this._done = true;
+              this._scanLineGfx.clear();
+              this._titleScanGfx.clear();
+              // アニメーション完了後: タップでホームへ
+              this.input.once('pointerdown', () => {
+                this._cleanup();
+                console.log('[BootScene] phase complete → home');
+                this.scene.start('home');
+              });
+            },
           });
 
-          this.events.once('shutdown', () => {
-            this._bootBackdrop?.destroy?.();
-            this._bootTitle?.destroy?.();
-            this._bootBackdrop = null;
-            this._bootTitle = null;
-          });
+          this.events.once('shutdown', () => this._cleanup());
+        }
 
-          const goHome = () => {
-            this._bootBackdrop?.destroy?.();
-            this._bootTitle?.destroy?.();
-            this._bootBackdrop = null;
-            this._bootTitle = null;
-            console.log('[BootScene] boot backdrop destroyed → starting home');
-            this.scene.start('home');
-          };
+        _cleanup() {
+          this._bootBackdrop?.destroy?.();
+          this._scanGfx?.destroy();
+          this._scanLineGfx?.destroy();
+          this._titleScanGfx?.destroy();
+          this._errorText?.destroy();
+          this._overlapText?.destroy();
+          this._overlapMaskGfx?.destroy();
+          this._bootBackdrop = null;
+        }
 
-          this.input.once('pointerdown', () => {
-            const frags = this._bootTitle.fragments;
-            const glitchG = this._bootTitle.glitchGraphics;
-            let done = 0;
-            const need = 5 + frags.length;
-            let settleScheduled = false;
-            const tick = () => {
-              done += 1;
-              if (done < need || settleScheduled) return;
-              settleScheduled = true;
-              this.time.delayedCall(settleHoldMs, () => {
-                const texts = frags.map((f) => f.text);
-                this.tweens.add({
-                  targets: texts,
-                  scaleX: 1.05,
-                  scaleY: 1.05,
-                  duration: 75,
-                  yoyo: true,
-                  ease: 'Back.easeOut',
-                  onComplete: () => this.time.delayedCall(42, goHome),
-                });
-              });
-            };
+        update() {
+          const p = this._progress;
+          const W = WORLD_W;
+          const H = WORLD_H;
+          const cx = W / 2;
+          const cy = H / 2;
 
-            this._bootBackdrop.convergeLayers(convergeMs, 'Back.easeOut', [1.14], tick);
+          // ── フェーズ2: 背景スキャン（上から下へ表示範囲を拡大） ──────────
+          // p[0→0.5] → revealFrac[0→0.90] … 高速スキャン
+          // p[0.5→1.0] → revealFrac[0.90→0.97] … 超低速クロール（完成直前停止）
+          let revealFrac;
+          if (p <= 0.5) {
+            revealFrac = (p / 0.5) * 0.90;
+          } else {
+            revealFrac = 0.90 + ((p - 0.5) / 0.5) * 0.07;
+          }
+          const revealY = Math.round(H * revealFrac);
 
-            if (glitchG) {
-              this.tweens.add({
-                targets: glitchG,
-                alpha: 0,
-                duration: convergeMs,
-                ease: 'Back.easeOut',
-                easeParams: [1.14],
-                onComplete: tick,
-              });
+          // 未表示エリアの暗幕
+          this._scanGfx.clear();
+          if (revealY < H) {
+            this._scanGfx.fillStyle(0x090b12, 0.97);
+            this._scanGfx.fillRect(0, revealY, W, H - revealY);
+          }
+
+          // 水平スキャンライン（先端）
+          this._scanLineGfx.clear();
+          if (!this._done && revealY > 0 && revealY < H) {
+            this._scanLineGfx.lineStyle(1.5, 0x4af0e4, 0.88);
+            this._scanLineGfx.lineBetween(0, revealY, W, revealY);
+            this._scanLineGfx.lineStyle(7, 0x4af0e4, 0.10);
+            this._scanLineGfx.lineBetween(0, revealY, W, revealY);
+          }
+
+          // ── フェーズ3: "Overlap" タイトル描画（p=0.5〜） ─────────────────
+          if (p < 0.5) {
+            this._overlapText.setAlpha(0);
+            this._overlapMaskGfx.clear();
+            this._titleScanGfx.clear();
+          } else {
+            const titleP = (p - 0.5) / 0.5; // 0→1 as p: 0.5→1.0
+
+            // アルファ: 出現直後に素早くフェードイン
+            this._overlapText.setAlpha(Math.min(1, titleP * 3));
+
+            // 左→右マスク展開: 最大 86% 幅（最後の約1文字が未表示のまま停止）
+            const revealWidth = Math.min(0.86, titleP * 0.86);
+            const tw = this._overlapText.width;
+            const th = this._overlapText.height;
+            const leftX = (cx + 1) - tw * 0.5;
+            const topY = (cy + 27) - th * 0.5;
+            const maskW = Math.max(0, Math.round(tw * revealWidth));
+
+            this._overlapMaskGfx.clear();
+            if (maskW > 0) {
+              this._overlapMaskGfx.fillStyle(0xffffff, 1);
+              // 左端を 8px 余裕持たせ、ストロークがクリップされないようにする
+              this._overlapMaskGfx.fillRect(leftX - 8, topY - 6, maskW + 8, th + 12);
             }
 
-            frags.forEach((f) => {
-              this.tweens.add({
-                targets: f.text,
-                x: f.targetX,
-                y: f.targetY,
-                angle: 0,
-                alpha: 1,
-                duration: convergeMs,
-                ease: 'Back.easeOut',
-                easeParams: [1.14],
-                onComplete: tick,
-              });
-            });
-          });
+            // 描画先端の縦スキャンバー
+            this._titleScanGfx.clear();
+            if (!this._done && maskW > 0 && revealWidth < 0.86) {
+              const scanX = leftX + maskW;
+              this._titleScanGfx.lineStyle(1.5, 0x4af0e4, 0.65);
+              this._titleScanGfx.lineBetween(scanX, topY - 8, scanX, topY + th + 8);
+              this._titleScanGfx.lineStyle(5, 0x4af0e4, 0.09);
+              this._titleScanGfx.lineBetween(scanX, topY - 8, scanX, topY + th + 8);
+            }
+          }
         }
       }
 
