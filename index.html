@@ -139,7 +139,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-26 13:47';
+      const BUILD_TIMESTAMP = '2026-04-26 13:56';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -316,9 +316,9 @@
         }
 
         preload() {
-          // showBootBg=1 のときのみ home-bg-normal を先読みする
-          // （通常 HomeScene が担当するが Boot では未ロードのため）
-          if (BOOT_DEBUG.showBootBg && !this.textures.exists('home-bg-normal')) {
+          // home-bg-normal を常時先読みする
+          // （HomeScene が担当するが Boot では未ロードのため先行ロード）
+          if (!this.textures.exists('home-bg-normal')) {
             this.load.image('home-bg-normal', 'assets/home-bg-normal.png');
           }
         }
@@ -343,19 +343,17 @@
             noiseDots: 86,
           });
 
-          // ── [DEBUG] showBootBg=1: home-bg-normal をカバー表示して確認 ───────
+          // ── 背景: home-bg-normal を常時カバー表示 (depth -51) ───────────
           // depth -51: 崩壊レイヤー(-55〜-52)より前、スキャンオーバーレイ(-40)より後ろ
-          this._bootBgDebug = null;
-          if (BOOT_DEBUG.showBootBg) {
-            const img = this.add.image(cx, cy, 'home-bg-normal');
-            const scaleX = WORLD_W / img.width;
-            const scaleY = WORLD_H / img.height;
-            img.setScale(Math.max(scaleX, scaleY));
-            img.setDepth(-51);
-            img.setAlpha(1);
-            img.setVisible(true);
-            this._bootBgDebug = img;
-          }
+          // showBootBg はデバッグ用に残す（将来的なフラグ制御用）
+          this._bootBg = this.add.image(cx, cy, 'home-bg-normal')
+            .setOrigin(0.5, 0.5)
+            .setDepth(-51);
+          const bgScale = Math.max(
+            this.scale.width / this._bootBg.width,
+            this.scale.height / this._bootBg.height
+          );
+          this._bootBg.setScale(bgScale);
 
           // ── スキャンオーバーレイ: 未表示エリアを覆う暗幕 (depth -40) ─────
           // 背景レイヤー(-52)より前、タイトル(10+)より後ろ
@@ -434,9 +432,9 @@
           this._errorText?.destroy();
           this._overlapText?.destroy();
           this._overlapMaskGfx?.destroy();
-          this._bootBgDebug?.destroy();
+          this._bootBg?.destroy();
           this._bootBackdrop = null;
-          this._bootBgDebug = null;
+          this._bootBg = null;
         }
 
         update() {
