@@ -139,7 +139,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-26 13:56';
+      const BUILD_TIMESTAMP = '2026-04-26 14:09';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -286,8 +286,8 @@
         titleStart:       window.BOOT_PARAM_getNum('titleStart',       0.5),
         // Overlap マスクの最大表示率 (0〜1)
         titleStop:        window.BOOT_PARAM_getNum('titleStop',        0.86),
-        // Error テキストの初期 alpha
-        errorAlpha:       window.BOOT_PARAM_getNum('errorAlpha',       0.15),
+        // Error テキストの初期 alpha (0 = 非表示, フェーズ4以降で表示)
+        errorAlpha:       window.BOOT_PARAM_getNum('errorAlpha',       0),
         // 1 なら Overlap のマスクを外し全体を表示
         noTitleMask:      window.BOOT_PARAM_getBool('noTitleMask',     false),
         // progress を強制固定する値 (0〜1)。null なら tween に従う
@@ -362,7 +362,7 @@
           // スキャン先端ライン (depth -39)
           this._scanLineGfx = this.add.graphics().setDepth(-39);
 
-          // ── "Error" タイトル: 最初から薄く背面に常駐 (alpha 0.15) ─────────
+          // ── "Error" タイトル: フェーズ4 (p>0.9) まで非表示 ─────────────────
           this._errorText = this.add.text(cx, cy - 27, 'Error', {
             fontFamily: 'system-ui, sans-serif',
             fontSize: '52px',
@@ -370,7 +370,7 @@
             color: '#ff5a6a',
             stroke: '#3a1018',
             strokeThickness: 4,
-          }).setOrigin(0.5).setAlpha(BOOT_DEBUG.errorAlpha).setDepth(10);
+          }).setOrigin(0.5).setAlpha(0).setDepth(10);
 
           // ── "Overlap" タイトル: p=0.5〜 で左→右マスク展開 ──────────────
           // cx+1px: 意図的な微ズレ（微違和感）
@@ -525,6 +525,11 @@
               this._titleScanGfx.lineBetween(scanX, topY - 8, scanX, topY + th + 8);
             }
           }
+
+          // ── フェーズ4: "Error" タイトル表示 (p > 0.9) ────────────────────────
+          // p <= 0.9: BOOT_DEBUG.errorAlpha (デフォルト0=非表示、デバッグ用に可変)
+          // p >  0.9: 完全表示
+          this._errorText.setAlpha(p > 0.9 ? 1 : BOOT_DEBUG.errorAlpha);
         }
       }
 
