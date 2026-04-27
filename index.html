@@ -36,7 +36,38 @@
 </head>
 <body>
   <div id="game-wrap"></div>
-  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <!-- グローバルエラー捕捉: ?debug=1 のとき画面左上に赤文字で表示 -->
+  <script>
+    (function () {
+      const _isDebug = /[?&]debug=1/.test(location.search);
+      function _showError(msg) {
+        if (!_isDebug) return;
+        let el = document.getElementById('_global_err_overlay');
+        if (!el) {
+          el = document.createElement('pre');
+          el.id = '_global_err_overlay';
+          el.style.cssText = [
+            'position:fixed', 'top:0', 'left:0', 'z-index:99999',
+            'margin:0', 'padding:6px 8px', 'max-width:100vw',
+            'background:rgba(0,0,0,0.75)', 'color:#ff4444',
+            'font:11px/1.4 ui-monospace,monospace', 'white-space:pre-wrap',
+            'pointer-events:none',
+          ].join(';');
+          document.body.appendChild(el);
+        }
+        el.textContent += msg + '\n';
+      }
+      window.onerror = function (msg, src, line, col, err) {
+        _showError('[ERROR] ' + msg + '\n  at ' + src + ':' + line + ':' + col);
+      };
+      window.addEventListener('unhandledrejection', function (ev) {
+        _showError('[UNHANDLED] ' + (ev.reason?.stack || ev.reason));
+      });
+    })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"
+    onload="console.log('[INIT] script loaded')"
+    onerror="console.error('[INIT] script load FAILED')"></script>
   <script type="module">
     import {
       createScatteredBootTitle,
@@ -139,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-27 15:36';
+      const BUILD_TIMESTAMP = '2026-04-27 23:32';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -317,6 +348,7 @@
       // チェーン (?.) で安全に扱える。
       // ─────────────────────────────────────────────────────────────────────────
       function createDebugHUD(scene, getState) {
+        console.log('[HUD] create');
         if (!window.DEBUG_HUD_ENABLED) return null;
 
         const HUD_ALPHA  = 0.72;
@@ -383,6 +415,7 @@
         }
 
         create() {
+          console.log('[BOOT] create');
           const cx = WORLD_W / 2;
           const cy = WORLD_H / 2;
 
@@ -530,6 +563,7 @@
         }
 
         update() {
+          if (!this._updateLogged) { console.log('[BOOT] update'); this._updateLogged = true; }
           // progressOverride 未指定かつ未完了のとき、tween が PAUSED 状態なら再開する。
           // 条件を isPaused() に限定することで PENDING/INIT/COMPLETE 状態での誤 resume を防ぐ。
           // _done 後は tween を触らない（onComplete 後の再 resume による再発火を防ぐ）。
@@ -2613,6 +2647,7 @@
         }
       }
 
+      console.log('[INIT] game config ready');
       new Phaser.Game({
         type: Phaser.AUTO,
         parent: 'game-wrap',
