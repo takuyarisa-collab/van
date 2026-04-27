@@ -139,7 +139,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-27 15:10';
+      const BUILD_TIMESTAMP = '2026-04-27 15:23';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -856,8 +856,20 @@
           // 崩壊・再構築表現は一切加えない。
           this._redrawHomeUI();
 
+          // ── デバッグ HUD (?debug=1 のみ) ─────────────────────────────────────
+          this._homeReady = true;
+          this._debugHud = createDebugHUD(this, () => ({
+            scene:     'home',
+            homeReady: this._homeReady,
+            scan:      this._homeScanMask ? 'active' : 'done',
+            debris:    this._homeDebris ? this._homeDebris.alpha.toFixed(2) : '-',
+          }));
+
           // ── lifecycle ────────────────────────────────────────────────────────
           const cleanupHome = () => {
+            this._debugHud?.destroy();
+            this._debugHud = null;
+            this._homeReady = false;
             this._homeBackdrop?.destroy?.();
             this._homeBackdrop = null;
             this._homeScanMask?.destroy?.();
@@ -915,6 +927,10 @@
               }
             });
           });
+        }
+
+        update() {
+          this._debugHud?.tick();
         }
 
         // Redraws all home UI elements from HOME_LAYOUT + current deltas.
