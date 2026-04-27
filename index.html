@@ -170,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-27 23:32';
+      const BUILD_TIMESTAMP = '2026-04-27 23:49';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -534,9 +534,9 @@
             p:                this._progress,
             progressOverride: BOOT_DEBUG.progressOverride,
             tweenState:       this._progressTween
-                                ? (this._progressTween.isPlaying()  ? 'playing'
+                                ? (this._done || _p >= 1            ? 'done'
+                                :  this._progressTween.isPlaying()  ? 'playing'
                                 :  this._progressTween.isPaused()   ? 'paused'
-                                :  this._progressTween.isComplete() ? 'done'
                                 :                                     'pending')
                                 : 'none',
             titleMask:        BOOT_DEBUG.noTitleMask ? 'off' : 'on',
