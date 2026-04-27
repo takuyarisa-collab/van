@@ -139,7 +139,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-26 14:09';
+      const BUILD_TIMESTAMP = '2026-04-27 00:17';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -273,6 +273,8 @@
           if (v === null) return def;
           return v === '1' || v === 'true';
         };
+        // ?debug=1 のときだけデバッグHUDを表示する
+        window.DEBUG_HUD_ENABLED = window.BOOT_PARAM_getBool('debug', false);
       })();
 
       const BOOT_DEBUG = {
@@ -298,6 +300,66 @@
         // 1 なら BootScene に home-bg-normal を強制表示してロード確認できる
         showBootBg:       window.BOOT_PARAM_getBool('showBootBg',       false),
       };
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // デバッグ HUD — ?debug=1 のときだけ表示する共通ヘルパー
+      //
+      // 使い方:
+      //   this._debugHud = createDebugHUD(this, () => ({
+      //     scene: 'boot', phase: ..., p: ..., ...
+      //   }));
+      //   // update() 内で毎フレーム呼ぶ:
+      //   this._debugHud?.tick();
+      //   // シーン破棄時:
+      //   this._debugHud?.destroy();
+      //
+      // ?debug=1 が付いていないときは null を返すため、呼び出し側はオプショナル
+      // チェーン (?.) で安全に扱える。
+      // ─────────────────────────────────────────────────────────────────────────
+      function createDebugHUD(scene, getState) {
+        if (!window.DEBUG_HUD_ENABLED) return null;
+
+        const HUD_ALPHA  = 0.72;
+        const HUD_DEPTH  = 9999;
+        const HUD_PAD_X  = 8;
+        const HUD_PAD_Y  = 8;
+
+        const _text = scene.add.text(HUD_PAD_X, HUD_PAD_Y, '', {
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace',
+          fontSize: '11px',
+          color: '#c8ffd4',
+          stroke: '#000000',
+          strokeThickness: 2,
+          lineSpacing: 3,
+        })
+          .setScrollFactor(0)
+          .setDepth(HUD_DEPTH)
+          .setAlpha(HUD_ALPHA)
+          .setOrigin(0, 0);
+
+        function tick() {
+          const s = getState();
+          const tweenState =
+            s.tweenPlaying === true  ? 'playing' :
+            s.tweenPlaying === false ? 'paused'  : 'none';
+          const lines = [
+            `scene:${s.scene ?? '-'}`,
+            `phase:${s.phase ?? '-'}`,
+            `p:${s.p != null ? s.p.toFixed(3) : '-'}`,
+            `override:${s.progressOverride != null ? s.progressOverride.toFixed(3) : 'none'}`,
+            `tween:${tweenState}`,
+            `titleMask:${s.titleMask ?? '-'}`,
+            `overlay:${s.overlay ?? '-'}`,
+          ];
+          _text.setText(lines);
+        }
+
+        function destroy() {
+          _text.destroy();
+        }
+
+        return { tick, destroy };
+      }
 
       // ─────────────────────────────────────────────────────────────────────────
       // BOOT フェーズ 1〜3
@@ -421,6 +483,19 @@
             this._progressTween.pause();
           }
 
+          // ── デバッグ HUD (?debug=1 のみ) ─────────────────────────────────────
+          this._debugHud = createDebugHUD(this, () => ({
+            scene:            'boot',
+            phase:            this._done ? 'done' : 'running',
+            p:                this._progress,
+            progressOverride: BOOT_DEBUG.progressOverride,
+            tweenPlaying:     this._progressTween
+                                ? (this._progressTween.isPlaying() ? true : false)
+                                : null,
+            titleMask:        BOOT_DEBUG.noTitleMask ? 'off' : 'on',
+            overlay:          BOOT_DEBUG.noBootOverlay ? 'off' : 'on',
+          }));
+
           this.events.once('shutdown', () => this._cleanup());
         }
 
@@ -433,8 +508,10 @@
           this._overlapText?.destroy();
           this._overlapMaskGfx?.destroy();
           this._bootBg?.destroy();
+          this._debugHud?.destroy();
           this._bootBackdrop = null;
           this._bootBg = null;
+          this._debugHud = null;
         }
 
         update() {
@@ -530,6 +607,8 @@
           // p <= 0.9: BOOT_DEBUG.errorAlpha (デフォルト0=非表示、デバッグ用に可変)
           // p >  0.9: 完全表示
           this._errorText.setAlpha(p > 0.9 ? 1 : BOOT_DEBUG.errorAlpha);
+
+          this._debugHud?.tick();
         }
       }
 
