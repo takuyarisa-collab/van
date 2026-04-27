@@ -139,7 +139,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-27 00:17';
+      const BUILD_TIMESTAMP = '2026-04-27 15:10';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -515,17 +515,19 @@
         }
 
         update() {
+          // progressOverride 未指定のとき、tween が何らかの理由で止まっていれば無条件に再開する
+          // (PAUSED 状態だけでなく、Phaser 内部の INIT/PENDING 状態に対する保険も兼ねる)
+          if (BOOT_DEBUG.progressOverride === null) {
+            if (this._progressTween && !this._progressTween.isPlaying()) {
+              this._progressTween.resume();
+            }
+          }
+
           let p = this._progress;
           if (BOOT_DEBUG.progressOverride !== null) {
             p = BOOT_DEBUG.progressOverride;
-            // tween を停止して表示と内部状態を一致させる
             if (this._progressTween?.isPlaying()) {
               this._progressTween.pause();
-            }
-          } else {
-            // override 解除時は tween を再開
-            if (this._progressTween?.isPaused()) {
-              this._progressTween.resume();
             }
           }
           const W = WORLD_W;
