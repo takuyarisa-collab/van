@@ -170,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-27 23:49';
+      const BUILD_TIMESTAMP = '2026-04-28 14:43';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -379,6 +379,12 @@
             `tween:${s.tweenState ?? 'none'}`,
             `titleMask:${s.titleMask ?? '-'}`,
             `overlay:${s.overlay ?? '-'}`,
+            `--- raw values ---`,
+            `bootDur:${s.bootDur ?? '-'}`,
+            `done:${s.done ?? '-'}`,
+            `rawProgress:${s.rawProgress != null ? s.rawProgress.toFixed(3) : '-'}`,
+            `tweenPlaying:${s.tweenPlaying ?? '-'}`,
+            `tweenPaused:${s.tweenPaused ?? '-'}`,
           ];
           _text.setText(lines);
         }
@@ -541,6 +547,11 @@
                                 : 'none',
             titleMask:        BOOT_DEBUG.noTitleMask ? 'off' : 'on',
             overlay:          BOOT_DEBUG.noBootOverlay ? 'off' : 'on',
+            bootDur:          BOOT_DEBUG.bootDur,
+            done:             this._done,
+            rawProgress:      this._progress,
+            tweenPlaying:     this._progressTween?.isPlaying() ?? null,
+            tweenPaused:      this._progressTween?.isPaused()  ?? null,
             };
           });
 
