@@ -170,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-28 15:13';
+      const BUILD_TIMESTAMP = '2026-04-28 23:40';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -575,14 +575,6 @@
 
         update() {
           if (!this._updateLogged) { console.log('[BOOT] update'); this._updateLogged = true; }
-          // progressOverride 未指定かつ未完了のとき、tween が PAUSED 状態なら再開する。
-          // 条件を isPaused() に限定することで PENDING/INIT/COMPLETE 状態での誤 resume を防ぐ。
-          // _done 後は tween を触らない（onComplete 後の再 resume による再発火を防ぐ）。
-          if (BOOT_DEBUG.progressOverride === null && !this._done) {
-            if (this._progressTween && this._progressTween.isPaused()) {
-              this._progressTween.resume();
-            }
-          }
 
           let p = this._progress;
           if (BOOT_DEBUG.progressOverride !== null) {
