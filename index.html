@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-29 10:45';
+      const BUILD_TIMESTAMP = '2026-04-29 11:10';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -468,15 +468,17 @@
           // スキャン先端ライン (depth -39)
           this._scanLineGfx = this.add.graphics().setDepth(-39);
 
-          // ── "Error" タイトル: フェーズ4 (p>0.9) まで非表示 ─────────────────
-          this._errorText = this.add.text(cx, cy - 27, 'Error', {
+          // ── "Error" ログ: 小サイズ・ランダム点滅でログ感を演出 ─────────────
+          this._errorText = this.add.text(cx - 120, cy - 60, 'ERROR', {
             fontFamily: 'system-ui, sans-serif',
-            fontSize: '52px',
+            fontSize: '22px',
             fontStyle: 'bold',
             color: '#ff5a6a',
             stroke: '#3a1018',
-            strokeThickness: 4,
+            strokeThickness: 2,
           }).setOrigin(0.5).setAlpha(0).setDepth(10);
+          this._errorLogIndex = 0;
+          this._errorLogTimer = 0;
 
           // ── "Overlap" タイトル: フォント版（非表示・構造体版に切替済み） ─
           // cx+1px: 意図的な微ズレ（微違和感）
@@ -507,9 +509,9 @@
           this._bootTitleImg = this.add.image(cx + 1, cy + 27, 'boot-title-png')
             .setOrigin(0.5, 0.5)
             .setDepth(10);
-          const _imgNatW = this._bootTitleImg.width;
+          const imgNatW = this._bootTitleImg.width;
           const _imgNatH = this._bootTitleImg.height;
-          const _imgScale = (WORLD_W * 0.65) / (_imgNatW || 1);
+          const _imgScale = (WORLD_W * 0.72) / (imgNatW || 1);
           this._bootTitleImg.setScale(_imgScale);
 
           // ── タイトル構造体: "OVERLAP" をフォントではなく矩形パーツで描画 ──
@@ -702,10 +704,23 @@
             }
           }
 
-          // ── フェーズ4: "Error" タイトル表示 (p > 0.9) ────────────────────────
-          // p <= 0.9: BOOT_DEBUG.errorAlpha (デフォルト0=非表示、デバッグ用に可変)
-          // p >  0.9: 完全表示
-          this._errorText.setAlpha(p > 0.9 ? 1 : BOOT_DEBUG.errorAlpha);
+          // ── Error 軽量ログ: p > 0.9 でログ切替＋点滅 ──────────────────────
+          if (p > 0.9) {
+            const ERROR_LOGS = ['ERROR', 'ERROR', 'ERROR..', 'ERROR: OVERLAP'];
+            const delta = this.game.loop.delta;
+            this._errorLogTimer += delta;
+            if (this._errorLogTimer > Phaser.Math.Between(120, 180)) {
+              this._errorLogTimer = 0;
+              this._errorLogIndex = (this._errorLogIndex + 1) % ERROR_LOGS.length;
+              this._errorText.setText(ERROR_LOGS[this._errorLogIndex]);
+            }
+            let a = 0.85;
+            if (Math.random() < 0.08) a = 0.4;
+            if (Math.random() < 0.03) a = 0;
+            this._errorText.setAlpha(a);
+          } else {
+            this._errorText.setAlpha(BOOT_DEBUG.errorAlpha);
+          }
 
           this._debugHud?.tick();
         }
