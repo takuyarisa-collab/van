@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-29 05:20';
+      const BUILD_TIMESTAMP = '2026-04-29 10:20';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -331,6 +331,8 @@
         noBootOverlay:    window.BOOT_PARAM_getBool('noBootOverlay',    false),
         // 1 なら BootScene に home-bg-normal を強制表示してロード確認できる
         showBootBg:       window.BOOT_PARAM_getBool('showBootBg',       false),
+        // ?debug=1 のときだけ構造体を表示し、PNG と重ねてズレを確認する
+        debug:            window.BOOT_PARAM_getBool('debug',            false),
       };
 
       // ─────────────────────────────────────────────────────────────────────────
@@ -419,6 +421,10 @@
           if (!this.textures.exists('home-bg-normal')) {
             this.load.image('home-bg-normal', 'assets/home-bg-normal.png');
           }
+          // PNG タイトル: 構造体との重ね合わせ確認用
+          if (!this.textures.exists('boot-title-png')) {
+            this.load.image('boot-title-png', 'assets/overlap-title.png');
+          }
         }
 
         create() {
@@ -496,6 +502,20 @@
           // Overlap 描画先端の縦スキャンバー (depth 12)
           this._titleScanGfx = this.add.graphics().setDepth(12);
 
+          // ── PNG タイトル: 構造体との重ね合わせ確認用 (depth 10) ─────────────
+          // 構造体(depth 11)より下に配置し、PNG を視覚基準として使う
+          this._bootTitleImg = this.add.image(cx + 1, cy + 27, 'boot-title-png')
+            .setOrigin(0.5, 0.5)
+            .setDepth(10);
+          const _imgNatW = this._bootTitleImg.width;
+          const _imgNatH = this._bootTitleImg.height;
+          const _imgScale = Math.min(
+            (WORLD_W * 0.72) / (_imgNatW  || 1),
+            (WORLD_H * 0.12) / (_imgNatH || 1),
+            1
+          );
+          this._bootTitleImg.setScale(_imgScale);
+
           // ── タイトル構造体: "OVERLAP" をフォントではなく矩形パーツで描画 ──
           // OVER=stable(整列), L=transition(微ズレ), AP=broken(崩壊)
           // _overlapText は非表示のまま残す（マスク計算の参照用に保持）
@@ -504,6 +524,11 @@
             cy: cy + 27,
             depth: 11,
             seed: 0x70b44f,
+          });
+
+          // ?debug=1 のときのみ構造体を表示（通常時は非表示）
+          this._bootTitleParts.gfxList.forEach(g => {
+            g.setVisible(BOOT_DEBUG.debug === true);
           });
 
           // ── progress tween: Quart.easeOut で 0→1 / 1200ms ───────────────
@@ -585,10 +610,12 @@
           this._overlapText?.destroy();
           this._overlapMaskGfx?.destroy();
           this._bootTitleParts?.destroy?.();
+          this._bootTitleImg?.destroy();
           this._bootBg?.destroy();
           this._debugHud?.destroy();
           this._bootBackdrop = null;
           this._bootTitleParts = null;
+          this._bootTitleImg = null;
           this._bootBg = null;
           this._debugHud = null;
           this._progressState = null;
