@@ -997,3 +997,254 @@ export function mountHomeScanMask(scene, opts = {}) {
     },
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// createBootTitleParts
+//
+// 「OVERLAP」を SVG 相当の矩形パーツ構造で描画する。
+// フォント不使用・PNG不使用・透明背景扱い。
+//
+// OVER側 (stable)    : 整列・高アルファ
+// R〜L境界 (transition): わずかなズレ
+// LAP側 (broken)     : グリッド崩壊・低アルファ・ランダムオフセット
+//
+// opts:
+//   cx, cy     … 配置中心 (デフォルト: sceneの中心)
+//   depth      … Phaser depth (デフォルト 11)
+//   seed       … 乱数シード (デフォルト 0x4f7a3)
+//   alpha      … 全体アルファ倍率 (デフォルト 1)
+//
+// return: { gfxList, destroy() }
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 1文字を矩形パーツの配列で表現するストローク相当の定義。
+ * 座標系: 左上 (0,0), 1マス = G = 12px, 文字サイズ 7G×10G
+ * 各エントリ: [col, row, wCols, hRows]  (行・列はグリッド単位)
+ */
+function _getLetterRects(ch) {
+  // グリッド単位での矩形リスト: [col, row, wCols, hRows]
+  // 線幅 = 1グリッド (12px) ≒ 2px 基準の太め表現
+  const D = {
+    O: [
+      // 上横
+      [1, 0, 5, 1],
+      // 下横
+      [1, 9, 5, 1],
+      // 左縦
+      [0, 1, 1, 8],
+      // 右縦
+      [6, 1, 1, 8],
+    ],
+    V: [
+      // 左斜め降下 (2本セグメントで表現)
+      [0, 0, 1, 5],
+      [1, 4, 1, 3],
+      [2, 6, 1, 2],
+      // 右斜め降下
+      [6, 0, 1, 5],
+      [5, 4, 1, 3],
+      [4, 6, 1, 2],
+      // 底点
+      [3, 8, 1, 2],
+    ],
+    E: [
+      // 上横
+      [0, 0, 7, 1],
+      // 中横
+      [0, 4, 5, 1],
+      // 下横
+      [0, 9, 7, 1],
+      // 左縦
+      [0, 1, 1, 8],
+    ],
+    R: [
+      // 上横 (弧の代替)
+      [1, 0, 4, 1],
+      // 弧右
+      [5, 1, 1, 1],
+      [6, 1, 1, 2],
+      [5, 3, 1, 1],
+      // 中横
+      [1, 4, 4, 1],
+      // 左縦
+      [0, 0, 1, 10],
+      // 右脚
+      [4, 5, 1, 1],
+      [5, 6, 1, 2],
+      [6, 8, 1, 2],
+    ],
+    // transition文字
+    L: [
+      [0, 0, 1, 10],
+      [1, 9, 6, 1],
+    ],
+    // broken文字
+    A: [
+      // 左斜め
+      [0, 9, 1, 1],
+      [1, 6, 1, 3],
+      [2, 3, 1, 3],
+      [3, 1, 1, 2],
+      // 右斜め
+      [6, 9, 1, 1],
+      [5, 6, 1, 3],
+      [4, 3, 1, 3],
+      [3, 1, 1, 2],
+      // 頂点
+      [3, 0, 1, 1],
+      // 中横
+      [1, 5, 5, 1],
+    ],
+    P: [
+      // 左縦
+      [0, 0, 1, 10],
+      // 上横
+      [1, 0, 4, 1],
+      // 弧右
+      [5, 1, 1, 1],
+      [6, 1, 1, 2],
+      [5, 4, 1, 1],
+      // 中横
+      [1, 5, 4, 1],
+    ],
+  };
+  return D[ch] || [];
+}
+
+/**
+ * 面取り矩形をGraphicsに描く。
+ * chamfer > 0 なら角を45度カット。chamfer=0 なら fillRect で描く。
+ */
+function _drawChamferRect(g, x, y, w, h, chamfer) {
+  if (chamfer <= 0 || w <= chamfer * 2 || h <= chamfer * 2) {
+    g.fillRect(x, y, w, h);
+    return;
+  }
+  const c = chamfer;
+  g.fillPoints([
+    { x: x + c,     y: y         },
+    { x: x + w - c, y: y         },
+    { x: x + w,     y: y + c     },
+    { x: x + w,     y: y + h - c },
+    { x: x + w - c, y: y + h     },
+    { x: x + c,     y: y + h     },
+    { x: x,         y: y + h - c },
+    { x: x,         y: y + c     },
+  ], true);
+}
+
+export function createBootTitleParts(scene, opts = {}) {
+  const W = scene.scale.width;
+  const H = scene.scale.height;
+  const cx = opts.cx ?? W / 2;
+  const cy = opts.cy ?? H / 2;
+  const depth = opts.depth ?? 11;
+  const globalAlpha = opts.alpha ?? 1;
+  const seed = (opts.seed >>> 0) ^ 0x4f7a3;
+  const rnd = mulberry32(seed);
+
+  // グリッド単位
+  const G = 12;
+  const CHAMFER = 3; // 45度面取りサイズ (px)
+  const CHAR_W = 7 * G;  // 1文字の幅
+  const CHAR_H = 10 * G; // 1文字の高さ
+  const CHAR_GAP = G;    // 文字間隔
+
+  const CHARS = ['O', 'V', 'E', 'R', 'L', 'A', 'P'];
+  const totalW = CHARS.length * CHAR_W + (CHARS.length - 1) * CHAR_GAP;
+  const startX = cx - totalW / 2;
+  const startY = cy - CHAR_H / 2;
+
+  // グループ定義: OVER=stable, L=transition, AP=broken
+  const GROUP_MAP = {
+    O: 'stable', V: 'stable', E: 'stable', R: 'stable',
+    L: 'transition',
+    A: 'broken', P: 'broken',
+  };
+
+  // 色パレット: stable→濃青灰、transition→少し薄め、broken→さらに薄く
+  const COLOR_STABLE     = 0x2a4870;
+  const COLOR_TRANSITION = 0x1e3a5c;
+  const COLOR_BROKEN     = 0x162d48;
+
+  // アルファ
+  const ALPHA_STABLE     = 0.85 * globalAlpha;
+  const ALPHA_TRANSITION = 0.65 * globalAlpha;
+  const ALPHA_BROKEN     = 0.35 * globalAlpha;
+
+  // 全パーツ定義を構築
+  const titleParts = [];
+  CHARS.forEach((ch, ci) => {
+    const group = GROUP_MAP[ch];
+    const charX = startX + ci * (CHAR_W + CHAR_GAP);
+    const rects = _getLetterRects(ch);
+
+    rects.forEach((r, ri) => {
+      const [col, row, wCols, hRows] = r;
+      let px = charX + col * G;
+      let py = startY + row * G;
+      let pw = wCols * G;
+      let ph = hRows * G;
+
+      // broken / transition: ランダムオフセット・アルファ変動
+      let partAlpha = ALPHA_STABLE;
+      let offsetX = 0;
+      let offsetY = 0;
+      let broken = false;
+
+      if (group === 'broken') {
+        broken = true;
+        // グリッド単位でのズレ (最大 ±2G)
+        offsetX = Math.round((rnd() * 4 - 2) * G);
+        offsetY = Math.round((rnd() * 4 - 2) * G);
+        // 一部パーツは大きくズレる
+        if (rnd() < 0.3) {
+          offsetX += Math.round((rnd() * 3 - 1.5) * G);
+          offsetY += Math.round((rnd() * 3 - 1.5) * G);
+        }
+        partAlpha = (ALPHA_BROKEN * (0.4 + rnd() * 0.8)) * globalAlpha;
+        // サイズもわずかに崩す
+        if (rnd() < 0.4) {
+          pw = Math.max(G, pw + Math.round((rnd() * 2 - 1) * G));
+        }
+      } else if (group === 'transition') {
+        offsetX = Math.round((rnd() * 1.5 - 0.75) * G);
+        offsetY = Math.round((rnd() * 1 - 0.5) * G);
+        partAlpha = ALPHA_TRANSITION * (0.7 + rnd() * 0.4) * globalAlpha;
+      }
+
+      titleParts.push({
+        x: px + offsetX,
+        y: py + offsetY,
+        w: pw,
+        h: ph,
+        alpha: Math.min(1, partAlpha),
+        group,
+        char: ch,
+        charIndex: ci,
+        partIndex: ri,
+        broken,
+        color: group === 'stable' ? COLOR_STABLE
+             : group === 'transition' ? COLOR_TRANSITION
+             : COLOR_BROKEN,
+      });
+    });
+  });
+
+  // Phaser Graphics で全パーツを一括描画
+  const gfx = scene.add.graphics().setDepth(depth);
+
+  titleParts.forEach(p => {
+    gfx.fillStyle(p.color, p.alpha);
+    _drawChamferRect(gfx, p.x, p.y, p.w, p.h, CHAMFER);
+  });
+
+  return {
+    gfxList: [gfx],
+    titleParts,
+    destroy() {
+      gfx.destroy();
+    },
+  };
+}
