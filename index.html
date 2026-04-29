@@ -71,6 +71,7 @@
   <script type="module">
     import {
       createScatteredBootTitle,
+      createBootTitleParts,
       mountBootCollapsedBackdrop,
       mountBootHomeBackdrop,
       mountHomeNormalBg,
@@ -170,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-29 02:55';
+      const BUILD_TIMESTAMP = '2026-04-29 05:20';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -471,7 +472,7 @@
             strokeThickness: 4,
           }).setOrigin(0.5).setAlpha(0).setDepth(10);
 
-          // ── "Overlap" タイトル: p=0.5〜 で左→右マスク展開 ──────────────
+          // ── "Overlap" タイトル: フォント版（非表示・構造体版に切替済み） ─
           // cx+1px: 意図的な微ズレ（微違和感）
           this._overlapText = this.add.text(cx + 1, cy + 27, 'Overlap', {
             fontFamily: 'system-ui, sans-serif',
@@ -480,7 +481,7 @@
             color: '#58f0ff',
             stroke: '#0a2833',
             strokeThickness: 4,
-          }).setOrigin(0.5).setAlpha(0).setDepth(11);
+          }).setOrigin(0.5).setAlpha(0).setDepth(11).setVisible(false);
 
           // GeometryMask: 左→右へ展開する矩形で Overlap を段階表示
           // noTitleMask=true の場合はマスクを使わず全体を表示
@@ -494,6 +495,16 @@
 
           // Overlap 描画先端の縦スキャンバー (depth 12)
           this._titleScanGfx = this.add.graphics().setDepth(12);
+
+          // ── タイトル構造体: "OVERLAP" をフォントではなく矩形パーツで描画 ──
+          // OVER=stable(整列), L=transition(微ズレ), AP=broken(崩壊)
+          // _overlapText は非表示のまま残す（マスク計算の参照用に保持）
+          this._bootTitleParts = createBootTitleParts(this, {
+            cx: cx + 1,
+            cy: cy + 27,
+            depth: 11,
+            seed: 0x70b44f,
+          });
 
           // ── progress tween: Quart.easeOut で 0→1 / 1200ms ───────────────
           // Quart.easeOut = 1-(1-t)^4: 最初速く、p=0.85 以降は極端に遅くなる
@@ -573,9 +584,11 @@
           this._errorText?.destroy();
           this._overlapText?.destroy();
           this._overlapMaskGfx?.destroy();
+          this._bootTitleParts?.destroy?.();
           this._bootBg?.destroy();
           this._debugHud?.destroy();
           this._bootBackdrop = null;
+          this._bootTitleParts = null;
           this._bootBg = null;
           this._debugHud = null;
           this._progressState = null;
