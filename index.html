@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-29 11:10';
+      const BUILD_TIMESTAMP = '2026-04-29 12:24';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -468,15 +468,20 @@
           // スキャン先端ライン (depth -39)
           this._scanLineGfx = this.add.graphics().setDepth(-39);
 
-          // ── "Error" ログ: 小サイズ・ランダム点滅でログ感を演出 ─────────────
-          this._errorText = this.add.text(cx - 120, cy - 60, 'ERROR', {
-            fontFamily: 'system-ui, sans-serif',
-            fontSize: '22px',
-            fontStyle: 'bold',
-            color: '#ff5a6a',
-            stroke: '#3a1018',
-            strokeThickness: 2,
-          }).setOrigin(0.5).setAlpha(0).setDepth(10);
+          // ── "Error" システムログ: 3行スタック、上へ流れる演出 ─────────────
+          const _errStyle = {
+            fontFamily: '"Courier New", Courier, monospace',
+            fontSize: '15px',
+            color: '#9f4f55',
+          };
+          const _errX = cx - 150;
+          const _errLineH = 18;
+          this._errorLines = [
+            this.add.text(_errX, cy - 78 - _errLineH * 2, '', _errStyle).setOrigin(0, 0.5).setAlpha(0).setDepth(10),
+            this.add.text(_errX, cy - 78 - _errLineH,     '', _errStyle).setOrigin(0, 0.5).setAlpha(0).setDepth(10),
+            this.add.text(_errX, cy - 78,                 '', _errStyle).setOrigin(0, 0.5).setAlpha(0).setDepth(10),
+          ];
+          this._errorLogQueue = [];
           this._errorLogIndex = 0;
           this._errorLogTimer = 0;
 
@@ -511,8 +516,13 @@
             .setDepth(10);
           const imgNatW = this._bootTitleImg.width;
           const _imgNatH = this._bootTitleImg.height;
-          const _imgScale = (WORLD_W * 0.72) / (imgNatW || 1);
+          const _imgScale = (WORLD_W * 0.78) / (imgNatW || 1);
           this._bootTitleImg.setScale(_imgScale);
+
+          // _overlapMask を PNG タイトルにも共用: 同じ矩形で左→右スキャン表示
+          if (!BOOT_DEBUG.noTitleMask && this._overlapMask) {
+            this._bootTitleImg.setMask(this._overlapMask);
+          }
 
           // ── タイトル構造体: "OVERLAP" をフォントではなく矩形パーツで描画 ──
           // OVER=stable(整列), L=transition(微ズレ), AP=broken(崩壊)
@@ -604,7 +614,8 @@
           this._scanGfx?.destroy();
           this._scanLineGfx?.destroy();
           this._titleScanGfx?.destroy();
-          this._errorText?.destroy();
+          this._errorLines?.forEach(t => t.destroy());
+          this._errorLines = null;
           this._overlapText?.destroy();
           this._overlapMaskGfx?.destroy();
           this._bootTitleParts?.destroy?.();
@@ -677,19 +688,19 @@
 
             // 左→右マスク展開: 最大 titleStop 幅（最後の約1文字が未表示のまま停止）
             const revealWidth = noTitleMask ? 1 : Math.min(titleStop, titleP * titleStop);
-            const tw = this._overlapText.displayWidth;
-            const th = this._overlapText.displayHeight;
-            // origin(0.5) のまま: x/y がテキスト中央なので左端・上端を算出
-            const leftX = this._overlapText.x - tw * 0.5;
-            const topY  = this._overlapText.y  - th * 0.5;
-            const maskW = noTitleMask ? tw + 16 : Math.max(0, Math.round(tw * revealWidth));
+
+            // PNG タイトルを基準にマスク矩形を算出（PNG の方が幅広のため）
+            const imgDW = this._bootTitleImg.displayWidth;
+            const imgDH = this._bootTitleImg.displayHeight;
+            const leftX  = this._bootTitleImg.x - imgDW * 0.5;
+            const topY   = this._bootTitleImg.y  - imgDH * 0.5;
+            const maskW  = noTitleMask ? imgDW + 16 : Math.max(0, Math.round(imgDW * revealWidth));
 
             this._overlapMaskGfx.clear();
             if (!noTitleMask) {
               if (maskW > 0) {
                 this._overlapMaskGfx.fillStyle(0xffffff, 1);
-                // 左端を 8px 余裕持たせ、ストロークがクリップされないようにする
-                this._overlapMaskGfx.fillRect(leftX - 8, topY - 6, maskW + 8, th + 12);
+                this._overlapMaskGfx.fillRect(leftX - 8, topY - 6, maskW + 8, imgDH + 12);
               }
             }
 
@@ -698,28 +709,41 @@
             if (!noTitleMask && !this._done && maskW > 0 && revealWidth < titleStop) {
               const scanX = leftX + maskW;
               this._titleScanGfx.lineStyle(1.5, 0x4af0e4, 0.65);
-              this._titleScanGfx.lineBetween(scanX, topY - 8, scanX, topY + th + 8);
+              this._titleScanGfx.lineBetween(scanX, topY - 8, scanX, topY + imgDH + 8);
               this._titleScanGfx.lineStyle(5, 0x4af0e4, 0.09);
-              this._titleScanGfx.lineBetween(scanX, topY - 8, scanX, topY + th + 8);
+              this._titleScanGfx.lineBetween(scanX, topY - 8, scanX, topY + imgDH + 8);
             }
           }
 
-          // ── Error 軽量ログ: p > 0.9 でログ切替＋点滅 ──────────────────────
+          // ── Error システムログ: p > 0.9 で直近3行をスタック表示 ──────────
           if (p > 0.9) {
-            const ERROR_LOGS = ['ERROR', 'ERROR', 'ERROR..', 'ERROR: OVERLAP'];
+            const ERROR_LOGS = ['ERROR', 'ERROR_', 'ERROR..', 'ERROR: OVERLAP'];
             const delta = this.game.loop.delta;
             this._errorLogTimer += delta;
             if (this._errorLogTimer > Phaser.Math.Between(120, 180)) {
               this._errorLogTimer = 0;
-              this._errorLogIndex = (this._errorLogIndex + 1) % ERROR_LOGS.length;
-              this._errorText.setText(ERROR_LOGS[this._errorLogIndex]);
+              const nextMsg = ERROR_LOGS[this._errorLogIndex % ERROR_LOGS.length];
+              this._errorLogIndex++;
+              this._errorLogQueue.push(nextMsg);
+              if (this._errorLogQueue.length > 3) this._errorLogQueue.shift();
             }
-            let a = 0.85;
-            if (Math.random() < 0.08) a = 0.4;
-            if (Math.random() < 0.03) a = 0;
-            this._errorText.setAlpha(a);
+            // 3行テキストに割り当て: queue[0]=最古(上), queue[末尾]=最新(下)
+            const alphas = [0.32, 0.55, 0.85];
+            for (let i = 0; i < 3; i++) {
+              const qIdx = this._errorLogQueue.length - 3 + i;
+              const line = this._errorLines[i];
+              if (qIdx < 0 || qIdx >= this._errorLogQueue.length) {
+                line.setAlpha(0);
+              } else {
+                line.setText(this._errorLogQueue[qIdx]);
+                let a = alphas[i];
+                if (i === 2 && Math.random() < 0.08) a = 0.4;
+                if (i === 2 && Math.random() < 0.03) a = 0;
+                line.setAlpha(a);
+              }
+            }
           } else {
-            this._errorText.setAlpha(BOOT_DEBUG.errorAlpha);
+            this._errorLines.forEach(t => t.setAlpha(0));
           }
 
           this._debugHud?.tick();
