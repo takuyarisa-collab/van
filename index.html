@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-29 12:24';
+      const BUILD_TIMESTAMP = '2026-04-29 15:03';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -468,22 +468,40 @@
           // スキャン先端ライン (depth -39)
           this._scanLineGfx = this.add.graphics().setDepth(-39);
 
-          // ── "Error" システムログ: 3行スタック、上へ流れる演出 ─────────────
-          const _errStyle = {
+          // ── 警告テキスト: タイトル下に固定 (p > 0.9 で表示) ────────────
+          // タイトルの displayHeight は create 時点では scale が反映されないため
+          // update() 内で初回のみ位置を確定する (_warnTextPlaced フラグ)
+          this._warnText = this.add.text(cx, cy + 27, 'ERROR: OVERLAP DETECTED', {
             fontFamily: '"Courier New", Courier, monospace',
             fontSize: '15px',
             color: '#9f4f55',
+          }).setOrigin(0.5, 0).setAlpha(0).setDepth(12);
+          this._warnTextPlaced = false;
+
+          // ── 左上ログ流入: プール (最大 50 行) ────────────────────────────
+          // 毎フレーム破棄・生成しない。配列で管理し追記のみ行う。
+          const _LOG_COLORS = ['#a65b60', '#9f4f55', '#7a8a99', '#9faaaa'];
+          const _LOG_FONT = {
+            fontFamily: '"Courier New", Courier, monospace',
+            fontSize: '11px',
+            lineSpacing: 1,
           };
-          const _errX = cx - 150;
-          const _errLineH = 18;
-          this._errorLines = [
-            this.add.text(_errX, cy - 78 - _errLineH * 2, '', _errStyle).setOrigin(0, 0.5).setAlpha(0).setDepth(10),
-            this.add.text(_errX, cy - 78 - _errLineH,     '', _errStyle).setOrigin(0, 0.5).setAlpha(0).setDepth(10),
-            this.add.text(_errX, cy - 78,                 '', _errStyle).setOrigin(0, 0.5).setAlpha(0).setDepth(10),
-          ];
-          this._errorLogQueue = [];
-          this._errorLogIndex = 0;
-          this._errorLogTimer = 0;
+          const LOG_MAX = 50;
+          const LOG_LINE_H = 14;
+          const LOG_PAD_X = 8;
+          const LOG_PAD_Y = 8;
+          this._logPool = [];
+          for (let i = 0; i < LOG_MAX; i++) {
+            const y = LOG_PAD_Y + i * LOG_LINE_H;
+            const t = this.add.text(LOG_PAD_X, y, '', {
+              ..._LOG_FONT,
+              color: _LOG_COLORS[i % _LOG_COLORS.length],
+            }).setOrigin(0, 0).setAlpha(0).setDepth(11);
+            this._logPool.push(t);
+          }
+          this._logActiveCount = 0;
+          this._logTimer = 0;
+          this._logMsgIndex = 0;
 
           // ── "Overlap" タイトル: フォント版（非表示・構造体版に切替済み） ─
           // cx+1px: 意図的な微ズレ（微違和感）
@@ -614,8 +632,10 @@
           this._scanGfx?.destroy();
           this._scanLineGfx?.destroy();
           this._titleScanGfx?.destroy();
-          this._errorLines?.forEach(t => t.destroy());
-          this._errorLines = null;
+          this._warnText?.destroy();
+          this._warnText = null;
+          this._logPool?.forEach(t => t.destroy());
+          this._logPool = null;
           this._overlapText?.destroy();
           this._overlapMaskGfx?.destroy();
           this._bootTitleParts?.destroy?.();
@@ -704,46 +724,58 @@
               }
             }
 
-            // 描画先端の縦スキャンバー
+            // 描画先端の縦スキャンバー (タイトル高さと同等・グレー系・低主張)
             this._titleScanGfx.clear();
             if (!noTitleMask && !this._done && maskW > 0 && revealWidth < titleStop) {
               const scanX = leftX + maskW;
-              this._titleScanGfx.lineStyle(1.5, 0x4af0e4, 0.65);
-              this._titleScanGfx.lineBetween(scanX, topY - 8, scanX, topY + imgDH + 8);
-              this._titleScanGfx.lineStyle(5, 0x4af0e4, 0.09);
-              this._titleScanGfx.lineBetween(scanX, topY - 8, scanX, topY + imgDH + 8);
+              this._titleScanGfx.lineStyle(1, 0x8a9096, 0.35);
+              this._titleScanGfx.lineBetween(scanX, topY, scanX, topY + imgDH);
+              this._titleScanGfx.lineStyle(2, 0x7a7f85, 0.18);
+              this._titleScanGfx.lineBetween(scanX, topY, scanX, topY + imgDH);
             }
           }
 
-          // ── Error システムログ: p > 0.9 で直近3行をスタック表示 ──────────
+          // ── 警告テキスト: p > 0.9 でタイトル直下に固定表示 ─────────────
           if (p > 0.9) {
-            const ERROR_LOGS = ['ERROR', 'ERROR_', 'ERROR..', 'ERROR: OVERLAP'];
-            const delta = this.game.loop.delta;
-            this._errorLogTimer += delta;
-            if (this._errorLogTimer > Phaser.Math.Between(120, 180)) {
-              this._errorLogTimer = 0;
-              const nextMsg = ERROR_LOGS[this._errorLogIndex % ERROR_LOGS.length];
-              this._errorLogIndex++;
-              this._errorLogQueue.push(nextMsg);
-              if (this._errorLogQueue.length > 3) this._errorLogQueue.shift();
+            if (!this._warnTextPlaced && this._bootTitleImg) {
+              const imgDH2 = this._bootTitleImg.displayHeight;
+              const topY2  = this._bootTitleImg.y - imgDH2 * 0.5;
+              const warnY  = topY2 + imgDH2 + Math.round(imgDH2 * 0.18);
+              this._warnText.setY(warnY);
+              this._warnTextPlaced = true;
             }
-            // 3行テキストに割り当て: queue[0]=最古(上), queue[末尾]=最新(下)
-            const alphas = [0.32, 0.55, 0.85];
-            for (let i = 0; i < 3; i++) {
-              const qIdx = this._errorLogQueue.length - 3 + i;
-              const line = this._errorLines[i];
-              if (qIdx < 0 || qIdx >= this._errorLogQueue.length) {
-                line.setAlpha(0);
-              } else {
-                line.setText(this._errorLogQueue[qIdx]);
-                let a = alphas[i];
-                if (i === 2 && Math.random() < 0.08) a = 0.4;
-                if (i === 2 && Math.random() < 0.03) a = 0;
-                line.setAlpha(a);
-              }
-            }
+            this._warnText.setAlpha(0.8);
           } else {
-            this._errorLines.forEach(t => t.setAlpha(0));
+            this._warnText.setAlpha(0);
+          }
+
+          // ── 左上ログ流入: p > 0.9 で行を追加、消さずに蓄積 ──────────────
+          const LOG_MESSAGES = [
+            '[ERROR] OVERLAP DETECTED',
+            '[WARN]  LAYER CONFLICT',
+            '[ERROR] BUFFER OVERFLOW',
+            '[ERROR] RENDER LOCK',
+            '[SYS]   RETRY...',
+            '[ERROR] MEMORY ADDRESS CONFLICT',
+            '[WARN]  STACK CORRUPTION',
+            '[ERROR] OVERLAP DETECTED',
+            '[SYS]   REINIT FAILED',
+            '[ERROR] RENDER LOCK',
+          ];
+          if (p > 0.9 && this._logPool) {
+            const delta = this.game.loop.delta;
+            this._logTimer += delta;
+            // progress が進むほど追加間隔が短くなる (200ms → 80ms)
+            const interval = Phaser.Math.Linear(200, 80, (p - 0.9) / 0.1);
+            if (this._logTimer >= interval && this._logActiveCount < this._logPool.length) {
+              this._logTimer = 0;
+              const t = this._logPool[this._logActiveCount];
+              const msg = LOG_MESSAGES[this._logMsgIndex % LOG_MESSAGES.length];
+              this._logMsgIndex++;
+              t.setText(msg);
+              t.setAlpha(0.55 + Math.random() * 0.25);
+              this._logActiveCount++;
+            }
           }
 
           this._debugHud?.tick();
