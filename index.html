@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-29 10:20';
+      const BUILD_TIMESTAMP = '2026-04-29 10:45';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -509,11 +509,7 @@
             .setDepth(10);
           const _imgNatW = this._bootTitleImg.width;
           const _imgNatH = this._bootTitleImg.height;
-          const _imgScale = Math.min(
-            (WORLD_W * 0.72) / (_imgNatW  || 1),
-            (WORLD_H * 0.12) / (_imgNatH || 1),
-            1
-          );
+          const _imgScale = (WORLD_W * 0.65) / (_imgNatW || 1);
           this._bootTitleImg.setScale(_imgScale);
 
           // ── タイトル構造体: "OVERLAP" をフォントではなく矩形パーツで描画 ──
