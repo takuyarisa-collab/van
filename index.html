@@ -170,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-28 23:40';
+      const BUILD_TIMESTAMP = '2026-04-29 02:55';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -426,6 +426,7 @@
           const cy = WORLD_H / 2;
 
           // progress: 1つの値で全視覚状態を制御
+          this._progressState = { value: 0 };
           this._progress = 0;
           this._done = false;
 
@@ -496,12 +497,18 @@
 
           // ── progress tween: Quart.easeOut で 0→1 / 1200ms ───────────────
           // Quart.easeOut = 1-(1-t)^4: 最初速く、p=0.85 以降は極端に遅くなる
+          // targets を専用オブジェクトにすることで Scene 本体を tween target にした
+          // 場合の即完了バグ（rawProgress:0 のまま onComplete 発火）を回避する
           this._progressTween = this.tweens.add({
-            targets: this,
-            _progress: 1,
+            targets: this._progressState,
+            value: 1,
             duration: BOOT_DEBUG.bootDur,
             ease: 'Quart.easeOut',
+            onUpdate: () => {
+              this._progress = this._progressState.value;
+            },
             onComplete: () => {
+              this._progress = 1;
               this._done = true;
               this._scanLineGfx.clear();
               this._titleScanGfx.clear();
@@ -571,6 +578,7 @@
           this._bootBackdrop = null;
           this._bootBg = null;
           this._debugHud = null;
+          this._progressState = null;
         }
 
         update() {
