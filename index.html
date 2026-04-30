@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-29 15:03';
+      const BUILD_TIMESTAMP = '2026-04-30 00:11';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -473,14 +473,17 @@
           // update() 内で初回のみ位置を確定する (_warnTextPlaced フラグ)
           this._warnText = this.add.text(cx, cy + 27, 'ERROR: OVERLAP DETECTED', {
             fontFamily: '"Courier New", Courier, monospace',
-            fontSize: '15px',
-            color: '#9f4f55',
+            fontSize: '19px',
+            color: '#8f3f45',
           }).setOrigin(0.5, 0).setAlpha(0).setDepth(12);
           this._warnTextPlaced = false;
 
+          // ── 警告フレーム: 警告テキスト周囲の欠け矩形 (depth 12) ──────────
+          this._warnFrame = this.add.graphics().setDepth(12).setAlpha(0);
+
           // ── 左上ログ流入: プール (最大 50 行) ────────────────────────────
           // 毎フレーム破棄・生成しない。配列で管理し追記のみ行う。
-          const _LOG_COLORS = ['#a65b60', '#9f4f55', '#7a8a99', '#9faaaa'];
+          const _LOG_COLORS = ['#c05060', '#b04050', '#8a9db0', '#aabbbb'];
           const _LOG_FONT = {
             fontFamily: '"Courier New", Courier, monospace',
             fontSize: '11px',
@@ -724,14 +727,16 @@
               }
             }
 
-            // 描画先端の縦スキャンバー (タイトル高さと同等・グレー系・低主張)
+            // 描画先端の縦スキャンバー (文字実体部分相当・グレー系・低主張)
             this._titleScanGfx.clear();
             if (!noTitleMask && !this._done && maskW > 0 && revealWidth < titleStop) {
-              const scanX = leftX + maskW;
-              this._titleScanGfx.lineStyle(1, 0x8a9096, 0.35);
-              this._titleScanGfx.lineBetween(scanX, topY, scanX, topY + imgDH);
-              this._titleScanGfx.lineStyle(2, 0x7a7f85, 0.18);
-              this._titleScanGfx.lineBetween(scanX, topY, scanX, topY + imgDH);
+              const scanX  = leftX + maskW;
+              const scanH  = imgDH * 0.50;
+              const scanY0 = topY + imgDH * 0.25;
+              this._titleScanGfx.lineStyle(1, 0x8a9096, 0.28);
+              this._titleScanGfx.lineBetween(scanX, scanY0, scanX, scanY0 + scanH);
+              this._titleScanGfx.lineStyle(2, 0x7a7f85, 0.12);
+              this._titleScanGfx.lineBetween(scanX, scanY0, scanX, scanY0 + scanH);
             }
           }
 
@@ -743,10 +748,41 @@
               const warnY  = topY2 + imgDH2 + Math.round(imgDH2 * 0.18);
               this._warnText.setY(warnY);
               this._warnTextPlaced = true;
+
+              // フレーム描画 (一度だけ・欠け矩形)
+              const tw = this._warnText.width;
+              const th = this._warnText.height;
+              const fx = this._warnText.x - tw * 0.5;
+              const fy = warnY;
+              const padX = 10, padY = 5;
+              const rx = fx - padX, ry = fy - padY;
+              const rw = tw + padX * 2, rh = th + padY * 2;
+              const gf = this._warnFrame;
+              gf.clear();
+              // ごく薄い赤灰の背景塗り
+              gf.fillStyle(0x6b2830, 0.06);
+              gf.fillRect(rx, ry, rw, rh);
+              // 欠け矩形フレーム: 4辺を分割して角を一部省く
+              const corner = 6;
+              gf.lineStyle(1, 0x8b3b42, 0.55);
+              // 上辺 (右端角 欠け)
+              gf.lineBetween(rx + corner, ry, rx + rw - corner * 2.5, ry);
+              // 右辺 (上端角 欠け)
+              gf.lineBetween(rx + rw, ry + corner * 2, rx + rw, ry + rh - corner);
+              // 下辺 (左端角 欠け)
+              gf.lineBetween(rx + corner * 2.5, ry + rh, rx + rw - corner, ry + rh);
+              // 左辺 (下端角 欠け)
+              gf.lineBetween(rx, ry + corner, rx, ry + rh - corner * 2);
+              // 補助線 (少し薄め・1px太め)
+              gf.lineStyle(2, 0x7a3038, 0.30);
+              gf.lineBetween(rx + corner, ry, rx + rw * 0.4, ry);
+              gf.lineBetween(rx, ry + corner, rx, ry + rh * 0.45);
             }
-            this._warnText.setAlpha(0.8);
+            this._warnText.setAlpha(0.9);
+            this._warnFrame.setAlpha(1);
           } else {
             this._warnText.setAlpha(0);
+            this._warnFrame.setAlpha(0);
           }
 
           // ── 左上ログ流入: p > 0.9 で行を追加、消さずに蓄積 ──────────────
@@ -773,7 +809,7 @@
               const msg = LOG_MESSAGES[this._logMsgIndex % LOG_MESSAGES.length];
               this._logMsgIndex++;
               t.setText(msg);
-              t.setAlpha(0.55 + Math.random() * 0.25);
+              t.setAlpha(0.70 + Math.random() * 0.20);
               this._logActiveCount++;
             }
           }
