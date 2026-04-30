@@ -171,8 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-30 05:39';
-
+      const BUILD_TIMESTAMP = '2026-04-30 07:57';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -334,6 +333,81 @@
         // ?debug=1 のときだけ構造体を表示し、PNG と重ねてズレを確認する
         debug:            window.BOOT_PARAM_getBool('debug',            false),
       };
+
+      // Boot 左上ログ: メッセージプール（Phase A/B/C）
+      // カテゴリ: 0=ERROR, 1=WARN, 2=SYS, 3=INFO
+      const BOOT_LOG_MESSAGES_A = [
+        { cat: 3, text: '[SYS]  BOOT INIT' },
+        { cat: 3, text: '[INFO] CACHE OK' },
+        { cat: 3, text: '[SYS]  STARTUP COMPLETE' },
+        { cat: 3, text: '[INFO] LOAD ASSETS' },
+        { cat: 3, text: '[SYS]  INIT OK' },
+      ];
+      const BOOT_LOG_MESSAGES_B = [
+        { cat: 1, text: '[WARN] LAYER CONFLICT' },
+        { cat: 2, text: '[SYS]  RETRY...' },
+        { cat: 3, text: '[SYS]  INIT OK' },
+        { cat: 1, text: '[WARN] SEQUENCE MISMATCH' },
+        { cat: 3, text: '[INFO] CACHE OK' },
+      ];
+      const BOOT_LOG_MESSAGES_C = [
+        { cat: 0, text: '[ERROR] OVERLAP DETECTED' },
+        { cat: 0, text: '[ERROR] BUFFER OVERFLOW' },
+        { cat: 0, text: '[ERROR] RENDER LOCK' },
+        { cat: 0, text: '[ERROR] MEMORY ADDRESS CONFLICT' },
+        { cat: 1, text: '[WARN]  STACK CORRUPTION' },
+        { cat: 2, text: '[SYS]   REINIT FAILED' },
+        { cat: 0, text: '[ERROR] FRAME DESYNC' },
+        { cat: 2, text: '[SYS]   ABORT SIGNAL' },
+        { cat: 1, text: '[WARN]  TILE OVERLAP' },
+      ];
+
+      /** Boot 開始直後に Phase A ログを 2〜4 行プリフィル（タイマーは create で 0） */
+      function seedBootLogLines(scene) {
+        const pool = scene._logPool;
+        if (!pool?.length) return;
+        const msgs = BOOT_LOG_MESSAGES_A;
+        const n = 2 + Math.floor(Math.random() * 3);
+        let msgIndex = scene._logMsgIndex | 0;
+        let lastCat = scene._logLastCategory;
+        let lastText = scene._logLastText;
+
+        for (let i = 0; i < n && i < pool.length; i++) {
+          const t = pool[i];
+          let tries = 0;
+          let entry = msgs[msgIndex % msgs.length];
+          while (
+            tries < msgs.length &&
+            (entry.cat === lastCat || entry.text === lastText)
+          ) {
+            msgIndex++;
+            entry = msgs[msgIndex % msgs.length];
+            tries++;
+          }
+          lastCat = entry.cat;
+          lastText = entry.text;
+          msgIndex++;
+
+          const isError = entry.cat === 0;
+          const isWarn = entry.cat === 1;
+          t.setStyle({ color: (isError || isWarn) ? '#ff6a6a' : '#5f7388' });
+          t.setText(entry.text);
+
+          const totalActive = i + 1;
+          for (let _li = 0; _li < totalActive; _li++) {
+            const age = totalActive - _li;
+            const baseA = age === 0 ? 1.0 : Math.max(0.35, 1.0 - age * 0.06);
+            pool[_li].setAlpha(baseA);
+          }
+          t.setAlpha(1.0);
+        }
+
+        scene._logActiveCount = Math.min(n, pool.length);
+        scene._logMsgIndex = msgIndex;
+        scene._logLastCategory = lastCat;
+        scene._logLastText = lastText;
+        scene._logTimer = 0;
+      }
 
       // ─────────────────────────────────────────────────────────────────────────
       // デバッグ HUD — ?debug=1 のときだけ表示する共通ヘルパー
@@ -520,6 +594,8 @@
           this._logMsgIndex = 0;
           this._logLastCategory = -1;
           this._logLastText = '';
+
+          seedBootLogLines(this);
 
           // ── "Overlap" タイトル: フォント版（非表示・構造体版に切替済み） ─
           // cx+1px: 意図的な微ズレ（微違和感）
@@ -807,54 +883,23 @@
             this._warnFrame.setAlpha(0);
           }
 
-          // ── 左上ログ流入: progress フェーズで出現率制御 ──────────────────
-          // Phase A (p < 0.75): 正常ログのみ
-          // Phase B (0.75〜0.9): 正常 + WARN 混在
-          // Phase C (p > 0.9):  ERROR 増殖
-          // カテゴリ: 0=ERROR, 1=WARN, 2=SYS, 3=INFO
-          const LOG_MESSAGES_A = [
-            { cat: 3, text: '[SYS]  BOOT INIT' },
-            { cat: 3, text: '[INFO] CACHE OK' },
-            { cat: 3, text: '[SYS]  STARTUP COMPLETE' },
-            { cat: 3, text: '[INFO] LOAD ASSETS' },
-            { cat: 3, text: '[SYS]  INIT OK' },
-          ];
-          const LOG_MESSAGES_B = [
-            { cat: 1, text: '[WARN] LAYER CONFLICT' },
-            { cat: 2, text: '[SYS]  RETRY...' },
-            { cat: 3, text: '[SYS]  INIT OK' },
-            { cat: 1, text: '[WARN] SEQUENCE MISMATCH' },
-            { cat: 3, text: '[INFO] CACHE OK' },
-          ];
-          const LOG_MESSAGES_C = [
-            { cat: 0, text: '[ERROR] OVERLAP DETECTED' },
-            { cat: 0, text: '[ERROR] BUFFER OVERFLOW' },
-            { cat: 0, text: '[ERROR] RENDER LOCK' },
-            { cat: 0, text: '[ERROR] MEMORY ADDRESS CONFLICT' },
-            { cat: 1, text: '[WARN]  STACK CORRUPTION' },
-            { cat: 2, text: '[SYS]   REINIT FAILED' },
-            { cat: 0, text: '[ERROR] FRAME DESYNC' },
-            { cat: 2, text: '[SYS]   ABORT SIGNAL' },
-            { cat: 1, text: '[WARN]  TILE OVERLAP' },
-          ];
-
+          // ── 左上ログ流入: 開始は常時 ON、内容のみ progress で Phase 切替 ──
+          // Phase A (p < 0.75): SYS / INFO
+          // Phase B (0.75〜0.9): WARN 混在
+          // Phase C (p > 0.9): ERROR 増殖
           let _activeMessages;
-          let _logStartThreshold;
           if (p < 0.75) {
-            _activeMessages = LOG_MESSAGES_A;
-            _logStartThreshold = 0.2;
+            _activeMessages = BOOT_LOG_MESSAGES_A;
           } else if (p < 0.9) {
-            _activeMessages = LOG_MESSAGES_B;
-            _logStartThreshold = 0.75;
+            _activeMessages = BOOT_LOG_MESSAGES_B;
           } else {
-            _activeMessages = LOG_MESSAGES_C;
-            _logStartThreshold = 0.9;
+            _activeMessages = BOOT_LOG_MESSAGES_C;
           }
 
-          if (p > _logStartThreshold && this._logPool) {
+          if (this._logPool) {
             const delta = this.game.loop.delta;
             this._logTimer += delta;
-            // progress が進むほど追加間隔が短くなる
+            // progress が進むほど追加間隔が短くなる（式は従来どおり）
             let interval;
             if (p < 0.75) {
               interval = Phaser.Math.Linear(300, 160, (p - 0.2) / 0.55);
