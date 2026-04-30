@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-30 16:40';
+      const BUILD_TIMESTAMP = '2026-04-30 19:05';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -288,7 +288,7 @@
 
       // ─────────────────────────────────────────────────────────────────────────
       // Boot デバッグ用 URLパラメータ
-      // 例: ?bootDur=2000&bgFastEnd=0.4&noTitleMask=1&warnOffsetY=0.28
+      // 例: ?bootDur=2000&noTitleMask=1&warnOffsetY=0.22
       // 未指定時は各デフォルト値（現在の挙動）を使用する
       // ─────────────────────────────────────────────────────────────────────────
       (() => {
@@ -311,10 +311,6 @@
       const BOOT_DEBUG = {
         // Boot progress tween の duration (ms)
         bootDur:          window.BOOT_PARAM_getNum('bootDur',          1200),
-        // 背景高速スキャン終了 progress (0〜1)
-        bgFastEnd:        window.BOOT_PARAM_getNum('bgFastEnd',        0.5),
-        // 背景の最終 reveal 率 (0〜1)
-        bgRevealMax:      window.BOOT_PARAM_getNum('bgRevealMax',      0.97),
         // Overlap 表示開始 progress (0〜1)
         titleStart:       window.BOOT_PARAM_getNum('titleStart',       0.5),
         // Overlap マスクの最大表示率 (0〜1)
@@ -332,8 +328,8 @@
         showBootBg:       window.BOOT_PARAM_getBool('showBootBg',       false),
         // ?debug=1 のときだけ構造体を表示し、PNG と重ねてズレを確認する
         debug:            window.BOOT_PARAM_getBool('debug',            false),
-        // 警告ブロックの Y: タイトル中心 + displayHeight * この係数（0.22〜0.32 目安）
-        warnOffsetY:      window.BOOT_PARAM_getNum('warnOffsetY',        0.28),
+        // 警告ブロックの Y: タイトル中心 + displayHeight * この係数（?warnOffsetY= で上書き可）
+        warnOffsetY:      window.BOOT_PARAM_getNum('warnOffsetY',        0.15),
       };
 
       // Boot 左上ログ: メッセージプール（Phase A/B/C）
@@ -493,7 +489,7 @@
       //
       // フェーズ1: progress 0→1, Quart.easeOut, 1200ms
       // フェーズ2: 背景スキャン (上から下、オーバーレイ縮小)
-      //            p[0→bgFastEnd] → 0〜90% 高速  /  p[bgFastEnd→1.0] → 90〜bgRevealMax% 超低速
+      //            revealY / 背景 alpha 共通: bgStart→bgEnd で easeInCubic（序盤遅く後半速く）
       // フェーズ3: タイトル描画
       //            Error  : 最初から errorAlpha で背面に常駐
       //            Overlap: p=titleStart〜 で左→右マスク展開、titleStop で停止
@@ -779,24 +775,13 @@
           const cy = H / 2;
 
           // ── フェーズ2: 背景スキャン（上から下へ表示範囲を拡大） ──────────
-          // p[0→bgFastEnd] → revealFrac[0→0.90] … 高速スキャン
-          // p[bgFastEnd→1.0] → revealFrac[0.90→bgRevealMax] … 超低速クロール（完成直前停止）
-          const { bgFastEnd, bgRevealMax } = BOOT_DEBUG;
-          const bgFastBase = 0.90;
-          let revealFrac;
-          if (p <= bgFastEnd) {
-            revealFrac = bgFastEnd > 0 ? (p / bgFastEnd) * bgFastBase : bgFastBase;
-          } else {
-            revealFrac = bgFastBase + ((p - bgFastEnd) / (1 - bgFastEnd)) * (bgRevealMax - bgFastBase);
-          }
-          const revealY = Math.round(H * revealFrac);
-
-          // 背景画像: progress に応じて遅延フェード（easeInCubic: 最初ゆっくり、後半で速く不透明へ）
+          // alpha と revealY は同一 bgEase（easeInCubic: 最初ゆっくり、後半で速く）
           const bgStart = 0.18;
           const bgEnd = 0.95;
-          const tBg = Phaser.Math.Clamp((p - bgStart) / (bgEnd - bgStart), 0, 1);
-          const easedBg = tBg * tBg * tBg;
-          if (this._bootBg) this._bootBg.setAlpha(easedBg);
+          const bgT = Phaser.Math.Clamp((p - bgStart) / (bgEnd - bgStart), 0, 1);
+          const bgEase = bgT * bgT * bgT;
+          if (this._bootBg) this._bootBg.setAlpha(bgEase);
+          const revealY = Math.round(H * bgEase);
 
           // 未表示エリアの暗幕 (?noBootOverlay=1 で無効化)
           this._scanGfx.clear();
