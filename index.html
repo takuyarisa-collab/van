@@ -566,6 +566,7 @@
           this._warnBlinkIrregular = Math.random() * Math.PI * 2;
           this._cleanedUp = false;
           this._collapseTransitionDone = false;
+          this._bootFrozen = false;
 
           // ── 背景: 崩壊レイヤー（ドリフト付き, depth -55〜-52） ────────────
           this._bootBackdrop = mountBootCollapsedBackdrop(this, {
@@ -831,15 +832,73 @@
           console.log('[BootScene] collapse phase start', this._collapseDur, 'ms');
         }
 
+        /** Collapse 完了直前: 残骸を静止化し depth を Home より下へ（destroy / visible 変更なし） */
+        _freezeBootWreckForHome() {
+          if (this._bootBackdrop?.convergeLayers) {
+            this._bootBackdrop.convergeLayers(1, 'Linear');
+          }
+
+          if (this._bootBg) {
+            this._bootBg.setDepth(0);
+            this._bootBg.setPosition(this._bootBg.x, this._bootBg.y);
+            this._bootBg.setAlpha(Phaser.Math.FloatBetween(0.68, 0.73));
+          }
+
+          if (this._bootTitleImg) {
+            this._bootTitleImg.setDepth(5);
+            this._bootTitleImg.setPosition(this._bootTitleImg.x, this._bootTitleImg.y);
+            this._bootTitleImg.setScale(this._bootTitleImg.scaleX, this._bootTitleImg.scaleY);
+            this._bootTitleImg.setRotation(this._bootTitleImg.rotation);
+            this._bootTitleImg.setAlpha(Phaser.Math.FloatBetween(0.22, 0.28));
+          }
+
+          if (this._logPool) {
+            this._logPool.forEach((t) => t.setDepth(4));
+          }
+
+          const warnDepth = 6;
+          const warnA = Phaser.Math.FloatBetween(0.23, 0.27);
+          if (this._warnText1) {
+            this._warnText1.setDepth(warnDepth);
+            this._warnText1.setAlpha(warnA);
+          }
+          if (this._warnText2) {
+            this._warnText2.setDepth(warnDepth);
+            this._warnText2.setAlpha(warnA);
+          }
+          if (this._warnFrame && this._warnLayout) {
+            this._warnFrame.setDepth(warnDepth);
+            const L = this._warnLayout;
+            const gf = this._warnFrame;
+            const { rx, ry, rw, rh, corner } = L;
+            gf.clear();
+            gf.fillStyle(0x6b2830, 0.10);
+            gf.fillRect(rx, ry, rw, rh);
+            gf.lineStyle(1, 0x8b3b42, 0.75);
+            gf.lineBetween(rx + corner, ry, rx + rw - corner * 2.5, ry);
+            gf.lineBetween(rx + rw, ry + corner * 2, rx + rw, ry + rh - corner);
+            gf.lineBetween(rx + corner * 2.5, ry + rh, rx + rw - corner, ry + rh);
+            gf.lineBetween(rx, ry + corner, rx, ry + rh - corner * 2);
+            gf.lineStyle(2, 0x7a3038, 0.45);
+            gf.lineBetween(rx + corner, ry, rx + rw * 0.4, ry);
+            gf.lineBetween(rx, ry + corner, rx, ry + rh * 0.45);
+            this._warnFrame.setAlpha(0.5);
+          }
+
+          this._bootFrozen = true;
+        }
+
         _finishBootAfterCollapse() {
           if (this._cleanedUp || this._collapseTransitionDone) return;
           this._collapseTransitionDone = true;
+          this._freezeBootWreckForHome();
           console.log('[BootScene] collapse complete → home (wreck retained, no cleanup)');
           this.scene.launch('home');
         }
 
         update() {
           if (this._cleanedUp) return;
+          if (this._bootFrozen) return;
           if (!this._updateLogged) { console.log('[BOOT] update'); this._updateLogged = true; }
 
           let p = this._progress;
