@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-30 00:11';
+      const BUILD_TIMESTAMP = '2026-04-30 01:06';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -473,8 +473,8 @@
           // update() 内で初回のみ位置を確定する (_warnTextPlaced フラグ)
           this._warnText = this.add.text(cx, cy + 27, 'ERROR: OVERLAP DETECTED', {
             fontFamily: '"Courier New", Courier, monospace',
-            fontSize: '19px',
-            color: '#8f3f45',
+            fontSize: '20px',
+            color: '#d05050',
           }).setOrigin(0.5, 0).setAlpha(0).setDepth(12);
           this._warnTextPlaced = false;
 
@@ -483,7 +483,7 @@
 
           // ── 左上ログ流入: プール (最大 50 行) ────────────────────────────
           // 毎フレーム破棄・生成しない。配列で管理し追記のみ行う。
-          const _LOG_COLORS = ['#c05060', '#b04050', '#8a9db0', '#aabbbb'];
+          const _LOG_COLORS = ['#d06060', '#c05060', '#6f8296', '#8fa8b8'];
           const _LOG_FONT = {
             fontFamily: '"Courier New", Courier, monospace',
             fontSize: '11px',
@@ -494,17 +494,26 @@
           const LOG_PAD_X = 8;
           const LOG_PAD_Y = 8;
           this._logPool = [];
+          this._logLineOffsets = [];
           for (let i = 0; i < LOG_MAX; i++) {
-            const y = LOG_PAD_Y + i * LOG_LINE_H;
-            const t = this.add.text(LOG_PAD_X, y, '', {
+            const lineH = 14 + Math.floor(Math.random() * 5);
+            this._logLineOffsets.push(lineH);
+          }
+          let _logCumY = LOG_PAD_Y;
+          for (let i = 0; i < LOG_MAX; i++) {
+            const dx = (Math.random() - 0.5) * 4;
+            const dy = (Math.random() - 0.5) * 2;
+            const t = this.add.text(LOG_PAD_X + dx, _logCumY + dy, '', {
               ..._LOG_FONT,
               color: _LOG_COLORS[i % _LOG_COLORS.length],
             }).setOrigin(0, 0).setAlpha(0).setDepth(11);
             this._logPool.push(t);
+            _logCumY += this._logLineOffsets[i];
           }
           this._logActiveCount = 0;
           this._logTimer = 0;
           this._logMsgIndex = 0;
+          this._logLastCategory = -1;
 
           // ── "Overlap" タイトル: フォント版（非表示・構造体版に切替済み） ─
           // cx+1px: 意図的な微ズレ（微違和感）
@@ -731,11 +740,11 @@
             this._titleScanGfx.clear();
             if (!noTitleMask && !this._done && maskW > 0 && revealWidth < titleStop) {
               const scanX  = leftX + maskW;
-              const scanH  = imgDH * 0.50;
-              const scanY0 = topY + imgDH * 0.25;
-              this._titleScanGfx.lineStyle(1, 0x8a9096, 0.28);
+              const scanH  = imgDH * 0.25;
+              const scanY0 = topY + imgDH * 0.375;
+              this._titleScanGfx.lineStyle(1, 0x8a9096, 0.20);
               this._titleScanGfx.lineBetween(scanX, scanY0, scanX, scanY0 + scanH);
-              this._titleScanGfx.lineStyle(2, 0x7a7f85, 0.12);
+              this._titleScanGfx.lineStyle(2, 0x7a7f85, 0.06);
               this._titleScanGfx.lineBetween(scanX, scanY0, scanX, scanY0 + scanH);
             }
           }
@@ -745,7 +754,7 @@
             if (!this._warnTextPlaced && this._bootTitleImg) {
               const imgDH2 = this._bootTitleImg.displayHeight;
               const topY2  = this._bootTitleImg.y - imgDH2 * 0.5;
-              const warnY  = topY2 + imgDH2 + Math.round(imgDH2 * 0.18);
+              const warnY  = topY2 + imgDH2 + Math.round(imgDH2 * 0.13);
               this._warnText.setY(warnY);
               this._warnTextPlaced = true;
 
@@ -778,7 +787,7 @@
               gf.lineBetween(rx + corner, ry, rx + rw * 0.4, ry);
               gf.lineBetween(rx, ry + corner, rx, ry + rh * 0.45);
             }
-            this._warnText.setAlpha(0.9);
+            this._warnText.setAlpha(1.0);
             this._warnFrame.setAlpha(1);
           } else {
             this._warnText.setAlpha(0);
@@ -786,17 +795,20 @@
           }
 
           // ── 左上ログ流入: p > 0.9 で行を追加、消さずに蓄積 ──────────────
+          // カテゴリ: 0=ERROR, 1=WARN, 2=SYS
           const LOG_MESSAGES = [
-            '[ERROR] OVERLAP DETECTED',
-            '[WARN]  LAYER CONFLICT',
-            '[ERROR] BUFFER OVERFLOW',
-            '[ERROR] RENDER LOCK',
-            '[SYS]   RETRY...',
-            '[ERROR] MEMORY ADDRESS CONFLICT',
-            '[WARN]  STACK CORRUPTION',
-            '[ERROR] OVERLAP DETECTED',
-            '[SYS]   REINIT FAILED',
-            '[ERROR] RENDER LOCK',
+            { cat: 0, text: '[ERROR] OVERLAP DETECTED' },
+            { cat: 1, text: '[WARN]  LAYER CONFLICT' },
+            { cat: 0, text: '[ERROR] BUFFER OVERFLOW' },
+            { cat: 0, text: '[ERROR] RENDER LOCK' },
+            { cat: 2, text: '[SYS]   RETRY...' },
+            { cat: 0, text: '[ERROR] MEMORY ADDRESS CONFLICT' },
+            { cat: 1, text: '[WARN]  STACK CORRUPTION' },
+            { cat: 2, text: '[SYS]   REINIT FAILED' },
+            { cat: 1, text: '[WARN]  SEQUENCE MISMATCH' },
+            { cat: 0, text: '[ERROR] FRAME DESYNC' },
+            { cat: 2, text: '[SYS]   ABORT SIGNAL' },
+            { cat: 1, text: '[WARN]  TILE OVERLAP' },
           ];
           if (p > 0.9 && this._logPool) {
             const delta = this.game.loop.delta;
@@ -806,10 +818,24 @@
             if (this._logTimer >= interval && this._logActiveCount < this._logPool.length) {
               this._logTimer = 0;
               const t = this._logPool[this._logActiveCount];
-              const msg = LOG_MESSAGES[this._logMsgIndex % LOG_MESSAGES.length];
+              // 同カテゴリ連続・同一テキスト連続を回避
+              let tries = 0;
+              let entry = LOG_MESSAGES[this._logMsgIndex % LOG_MESSAGES.length];
+              const lastText = this._logActiveCount > 0
+                ? this._logPool[this._logActiveCount - 1].text
+                : '';
+              while (
+                tries < LOG_MESSAGES.length &&
+                (entry.cat === this._logLastCategory || entry.text === lastText)
+              ) {
+                this._logMsgIndex++;
+                entry = LOG_MESSAGES[this._logMsgIndex % LOG_MESSAGES.length];
+                tries++;
+              }
+              this._logLastCategory = entry.cat;
               this._logMsgIndex++;
-              t.setText(msg);
-              t.setAlpha(0.70 + Math.random() * 0.20);
+              t.setText(entry.text);
+              t.setAlpha(0.85 + Math.random() * 0.15);
               this._logActiveCount++;
             }
           }
