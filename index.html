@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-30 07:57';
+      const BUILD_TIMESTAMP = '2026-04-30 15:20';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -396,7 +396,7 @@
           const totalActive = i + 1;
           for (let _li = 0; _li < totalActive; _li++) {
             const age = totalActive - _li;
-            const baseA = age === 0 ? 1.0 : Math.max(0.35, 1.0 - age * 0.06);
+            const baseA = age === 0 ? 1.0 : Math.max(0.95, 1.0 - age * 0.06);
             pool[_li].setAlpha(baseA);
           }
           t.setAlpha(1.0);
@@ -473,6 +473,19 @@
         return { tick, destroy };
       }
 
+      /** Boot タイトル水平スキャン: LAP 帯（文字インデックス 4〜6 / 7）付近で progress を僅かに遅らせる */
+      function bootTitleProgressHitch(p) {
+        const ts = BOOT_DEBUG.titleStart;
+        if (p < ts) return p;
+        const titleP = ts < 1 ? (p - ts) / (1 - ts) : 1;
+        const z0 = 4 / 7;
+        const z1 = 6 / 7;
+        if (titleP <= z0 || titleP >= z1) return p;
+        const u = (titleP - z0) / (z1 - z0);
+        const m = Math.sin(Math.PI * u);
+        return p - 0.018 * m * (1 - ts);
+      }
+
       // ─────────────────────────────────────────────────────────────────────────
       // BOOT フェーズ 1〜3
       //
@@ -528,7 +541,8 @@
           // showBootBg はデバッグ用に残す（将来的なフラグ制御用）
           this._bootBg = this.add.image(cx, cy, 'home-bg-normal')
             .setOrigin(0.5, 0.5)
-            .setDepth(-51);
+            .setDepth(-51)
+            .setAlpha(0);
           const bgScale = Math.max(
             this.scale.width / this._bootBg.width,
             this.scale.height / this._bootBg.height
@@ -566,8 +580,8 @@
           // 最新行は高アルファ、古い行は減衰
           const _LOG_FONT = {
             fontFamily: '"Courier New", Courier, monospace',
-            fontSize: '11px',
-            lineSpacing: 1,
+            fontSize: '13px',
+            lineSpacing: 3,
           };
           const LOG_MAX = 50;
           const LOG_PAD_X = 8;
@@ -575,7 +589,7 @@
           this._logPool = [];
           this._logLineOffsets = [];
           for (let i = 0; i < LOG_MAX; i++) {
-            const lineH = 14 + Math.floor(Math.random() * 5);
+            const lineH = 16 + Math.floor(Math.random() * 5);
             this._logLineOffsets.push(lineH);
           }
           let _logCumY = LOG_PAD_Y;
@@ -756,6 +770,7 @@
               this._progressTween.pause();
             }
           }
+          const pTitle = BOOT_DEBUG.progressOverride !== null ? p : bootTitleProgressHitch(p);
           const W = WORLD_W;
           const H = WORLD_H;
           const cx = W / 2;
@@ -773,6 +788,17 @@
             revealFrac = bgFastBase + ((p - bgFastEnd) / (1 - bgFastEnd)) * (bgRevealMax - bgFastBase);
           }
           const revealY = Math.round(H * revealFrac);
+
+          // 背景画像: progress に応じて遅延フェード（初期はログ優先、画像は変更しない）
+          let bgImgAlpha = 0;
+          if (p < 0.3) {
+            bgImgAlpha = 0;
+          } else if (p < 0.7) {
+            bgImgAlpha = Phaser.Math.Linear(0, 0.6, (p - 0.3) / 0.4);
+          } else {
+            bgImgAlpha = Phaser.Math.Linear(0.6, 1, (p - 0.7) / 0.3);
+          }
+          if (this._bootBg) this._bootBg.setAlpha(bgImgAlpha);
 
           // 未表示エリアの暗幕 (?noBootOverlay=1 で無効化)
           this._scanGfx.clear();
@@ -792,12 +818,12 @@
 
           // ── フェーズ3: "Overlap" タイトル描画（p=titleStart〜） ─────────────────
           const { titleStart, titleStop, noTitleMask } = BOOT_DEBUG;
-          if (p < titleStart) {
+          if (pTitle < titleStart) {
             this._overlapText.setAlpha(0);
             this._overlapMaskGfx.clear();
             this._titleScanGfx.clear();
           } else {
-            const titleP = titleStart < 1 ? (p - titleStart) / (1 - titleStart) : 1; // 0→1 as p: titleStart→1.0
+            const titleP = titleStart < 1 ? (pTitle - titleStart) / (1 - titleStart) : 1; // 0→1 as p: titleStart→1.0
 
             // アルファ: 出現直後に素早くフェードイン
             this._overlapText.setAlpha(Math.min(1, titleP * 3));
@@ -838,8 +864,8 @@
             if (!this._warnTextPlaced && this._bootTitleImg) {
               const imgDH2 = this._bootTitleImg.displayHeight;
               const topY2  = this._bootTitleImg.y - imgDH2 * 0.5;
-              // タイトル直下に近接配置 (gap = imgDH * 0.08)
-              const warnY1 = topY2 + imgDH2 + Math.round(imgDH2 * 0.08);
+              // タイトル下端にほぼ接触（原因とタイトルを結びつける）
+              const warnY1 = topY2 + imgDH2 + Math.round(imgDH2 * 0.04);
               const lineGap = 8;
               this._warnText1.setY(warnY1);
               this._warnText2.setY(warnY1 + this._warnText1.height + lineGap);
@@ -936,7 +962,7 @@
               const totalActive = this._logActiveCount;
               for (let _li = 0; _li < totalActive; _li++) {
                 const age = totalActive - _li;
-                const baseA = age === 0 ? 1.0 : Math.max(0.35, 1.0 - age * 0.06);
+                const baseA = age === 0 ? 1.0 : Math.max(0.95, 1.0 - age * 0.06);
                 this._logPool[_li].setAlpha(baseA);
               }
               t.setAlpha(1.0);
