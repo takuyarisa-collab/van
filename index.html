@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-30 20:45';
+      const BUILD_TIMESTAMP = '2026-04-30 23:18';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -396,7 +396,7 @@
           const totalActive = i + 1;
           for (let _li = 0; _li < totalActive; _li++) {
             const age = totalActive - _li;
-            const baseA = age === 0 ? 1.0 : Math.max(0.95, 1.0 - age * 0.06);
+            const baseA = age === 0 ? 1.0 : Math.max(0.5, 1.0 - age * 0.06);
             pool[_li].setAlpha(baseA);
           }
           t.setAlpha(1.0);
@@ -563,9 +563,9 @@
           this._collapseScheduled = false;
           this._collapseT = 0;
           this._collapseDur = 1000;
-          this._warnCollapseT = 0;
-          this._warnFrameRedrawAcc = 0;
+          this._warnBlinkIrregular = Math.random() * Math.PI * 2;
           this._cleanedUp = false;
+          this._collapseTransitionDone = false;
 
           // ── 背景: 崩壊レイヤー（ドリフト付き, depth -55〜-52） ────────────
           this._bootBackdrop = mountBootCollapsedBackdrop(this, {
@@ -810,8 +810,7 @@
           this._collapsePhase = true;
           this._collapseT = 0;
           this._collapseDur = Phaser.Math.FloatBetween(800, 1200);
-          this._warnCollapseT = 0;
-          this._warnFrameRedrawAcc = 0;
+          this._warnBlinkIrregular = Math.random() * Math.PI * 2;
           const cx = WORLD_W / 2;
           const cy = WORLD_H / 2;
           placeBootWarningBlock(this, cx, cy);
@@ -826,14 +825,17 @@
             this._progressTween.remove();
             this._progressTween = null;
           }
+          if (this._bootTitleImg) {
+            this._bootTitleImg.clearMask(true);
+          }
           console.log('[BootScene] collapse phase start', this._collapseDur, 'ms');
         }
 
         _finishBootAfterCollapse() {
-          if (this._cleanedUp) return;
-          console.log('[BootScene] collapse complete → home');
-          this._cleanup();
-          this.scene.start('home');
+          if (this._cleanedUp || this._collapseTransitionDone) return;
+          this._collapseTransitionDone = true;
+          console.log('[BootScene] collapse complete → home (wreck retained, no cleanup)');
+          this.scene.launch('home');
         }
 
         update() {
@@ -864,68 +866,70 @@
           if (this._collapsePhase && !this._cleanedUp) {
             const dt = this.game.loop.delta;
             this._collapseT += dt;
-            this._warnCollapseT += dt;
-            const u = Phaser.Math.Clamp(this._collapseT / this._collapseDur, 0, 1);
 
             if (this._bootBg) {
-              const bgA = Phaser.Math.Linear(this._bgBaseAlpha, Math.max(0.35, this._bgBaseAlpha * 0.72), u);
-              const sh = (1 - u) * 5 + u * 9;
+              const bgA = Phaser.Math.Clamp(
+                0.72 + 0.07 * Math.sin(this._collapseT * 0.0014) + (Math.random() - 0.5) * 0.05,
+                0.6,
+                0.85
+              );
               this._bootBg.setAlpha(bgA);
+              const bgShake = Phaser.Math.FloatBetween(2, 4);
               this._bootBg.setPosition(
-                this._bgBaseX + (Math.random() - 0.5) * sh,
-                this._bgBaseY + (Math.random() - 0.5) * sh
+                this._bgBaseX + (Math.random() - 0.5) * 2 * bgShake,
+                this._bgBaseY + (Math.random() - 0.5) * 2 * bgShake
               );
             }
 
-            if (this._bootTitleImg && this._bootTitleImg.visible) {
-              const shake = 2 + u * 10;
-              const ax = this._titleBaseX + (Math.random() - 0.5) * shake;
-              const ay = this._titleBaseY + (Math.random() - 0.5) * shake;
+            if (this._bootTitleImg) {
+              const titleShake = Phaser.Math.FloatBetween(3, 6);
+              const ax = this._titleBaseX + (Math.random() - 0.5) * 2 * titleShake;
+              const ay = this._titleBaseY + (Math.random() - 0.5) * 2 * titleShake;
               this._bootTitleImg.setPosition(ax, ay);
-              const wobble = 0.04 * Math.sin(this._collapseT * 0.022) + (Math.random() - 0.5) * 0.03 * u;
-              this._bootTitleImg.setScale(this._titleBaseScaleX + wobble, this._titleBaseScaleY - wobble * 0.6);
-              const titleA = Phaser.Math.Linear(1, 0, u * u * u);
+              const sc = Phaser.Math.FloatBetween(0.98, 1.02);
+              this._bootTitleImg.setScale(this._titleBaseScaleX * sc, this._titleBaseScaleY * sc);
+              this._bootTitleImg.setRotation(Phaser.Math.FloatBetween(-0.02, 0.02));
+              const titleA = Phaser.Math.Clamp(
+                0.25 + 0.06 * Math.sin(this._collapseT * 0.0021) + (Math.random() - 0.5) * 0.04,
+                0.15,
+                0.35
+              );
               this._bootTitleImg.setAlpha(titleA);
-              if (u >= 0.98) this._bootTitleImg.setVisible(false);
             }
 
-            const wct = this._warnCollapseT;
-            if (wct < 500 && this._warnText1 && this._warnText2) {
-              const blink = Math.sin(wct * 0.045) * 0.5 + 0.5;
-              const chaos = (Math.random() - 0.5) * 0.35;
-              this._warnText1.setAlpha(Phaser.Math.Clamp(0.35 + blink * 0.65 + chaos, 0, 1));
-              this._warnText2.setAlpha(Phaser.Math.Clamp(0.2 + (1 - blink) * 0.75 + chaos * 0.8, 0, 1));
-              if (this._warnFrame && this._warnLayout) {
-                this._warnFrameRedrawAcc += dt;
-                if (this._warnFrameRedrawAcc > 70) {
-                  this._warnFrameRedrawAcc = 0;
-                  const L = this._warnLayout;
-                  const gf = this._warnFrame;
-                  gf.clear();
-                  if (Math.random() > 0.25) {
-                    gf.fillStyle(0x6b2830, 0.06 + Math.random() * 0.08);
-                    gf.fillRect(L.rx, L.ry, L.rw, L.rh);
-                  }
-                  const seg = Math.random();
-                  gf.lineStyle(1, 0x8b3b42, 0.4 + Math.random() * 0.5);
-                  const { rx, ry, rw, rh, corner } = L;
-                  if (seg < 0.33) {
-                    gf.lineBetween(rx + corner, ry, rx + rw * 0.55, ry);
-                  } else if (seg < 0.66) {
-                    gf.lineBetween(rx + rw, ry + corner * 2, rx + rw, ry + rh * 0.55);
-                  } else {
-                    gf.lineBetween(rx + corner * 2.5, ry + rh, rx + rw * 0.5, ry + rh);
-                  }
-                  gf.lineStyle(2, 0x7a3038, 0.2 + Math.random() * 0.35);
-                  if (Math.random() > 0.4) gf.lineBetween(rx + corner, ry, rx + rw * 0.35, ry);
-                  this._warnFrame.setAlpha(0.55 + Math.random() * 0.45);
+            if (this._warnText1 && this._warnText2) {
+              this._warnBlinkIrregular += dt * Phaser.Math.FloatBetween(0.028, 0.095);
+              const b1 = Math.sin(this._warnBlinkIrregular) * 0.5 + 0.5;
+              const b2 = Math.sin(this._warnBlinkIrregular * 1.73 + 1.31) * 0.5 + 0.5;
+              const chaos = (Math.random() - 0.5) * 0.06;
+              this._warnText1.setAlpha(
+                Phaser.Math.Clamp(0.2 + b1 * 0.2 + chaos, 0.2, 0.4)
+              );
+              this._warnText2.setAlpha(
+                Phaser.Math.Clamp(0.2 + b2 * 0.2 - chaos, 0.2, 0.4)
+              );
+              if (this._warnFrame && this._warnLayout && Math.random() < Phaser.Math.FloatBetween(0.14, 0.36)) {
+                const L = this._warnLayout;
+                const gf = this._warnFrame;
+                gf.clear();
+                if (Math.random() > 0.25) {
+                  gf.fillStyle(0x6b2830, 0.06 + Math.random() * 0.08);
+                  gf.fillRect(L.rx, L.ry, L.rw, L.rh);
                 }
+                const seg = Math.random();
+                gf.lineStyle(1, 0x8b3b42, 0.4 + Math.random() * 0.5);
+                const { rx, ry, rw, rh, corner } = L;
+                if (seg < 0.33) {
+                  gf.lineBetween(rx + corner, ry, rx + rw * 0.55, ry);
+                } else if (seg < 0.66) {
+                  gf.lineBetween(rx + rw, ry + corner * 2, rx + rw, ry + rh * 0.55);
+                } else {
+                  gf.lineBetween(rx + corner * 2.5, ry + rh, rx + rw * 0.5, ry + rh);
+                }
+                gf.lineStyle(2, 0x7a3038, 0.2 + Math.random() * 0.35);
+                if (Math.random() > 0.4) gf.lineBetween(rx + corner, ry, rx + rw * 0.35, ry);
+                this._warnFrame.setAlpha(Phaser.Math.Clamp(0.45 + Math.random() * 0.3, 0.35, 0.75));
               }
-            } else {
-              this._warnText1?.setAlpha(0);
-              this._warnText2?.setAlpha(0);
-              this._warnFrame?.clear();
-              this._warnFrame?.setAlpha(0);
             }
 
             if (this._logPool) {
@@ -953,7 +957,7 @@
                 const totalActive = this._logActiveCount;
                 for (let _li = 0; _li < totalActive; _li++) {
                   const age = totalActive - _li;
-                  const baseA = age === 0 ? 1.0 : Math.max(0.55, 1.0 - age * 0.035);
+                  const baseA = age === 0 ? 1.0 : Math.max(0.5, 1.0 - age * 0.035);
                   this._logPool[_li].setAlpha(baseA);
                 }
                 t.setAlpha(1.0);
@@ -1105,7 +1109,7 @@
               const totalActive = this._logActiveCount;
               for (let _li = 0; _li < totalActive; _li++) {
                 const age = totalActive - _li;
-                const baseA = age === 0 ? 1.0 : Math.max(0.95, 1.0 - age * 0.06);
+                const baseA = age === 0 ? 1.0 : Math.max(0.5, 1.0 - age * 0.06);
                 this._logPool[_li].setAlpha(baseA);
               }
               t.setAlpha(1.0);
@@ -1622,6 +1626,9 @@
         }
 
         create() {
+          if (this.scene.isActive('boot')) {
+            this.scene.stop('boot');
+          }
           this.buildVisualAssets();
           this.lastTapAt = Number.NEGATIVE_INFINITY;
           this.activeNearAttack = null;
