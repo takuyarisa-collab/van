@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-30 19:05';
+      const BUILD_TIMESTAMP = '2026-04-30 20:45';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -359,6 +359,8 @@
         { cat: 2, text: '[SYS]   ABORT SIGNAL' },
         { cat: 1, text: '[WARN]  TILE OVERLAP' },
       ];
+      /** 崩壊フェーズ専用: ERROR のみ（比率最大化） */
+      const BOOT_LOG_MESSAGES_COLLAPSE = BOOT_LOG_MESSAGES_C.filter(m => m.cat === 0);
 
       /** Boot 開始直後に Phase A ログを 2〜4 行プリフィル（タイマーは create で 0） */
       function seedBootLogLines(scene) {
@@ -405,6 +407,42 @@
         scene._logLastCategory = lastCat;
         scene._logLastText = lastText;
         scene._logTimer = 0;
+      }
+
+      /** 警告2行＋フレームをタイトル下に一度だけ配置 */
+      function placeBootWarningBlock(scene, cx, cy) {
+        if (scene._warnTextPlaced || !scene._warnText1 || !scene._warnText2 || !scene._warnFrame || !scene._bootTitleImg) return;
+        const imgDH2 = scene._bootTitleImg.displayHeight;
+        const warnY1 = scene._bootTitleImg.y + imgDH2 * BOOT_DEBUG.warnOffsetY;
+        const lineGap = 8;
+        scene._warnText1.setY(warnY1);
+        scene._warnText2.setY(warnY1 + scene._warnText1.height + lineGap);
+        scene._warnTextPlaced = true;
+
+        const tw = Math.max(scene._warnText1.width, scene._warnText2.width);
+        const fy1 = warnY1;
+        const fy2 = scene._warnText2.y + scene._warnText2.height;
+        const fx = cx - tw * 0.5;
+        const padX = 12;
+        const padY = 6;
+        const rx = fx - padX;
+        const ry = fy1 - padY;
+        const rw = tw + padX * 2;
+        const rh = fy2 - fy1 + padY * 2;
+        const corner = 6;
+        const gf = scene._warnFrame;
+        gf.clear();
+        gf.fillStyle(0x6b2830, 0.10);
+        gf.fillRect(rx, ry, rw, rh);
+        gf.lineStyle(1, 0x8b3b42, 0.75);
+        gf.lineBetween(rx + corner, ry, rx + rw - corner * 2.5, ry);
+        gf.lineBetween(rx + rw, ry + corner * 2, rx + rw, ry + rh - corner);
+        gf.lineBetween(rx + corner * 2.5, ry + rh, rx + rw - corner, ry + rh);
+        gf.lineBetween(rx, ry + corner, rx, ry + rh - corner * 2);
+        gf.lineStyle(2, 0x7a3038, 0.45);
+        gf.lineBetween(rx + corner, ry, rx + rw * 0.4, ry);
+        gf.lineBetween(rx, ry + corner, rx, ry + rh * 0.45);
+        scene._warnLayout = { rx, ry, rw, rh, corner };
       }
 
       // ─────────────────────────────────────────────────────────────────────────
@@ -521,6 +559,13 @@
           this._progressState = { value: 0 };
           this._progress = 0;
           this._done = false;
+          this._collapsePhase = false;
+          this._collapseScheduled = false;
+          this._collapseT = 0;
+          this._collapseDur = 1000;
+          this._warnCollapseT = 0;
+          this._warnFrameRedrawAcc = 0;
+          this._cleanedUp = false;
 
           // ── 背景: 崩壊レイヤー（ドリフト付き, depth -55〜-52） ────────────
           this._bootBackdrop = mountBootCollapsedBackdrop(this, {
@@ -581,7 +626,7 @@
             fontSize: '13px',
             lineSpacing: 3,
           };
-          const LOG_MAX = 50;
+          const LOG_MAX = 70;
           const LOG_PAD_X = 8;
           const LOG_PAD_Y = 8;
           this._logPool = [];
@@ -680,12 +725,7 @@
               this._done = true;
               this._scanLineGfx.clear();
               this._titleScanGfx.clear();
-              // アニメーション完了後: タップでホームへ
-              this.input.once('pointerdown', () => {
-                this._cleanup();
-                console.log('[BootScene] phase complete → home');
-                this.scene.start('home');
-              });
+              this._scheduleBootCollapse(true);
             },
           });
 
@@ -698,7 +738,9 @@
           this._debugHud = createDebugHUD(this, () => {
             const _p = BOOT_DEBUG.progressOverride !== null ? BOOT_DEBUG.progressOverride : this._progress;
             let _phase;
-            if (this._done || _p >= 1) {
+            if (this._collapsePhase) {
+              _phase = 'collapse';
+            } else if (this._done || _p >= 1) {
               _phase = 'done';
             } else if (_p >= 0.9) {
               _phase = 'reveal';
@@ -734,14 +776,18 @@
         }
 
         _cleanup() {
+          if (this._cleanedUp) return;
+          this._cleanedUp = true;
           this._bootBackdrop?.destroy?.();
           this._scanGfx?.destroy();
           this._scanLineGfx?.destroy();
           this._titleScanGfx?.destroy();
           this._warnText1?.destroy();
           this._warnText2?.destroy();
+          this._warnFrame?.destroy();
           this._warnText1 = null;
           this._warnText2 = null;
+          this._warnFrame = null;
           this._logPool?.forEach(t => t.destroy());
           this._logPool = null;
           this._overlapText?.destroy();
@@ -758,7 +804,40 @@
           this._progressState = null;
         }
 
+        _scheduleBootCollapse(fromTweenComplete) {
+          if (this._collapseScheduled || this._cleanedUp) return;
+          this._collapseScheduled = true;
+          this._collapsePhase = true;
+          this._collapseT = 0;
+          this._collapseDur = Phaser.Math.FloatBetween(800, 1200);
+          this._warnCollapseT = 0;
+          this._warnFrameRedrawAcc = 0;
+          const cx = WORLD_W / 2;
+          const cy = WORLD_H / 2;
+          placeBootWarningBlock(this, cx, cy);
+          this._titleBaseX = this._bootTitleImg ? this._bootTitleImg.x : 0;
+          this._titleBaseY = this._bootTitleImg ? this._bootTitleImg.y : 0;
+          this._titleBaseScaleX = this._bootTitleImg ? this._bootTitleImg.scaleX : 1;
+          this._titleBaseScaleY = this._bootTitleImg ? this._bootTitleImg.scaleY : 1;
+          this._bgBaseX = this._bootBg ? this._bootBg.x : 0;
+          this._bgBaseY = this._bootBg ? this._bootBg.y : 0;
+          this._bgBaseAlpha = this._bootBg ? this._bootBg.alpha : 1;
+          if (fromTweenComplete && this._progressTween) {
+            this._progressTween.remove();
+            this._progressTween = null;
+          }
+          console.log('[BootScene] collapse phase start', this._collapseDur, 'ms');
+        }
+
+        _finishBootAfterCollapse() {
+          if (this._cleanedUp) return;
+          console.log('[BootScene] collapse complete → home');
+          this._cleanup();
+          this.scene.start('home');
+        }
+
         update() {
+          if (this._cleanedUp) return;
           if (!this._updateLogged) { console.log('[BOOT] update'); this._updateLogged = true; }
 
           let p = this._progress;
@@ -767,12 +846,127 @@
             if (this._progressTween?.isPlaying()) {
               this._progressTween.pause();
             }
+            if (p >= 1 && !this._collapseScheduled) {
+              this._progress = 1;
+              this._done = true;
+              this._scanLineGfx?.clear();
+              this._titleScanGfx?.clear();
+              this._scheduleBootCollapse(false);
+            }
           }
           const pTitle = BOOT_DEBUG.progressOverride !== null ? p : bootTitleProgressHitch(p);
           const W = WORLD_W;
           const H = WORLD_H;
           const cx = W / 2;
           const cy = H / 2;
+
+          // ── 崩壊フェーズ（progress 完了後 0.8〜1.2s → Home 自動遷移） ─────
+          if (this._collapsePhase && !this._cleanedUp) {
+            const dt = this.game.loop.delta;
+            this._collapseT += dt;
+            this._warnCollapseT += dt;
+            const u = Phaser.Math.Clamp(this._collapseT / this._collapseDur, 0, 1);
+
+            if (this._bootBg) {
+              const bgA = Phaser.Math.Linear(this._bgBaseAlpha, Math.max(0.35, this._bgBaseAlpha * 0.72), u);
+              const sh = (1 - u) * 5 + u * 9;
+              this._bootBg.setAlpha(bgA);
+              this._bootBg.setPosition(
+                this._bgBaseX + (Math.random() - 0.5) * sh,
+                this._bgBaseY + (Math.random() - 0.5) * sh
+              );
+            }
+
+            if (this._bootTitleImg && this._bootTitleImg.visible) {
+              const shake = 2 + u * 10;
+              const ax = this._titleBaseX + (Math.random() - 0.5) * shake;
+              const ay = this._titleBaseY + (Math.random() - 0.5) * shake;
+              this._bootTitleImg.setPosition(ax, ay);
+              const wobble = 0.04 * Math.sin(this._collapseT * 0.022) + (Math.random() - 0.5) * 0.03 * u;
+              this._bootTitleImg.setScale(this._titleBaseScaleX + wobble, this._titleBaseScaleY - wobble * 0.6);
+              const titleA = Phaser.Math.Linear(1, 0, u * u * u);
+              this._bootTitleImg.setAlpha(titleA);
+              if (u >= 0.98) this._bootTitleImg.setVisible(false);
+            }
+
+            const wct = this._warnCollapseT;
+            if (wct < 500 && this._warnText1 && this._warnText2) {
+              const blink = Math.sin(wct * 0.045) * 0.5 + 0.5;
+              const chaos = (Math.random() - 0.5) * 0.35;
+              this._warnText1.setAlpha(Phaser.Math.Clamp(0.35 + blink * 0.65 + chaos, 0, 1));
+              this._warnText2.setAlpha(Phaser.Math.Clamp(0.2 + (1 - blink) * 0.75 + chaos * 0.8, 0, 1));
+              if (this._warnFrame && this._warnLayout) {
+                this._warnFrameRedrawAcc += dt;
+                if (this._warnFrameRedrawAcc > 70) {
+                  this._warnFrameRedrawAcc = 0;
+                  const L = this._warnLayout;
+                  const gf = this._warnFrame;
+                  gf.clear();
+                  if (Math.random() > 0.25) {
+                    gf.fillStyle(0x6b2830, 0.06 + Math.random() * 0.08);
+                    gf.fillRect(L.rx, L.ry, L.rw, L.rh);
+                  }
+                  const seg = Math.random();
+                  gf.lineStyle(1, 0x8b3b42, 0.4 + Math.random() * 0.5);
+                  const { rx, ry, rw, rh, corner } = L;
+                  if (seg < 0.33) {
+                    gf.lineBetween(rx + corner, ry, rx + rw * 0.55, ry);
+                  } else if (seg < 0.66) {
+                    gf.lineBetween(rx + rw, ry + corner * 2, rx + rw, ry + rh * 0.55);
+                  } else {
+                    gf.lineBetween(rx + corner * 2.5, ry + rh, rx + rw * 0.5, ry + rh);
+                  }
+                  gf.lineStyle(2, 0x7a3038, 0.2 + Math.random() * 0.35);
+                  if (Math.random() > 0.4) gf.lineBetween(rx + corner, ry, rx + rw * 0.35, ry);
+                  this._warnFrame.setAlpha(0.55 + Math.random() * 0.45);
+                }
+              }
+            } else {
+              this._warnText1?.setAlpha(0);
+              this._warnText2?.setAlpha(0);
+              this._warnFrame?.clear();
+              this._warnFrame?.setAlpha(0);
+            }
+
+            if (this._logPool) {
+              const collapseMsgs = BOOT_LOG_MESSAGES_COLLAPSE.length ? BOOT_LOG_MESSAGES_COLLAPSE : BOOT_LOG_MESSAGES_C;
+              this._logTimer += dt;
+              const interval = 22 + Math.random() * 26;
+              if (this._logTimer >= interval && this._logActiveCount < this._logPool.length) {
+                this._logTimer = 0;
+                const t = this._logPool[this._logActiveCount];
+                let tries = 0;
+                let entry = collapseMsgs[this._logMsgIndex % collapseMsgs.length];
+                while (
+                  tries < collapseMsgs.length &&
+                  entry.text === this._logLastText
+                ) {
+                  this._logMsgIndex++;
+                  entry = collapseMsgs[this._logMsgIndex % collapseMsgs.length];
+                  tries++;
+                }
+                this._logLastCategory = entry.cat;
+                this._logLastText = entry.text;
+                this._logMsgIndex++;
+                t.setStyle({ color: '#ff6a6a' });
+                t.setText(entry.text);
+                const totalActive = this._logActiveCount;
+                for (let _li = 0; _li < totalActive; _li++) {
+                  const age = totalActive - _li;
+                  const baseA = age === 0 ? 1.0 : Math.max(0.55, 1.0 - age * 0.035);
+                  this._logPool[_li].setAlpha(baseA);
+                }
+                t.setAlpha(1.0);
+                this._logActiveCount++;
+              }
+            }
+
+            if (this._collapseT >= this._collapseDur) {
+              this._finishBootAfterCollapse();
+            }
+            this._debugHud?.tick();
+            return;
+          }
 
           // ── フェーズ2: 背景スキャン（上から下へ表示範囲を拡大） ──────────
           // alpha と revealY は同一 bgEase（easeInCubic: 最初ゆっくり、後半で速く）
@@ -844,40 +1038,7 @@
 
           // ── 警告テキスト2行: p > 0.9 でタイトル直下に固定表示 ────────────
           if (p > 0.9) {
-            if (!this._warnTextPlaced && this._bootTitleImg) {
-              const imgDH2 = this._bootTitleImg.displayHeight;
-              // PNG 透明余白で下端基準だと下がりすぎるため、中心基準の固定オフセット
-              const warnY1 = this._bootTitleImg.y + imgDH2 * BOOT_DEBUG.warnOffsetY;
-              const lineGap = 8;
-              this._warnText1.setY(warnY1);
-              this._warnText2.setY(warnY1 + this._warnText1.height + lineGap);
-              this._warnTextPlaced = true;
-
-              // フレーム: 2行全体を囲う欠け矩形 (一度だけ描画)
-              const tw  = Math.max(this._warnText1.width, this._warnText2.width);
-              const fy1 = warnY1;
-              const fy2 = this._warnText2.y + this._warnText2.height;
-              const fx  = cx - tw * 0.5;
-              const padX = 12, padY = 6;
-              const rx = fx - padX, ry = fy1 - padY;
-              const rw = tw + padX * 2, rh = (fy2 - fy1) + padY * 2;
-              const gf = this._warnFrame;
-              gf.clear();
-              // 薄い赤灰背景
-              gf.fillStyle(0x6b2830, 0.10);
-              gf.fillRect(rx, ry, rw, rh);
-              // メイン欠け矩形フレーム
-              const corner = 6;
-              gf.lineStyle(1, 0x8b3b42, 0.75);
-              gf.lineBetween(rx + corner,        ry,       rx + rw - corner * 2.5, ry);
-              gf.lineBetween(rx + rw,            ry + corner * 2, rx + rw, ry + rh - corner);
-              gf.lineBetween(rx + corner * 2.5,  ry + rh,  rx + rw - corner, ry + rh);
-              gf.lineBetween(rx,                 ry + corner, rx, ry + rh - corner * 2);
-              // 補助線
-              gf.lineStyle(2, 0x7a3038, 0.45);
-              gf.lineBetween(rx + corner, ry, rx + rw * 0.4, ry);
-              gf.lineBetween(rx, ry + corner, rx, ry + rh * 0.45);
-            }
+            placeBootWarningBlock(this, cx, cy);
             // 上段: alpha 0.95固定
             this._warnText1.setAlpha(0.95);
             // 下段: ゆっくり点滅 alpha 1.0 ↔ 0.85
