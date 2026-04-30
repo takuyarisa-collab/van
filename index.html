@@ -1193,16 +1193,22 @@
       // ─────────────────────────────────────────────────────────────────────────
 
       const HOME_LAYOUT = (() => {
-        const centerX       = WORLD_W / 2;
-        const startCenterY  = WORLD_H / 2;
-        const startWidth    = Math.round(WORLD_W * 0.55);
-        const startHeight   = 88;
-        const subButtonWidth    = Math.round(startWidth * 0.82);
-        const subButtonHeight   = Math.round(startHeight * 0.46);
-        const subButtonSpacing  = 16;
-        // top-left Y of the first sub-button row
-        const subButtonsTopY    = startCenterY + startHeight / 2 + 48;
+        const W = WORLD_W;
+        const H = WORLD_H;
+        const centerX = W / 2;
+        const cy = H / 2;
+        // 画面中央 (cx, cy) を基準。START はやや下（視覚的に上寄りの塊として主役化 + 上部余白）
+        const startCenterY = cy + H * 0.1;
+        const startWidth = W * 0.52;
+        const startHeight = H * 0.075;
+        const subButtonWidth = W * 0.58;
+        const subButtonHeight = H * 0.055;
         const labels = ['ENHANCE', 'LOADOUT', 'LOG'];
+        // サブボタン中心 Y（START_y = START 中心）: 上段は広め、その下は比率間隔
+        const enhanceY = startCenterY + H * 0.12;
+        const loadoutY = enhanceY + H * 0.085;
+        const logY = loadoutY + H * 0.085;
+        const subButtonCenterYs = Object.freeze([enhanceY, loadoutY, logY]);
 
         // ── outerFrame: 6-part decomposition of one outer border ────────────
         // padding from world edges
@@ -1234,8 +1240,7 @@
           startHeight,
           subButtonWidth,
           subButtonHeight,
-          subButtonSpacing,
-          subButtonsTopY,
+          subButtonCenterYs,
           labels,
           outerFrame,
         });
@@ -1371,25 +1376,27 @@
           };
 
           // ── Phaser display objects (allocated once, redrawn by _redrawHomeUI) ─
-          this._gStartFill = this.add.graphics().setDepth(3);
-          this._gStartFrameTop    = this.add.graphics().setDepth(4);
-          this._gStartFrameBottom = this.add.graphics().setDepth(4);
-          this._gStartFrameLeft   = this.add.graphics().setDepth(4);
-          this._gStartFrameRight  = this.add.graphics().setDepth(4);
+          const _depthStart = 12;
+          const _depthSub = 11;
+          this._gStartFill = this.add.graphics().setDepth(_depthStart);
+          this._gStartFrameTop    = this.add.graphics().setDepth(_depthStart);
+          this._gStartFrameBottom = this.add.graphics().setDepth(_depthStart);
+          this._gStartFrameLeft   = this.add.graphics().setDepth(_depthStart);
+          this._gStartFrameRight  = this.add.graphics().setDepth(_depthStart);
           this._startText = this.add.text(0, 0, 'START', {
             fontFamily: 'system-ui, -apple-system, sans-serif',
             fontSize: '34px',
             fontStyle: 'bold',
             color: START_TEXT_COL,
             letterSpacing: 6,
-          }).setOrigin(0.5).setDepth(5);
+          }).setOrigin(0.5).setDepth(_depthStart);
 
           // 4 independent side graphics per sub button (top, bottom, left, right)
           this._subFrameSides = HOME_LAYOUT.labels.map(() => ({
-            top:    this.add.graphics().setDepth(4),
-            bottom: this.add.graphics().setDepth(4),
-            left:   this.add.graphics().setDepth(4),
-            right:  this.add.graphics().setDepth(4),
+            top:    this.add.graphics().setDepth(_depthSub),
+            bottom: this.add.graphics().setDepth(_depthSub),
+            left:   this.add.graphics().setDepth(_depthSub),
+            right:  this.add.graphics().setDepth(_depthSub),
           }));
           this._subTexts = HOME_LAYOUT.labels.map((label) =>
             this.add.text(0, 0, label, {
@@ -1397,7 +1404,7 @@
               fontSize: '14px',
               color: SUB_TEXT,
               letterSpacing: 4,
-            }).setOrigin(0.5).setDepth(5)
+            }).setOrigin(0.5).setDepth(_depthSub)
           );
 
           // ── outerFrame: 6 independent segment graphics ───────────────────────
@@ -1481,8 +1488,7 @@
             const L = HOME_LAYOUT;
             HOME_LAYOUT.labels.forEach((_, i) => {
               const sub    = this._delta.sub[i];
-              const baseCY = L.subButtonsTopY + i * (L.subButtonHeight + L.subButtonSpacing)
-                             + L.subButtonHeight / 2;
+              const baseCY = L.subButtonCenterYs[i];
               const cx = L.centerX + sub.offsetX;
               const cy = baseCY   + sub.offsetY;
               const hw = L.subButtonWidth  / 2;
@@ -1602,8 +1608,7 @@
           // sub[i].offsetX/Y/alpha = whole-button transform.
           // sub[i].frameTop/Bottom/Left/Right = per-side visibility overrides.
           L.labels.forEach((_, i) => {
-            const baseCY = L.subButtonsTopY + i * (L.subButtonHeight + L.subButtonSpacing)
-                           + L.subButtonHeight / 2;
+            const baseCY = L.subButtonCenterYs[i];
             const sub = this._delta.sub[i];
             const bx  = L.centerX - L.subButtonWidth / 2 + sub.offsetX;
             const by  = baseCY - L.subButtonHeight / 2   + sub.offsetY;
@@ -1618,7 +1623,7 @@
               const ew = bw * sideDelta.scaleX;
               const eh = bh * sideDelta.scaleY;
               g.clear();
-              g.setAlpha(effAlpha * 0.55);
+              g.setAlpha(effAlpha);
               g.lineStyle(SUB_LW, SUB_LINE, 1.0);
               drawFn(g, ex, ey, ew, eh);
             };
@@ -1642,7 +1647,7 @@
               const x = L.centerX + sub.offsetX + d.offsetX;
               const y = baseCY    + sub.offsetY + d.offsetY;
               this._subTexts[i].setPosition(x, y);
-              this._subTexts[i].setAlpha(sub.alpha * d.alpha * 0.55);
+              this._subTexts[i].setAlpha(sub.alpha * d.alpha);
               this._subTexts[i].setAngle(d.rotation);
               this._subTexts[i].setScale(d.scaleX, d.scaleY);
             }
