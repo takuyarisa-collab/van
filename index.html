@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-30 01:06';
+      const BUILD_TIMESTAMP = '2026-04-30 05:39';
 
 
       const BUILD_COMMIT_SHORT = 'local';
@@ -468,29 +468,34 @@
           // スキャン先端ライン (depth -39)
           this._scanLineGfx = this.add.graphics().setDepth(-39);
 
-          // ── 警告テキスト: タイトル下に固定 (p > 0.9 で表示) ────────────
-          // タイトルの displayHeight は create 時点では scale が反映されないため
-          // update() 内で初回のみ位置を確定する (_warnTextPlaced フラグ)
-          this._warnText = this.add.text(cx, cy + 27, 'ERROR: OVERLAP DETECTED', {
+          // ── 警告テキスト: 2行化 (p > 0.9 でタイトル直下に表示) ─────────
+          // 上段: CRITICAL ERROR / 下段: OVERLAP DETECTED (点滅あり)
+          // create 時点では displayHeight が未確定のため update() で初回配置
+          this._warnText1 = this.add.text(cx, cy, 'CRITICAL ERROR', {
             fontFamily: '"Courier New", Courier, monospace',
-            fontSize: '20px',
-            color: '#d05050',
+            fontSize: '19px',
+            color: '#e05858',
+          }).setOrigin(0.5, 0).setAlpha(0).setDepth(12);
+          this._warnText2 = this.add.text(cx, cy, 'OVERLAP DETECTED', {
+            fontFamily: '"Courier New", Courier, monospace',
+            fontSize: '23px',
+            color: '#ff5a5a',
           }).setOrigin(0.5, 0).setAlpha(0).setDepth(12);
           this._warnTextPlaced = false;
+          this._warnBlink = 0;
 
-          // ── 警告フレーム: 警告テキスト周囲の欠け矩形 (depth 12) ──────────
+          // ── 警告フレーム: 2行全体を囲う欠け矩形 (depth 12) ───────────────
           this._warnFrame = this.add.graphics().setDepth(12).setAlpha(0);
 
           // ── 左上ログ流入: プール (最大 50 行) ────────────────────────────
-          // 毎フレーム破棄・生成しない。配列で管理し追記のみ行う。
-          const _LOG_COLORS = ['#d06060', '#c05060', '#6f8296', '#8fa8b8'];
+          // 色はカテゴリで決定: ERROR=#ff6a6a, WARN=#ff6a6a(薄), SYS/INFO=#5f7388
+          // 最新行は高アルファ、古い行は減衰
           const _LOG_FONT = {
             fontFamily: '"Courier New", Courier, monospace',
             fontSize: '11px',
             lineSpacing: 1,
           };
           const LOG_MAX = 50;
-          const LOG_LINE_H = 14;
           const LOG_PAD_X = 8;
           const LOG_PAD_Y = 8;
           this._logPool = [];
@@ -505,7 +510,7 @@
             const dy = (Math.random() - 0.5) * 2;
             const t = this.add.text(LOG_PAD_X + dx, _logCumY + dy, '', {
               ..._LOG_FONT,
-              color: _LOG_COLORS[i % _LOG_COLORS.length],
+              color: '#5f7388',
             }).setOrigin(0, 0).setAlpha(0).setDepth(11);
             this._logPool.push(t);
             _logCumY += this._logLineOffsets[i];
@@ -514,6 +519,7 @@
           this._logTimer = 0;
           this._logMsgIndex = 0;
           this._logLastCategory = -1;
+          this._logLastText = '';
 
           // ── "Overlap" タイトル: フォント版（非表示・構造体版に切替済み） ─
           // cx+1px: 意図的な微ズレ（微違和感）
@@ -546,7 +552,7 @@
             .setDepth(10);
           const imgNatW = this._bootTitleImg.width;
           const _imgNatH = this._bootTitleImg.height;
-          const _imgScale = (WORLD_W * 0.78) / (imgNatW || 1);
+          const _imgScale = (WORLD_W * 0.82) / (imgNatW || 1);
           this._bootTitleImg.setScale(_imgScale);
 
           // _overlapMask を PNG タイトルにも共用: 同じ矩形で左→右スキャン表示
@@ -644,8 +650,10 @@
           this._scanGfx?.destroy();
           this._scanLineGfx?.destroy();
           this._titleScanGfx?.destroy();
-          this._warnText?.destroy();
-          this._warnText = null;
+          this._warnText1?.destroy();
+          this._warnText2?.destroy();
+          this._warnText1 = null;
+          this._warnText2 = null;
           this._logPool?.forEach(t => t.destroy());
           this._logPool = null;
           this._overlapText?.destroy();
@@ -749,93 +757,144 @@
             }
           }
 
-          // ── 警告テキスト: p > 0.9 でタイトル直下に固定表示 ─────────────
+          // ── 警告テキスト2行: p > 0.9 でタイトル直下に固定表示 ────────────
           if (p > 0.9) {
             if (!this._warnTextPlaced && this._bootTitleImg) {
               const imgDH2 = this._bootTitleImg.displayHeight;
               const topY2  = this._bootTitleImg.y - imgDH2 * 0.5;
-              const warnY  = topY2 + imgDH2 + Math.round(imgDH2 * 0.13);
-              this._warnText.setY(warnY);
+              // タイトル直下に近接配置 (gap = imgDH * 0.08)
+              const warnY1 = topY2 + imgDH2 + Math.round(imgDH2 * 0.08);
+              const lineGap = 8;
+              this._warnText1.setY(warnY1);
+              this._warnText2.setY(warnY1 + this._warnText1.height + lineGap);
               this._warnTextPlaced = true;
 
-              // フレーム描画 (一度だけ・欠け矩形)
-              const tw = this._warnText.width;
-              const th = this._warnText.height;
-              const fx = this._warnText.x - tw * 0.5;
-              const fy = warnY;
-              const padX = 10, padY = 5;
-              const rx = fx - padX, ry = fy - padY;
-              const rw = tw + padX * 2, rh = th + padY * 2;
+              // フレーム: 2行全体を囲う欠け矩形 (一度だけ描画)
+              const tw  = Math.max(this._warnText1.width, this._warnText2.width);
+              const fy1 = warnY1;
+              const fy2 = this._warnText2.y + this._warnText2.height;
+              const fx  = cx - tw * 0.5;
+              const padX = 12, padY = 6;
+              const rx = fx - padX, ry = fy1 - padY;
+              const rw = tw + padX * 2, rh = (fy2 - fy1) + padY * 2;
               const gf = this._warnFrame;
               gf.clear();
-              // ごく薄い赤灰の背景塗り
-              gf.fillStyle(0x6b2830, 0.06);
+              // 薄い赤灰背景
+              gf.fillStyle(0x6b2830, 0.10);
               gf.fillRect(rx, ry, rw, rh);
-              // 欠け矩形フレーム: 4辺を分割して角を一部省く
+              // メイン欠け矩形フレーム
               const corner = 6;
-              gf.lineStyle(1, 0x8b3b42, 0.55);
-              // 上辺 (右端角 欠け)
-              gf.lineBetween(rx + corner, ry, rx + rw - corner * 2.5, ry);
-              // 右辺 (上端角 欠け)
-              gf.lineBetween(rx + rw, ry + corner * 2, rx + rw, ry + rh - corner);
-              // 下辺 (左端角 欠け)
-              gf.lineBetween(rx + corner * 2.5, ry + rh, rx + rw - corner, ry + rh);
-              // 左辺 (下端角 欠け)
-              gf.lineBetween(rx, ry + corner, rx, ry + rh - corner * 2);
-              // 補助線 (少し薄め・1px太め)
-              gf.lineStyle(2, 0x7a3038, 0.30);
+              gf.lineStyle(1, 0x8b3b42, 0.75);
+              gf.lineBetween(rx + corner,        ry,       rx + rw - corner * 2.5, ry);
+              gf.lineBetween(rx + rw,            ry + corner * 2, rx + rw, ry + rh - corner);
+              gf.lineBetween(rx + corner * 2.5,  ry + rh,  rx + rw - corner, ry + rh);
+              gf.lineBetween(rx,                 ry + corner, rx, ry + rh - corner * 2);
+              // 補助線
+              gf.lineStyle(2, 0x7a3038, 0.45);
               gf.lineBetween(rx + corner, ry, rx + rw * 0.4, ry);
               gf.lineBetween(rx, ry + corner, rx, ry + rh * 0.45);
             }
-            this._warnText.setAlpha(1.0);
+            // 上段: alpha 0.95固定
+            this._warnText1.setAlpha(0.95);
+            // 下段: ゆっくり点滅 alpha 1.0 ↔ 0.85
+            this._warnBlink = (this._warnBlink || 0) + this.game.loop.delta * 0.0018;
+            const blinkA = 0.925 + Math.sin(this._warnBlink) * 0.075;
+            this._warnText2.setAlpha(blinkA);
             this._warnFrame.setAlpha(1);
           } else {
-            this._warnText.setAlpha(0);
+            this._warnText1.setAlpha(0);
+            this._warnText2.setAlpha(0);
             this._warnFrame.setAlpha(0);
           }
 
-          // ── 左上ログ流入: p > 0.9 で行を追加、消さずに蓄積 ──────────────
-          // カテゴリ: 0=ERROR, 1=WARN, 2=SYS
-          const LOG_MESSAGES = [
+          // ── 左上ログ流入: progress フェーズで出現率制御 ──────────────────
+          // Phase A (p < 0.75): 正常ログのみ
+          // Phase B (0.75〜0.9): 正常 + WARN 混在
+          // Phase C (p > 0.9):  ERROR 増殖
+          // カテゴリ: 0=ERROR, 1=WARN, 2=SYS, 3=INFO
+          const LOG_MESSAGES_A = [
+            { cat: 3, text: '[SYS]  BOOT INIT' },
+            { cat: 3, text: '[INFO] CACHE OK' },
+            { cat: 3, text: '[SYS]  STARTUP COMPLETE' },
+            { cat: 3, text: '[INFO] LOAD ASSETS' },
+            { cat: 3, text: '[SYS]  INIT OK' },
+          ];
+          const LOG_MESSAGES_B = [
+            { cat: 1, text: '[WARN] LAYER CONFLICT' },
+            { cat: 2, text: '[SYS]  RETRY...' },
+            { cat: 3, text: '[SYS]  INIT OK' },
+            { cat: 1, text: '[WARN] SEQUENCE MISMATCH' },
+            { cat: 3, text: '[INFO] CACHE OK' },
+          ];
+          const LOG_MESSAGES_C = [
             { cat: 0, text: '[ERROR] OVERLAP DETECTED' },
-            { cat: 1, text: '[WARN]  LAYER CONFLICT' },
             { cat: 0, text: '[ERROR] BUFFER OVERFLOW' },
             { cat: 0, text: '[ERROR] RENDER LOCK' },
-            { cat: 2, text: '[SYS]   RETRY...' },
             { cat: 0, text: '[ERROR] MEMORY ADDRESS CONFLICT' },
             { cat: 1, text: '[WARN]  STACK CORRUPTION' },
             { cat: 2, text: '[SYS]   REINIT FAILED' },
-            { cat: 1, text: '[WARN]  SEQUENCE MISMATCH' },
             { cat: 0, text: '[ERROR] FRAME DESYNC' },
             { cat: 2, text: '[SYS]   ABORT SIGNAL' },
             { cat: 1, text: '[WARN]  TILE OVERLAP' },
           ];
-          if (p > 0.9 && this._logPool) {
+
+          let _activeMessages;
+          let _logStartThreshold;
+          if (p < 0.75) {
+            _activeMessages = LOG_MESSAGES_A;
+            _logStartThreshold = 0.2;
+          } else if (p < 0.9) {
+            _activeMessages = LOG_MESSAGES_B;
+            _logStartThreshold = 0.75;
+          } else {
+            _activeMessages = LOG_MESSAGES_C;
+            _logStartThreshold = 0.9;
+          }
+
+          if (p > _logStartThreshold && this._logPool) {
             const delta = this.game.loop.delta;
             this._logTimer += delta;
-            // progress が進むほど追加間隔が短くなる (200ms → 80ms)
-            const interval = Phaser.Math.Linear(200, 80, (p - 0.9) / 0.1);
+            // progress が進むほど追加間隔が短くなる
+            let interval;
+            if (p < 0.75) {
+              interval = Phaser.Math.Linear(300, 160, (p - 0.2) / 0.55);
+            } else if (p < 0.9) {
+              interval = Phaser.Math.Linear(180, 120, (p - 0.75) / 0.15);
+            } else {
+              interval = Phaser.Math.Linear(150, 60, (p - 0.9) / 0.1);
+            }
             if (this._logTimer >= interval && this._logActiveCount < this._logPool.length) {
               this._logTimer = 0;
               const t = this._logPool[this._logActiveCount];
               // 同カテゴリ連続・同一テキスト連続を回避
               let tries = 0;
-              let entry = LOG_MESSAGES[this._logMsgIndex % LOG_MESSAGES.length];
-              const lastText = this._logActiveCount > 0
-                ? this._logPool[this._logActiveCount - 1].text
-                : '';
+              let entry = _activeMessages[this._logMsgIndex % _activeMessages.length];
               while (
-                tries < LOG_MESSAGES.length &&
-                (entry.cat === this._logLastCategory || entry.text === lastText)
+                tries < _activeMessages.length &&
+                (entry.cat === this._logLastCategory || entry.text === this._logLastText)
               ) {
                 this._logMsgIndex++;
-                entry = LOG_MESSAGES[this._logMsgIndex % LOG_MESSAGES.length];
+                entry = _activeMessages[this._logMsgIndex % _activeMessages.length];
                 tries++;
               }
               this._logLastCategory = entry.cat;
+              this._logLastText = entry.text;
               this._logMsgIndex++;
+
+              // カテゴリ別色設定
+              const isError = entry.cat === 0;
+              const isWarn  = entry.cat === 1;
+              t.setStyle({ color: (isError || isWarn) ? '#ff6a6a' : '#5f7388' });
               t.setText(entry.text);
-              t.setAlpha(0.85 + Math.random() * 0.15);
+
+              // 最新行は高アルファ、古い行は徐々に減衰
+              const totalActive = this._logActiveCount;
+              for (let _li = 0; _li < totalActive; _li++) {
+                const age = totalActive - _li;
+                const baseA = age === 0 ? 1.0 : Math.max(0.35, 1.0 - age * 0.06);
+                this._logPool[_li].setAlpha(baseA);
+              }
+              t.setAlpha(1.0);
               this._logActiveCount++;
             }
           }
