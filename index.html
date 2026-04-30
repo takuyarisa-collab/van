@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-30 15:20';
+      const BUILD_TIMESTAMP = '2026-04-30 16:40';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -288,7 +288,7 @@
 
       // ─────────────────────────────────────────────────────────────────────────
       // Boot デバッグ用 URLパラメータ
-      // 例: ?bootDur=2000&bgFastEnd=0.4&noTitleMask=1
+      // 例: ?bootDur=2000&bgFastEnd=0.4&noTitleMask=1&warnOffsetY=0.28
       // 未指定時は各デフォルト値（現在の挙動）を使用する
       // ─────────────────────────────────────────────────────────────────────────
       (() => {
@@ -332,6 +332,8 @@
         showBootBg:       window.BOOT_PARAM_getBool('showBootBg',       false),
         // ?debug=1 のときだけ構造体を表示し、PNG と重ねてズレを確認する
         debug:            window.BOOT_PARAM_getBool('debug',            false),
+        // 警告ブロックの Y: タイトル中心 + displayHeight * この係数（0.22〜0.32 目安）
+        warnOffsetY:      window.BOOT_PARAM_getNum('warnOffsetY',        0.28),
       };
 
       // Boot 左上ログ: メッセージプール（Phase A/B/C）
@@ -789,16 +791,12 @@
           }
           const revealY = Math.round(H * revealFrac);
 
-          // 背景画像: progress に応じて遅延フェード（初期はログ優先、画像は変更しない）
-          let bgImgAlpha = 0;
-          if (p < 0.3) {
-            bgImgAlpha = 0;
-          } else if (p < 0.7) {
-            bgImgAlpha = Phaser.Math.Linear(0, 0.6, (p - 0.3) / 0.4);
-          } else {
-            bgImgAlpha = Phaser.Math.Linear(0.6, 1, (p - 0.7) / 0.3);
-          }
-          if (this._bootBg) this._bootBg.setAlpha(bgImgAlpha);
+          // 背景画像: progress に応じて遅延フェード（easeInCubic: 最初ゆっくり、後半で速く不透明へ）
+          const bgStart = 0.18;
+          const bgEnd = 0.95;
+          const tBg = Phaser.Math.Clamp((p - bgStart) / (bgEnd - bgStart), 0, 1);
+          const easedBg = tBg * tBg * tBg;
+          if (this._bootBg) this._bootBg.setAlpha(easedBg);
 
           // 未表示エリアの暗幕 (?noBootOverlay=1 で無効化)
           this._scanGfx.clear();
@@ -863,9 +861,8 @@
           if (p > 0.9) {
             if (!this._warnTextPlaced && this._bootTitleImg) {
               const imgDH2 = this._bootTitleImg.displayHeight;
-              const topY2  = this._bootTitleImg.y - imgDH2 * 0.5;
-              // タイトル下端にほぼ接触（原因とタイトルを結びつける）
-              const warnY1 = topY2 + imgDH2 + Math.round(imgDH2 * 0.04);
+              // PNG 透明余白で下端基準だと下がりすぎるため、中心基準の固定オフセット
+              const warnY1 = this._bootTitleImg.y + imgDH2 * BOOT_DEBUG.warnOffsetY;
               const lineGap = 8;
               this._warnText1.setY(warnY1);
               this._warnText2.setY(warnY1 + this._warnText1.height + lineGap);
