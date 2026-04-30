@@ -862,7 +862,7 @@
           const cx = W / 2;
           const cy = H / 2;
 
-          // ── 崩壊フェーズ（progress 完了後 0.8〜1.2s → Home 自動遷移） ─────
+          // ── 崩壊フェーズ（progress 完了後 0.8〜1.2s → Home を launch、Boot は残骸のまま稼働）
           if (this._collapsePhase && !this._cleanedUp) {
             const dt = this.game.loop.delta;
             this._collapseT += dt;
