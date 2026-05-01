@@ -170,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-01 18:45';
+      const BUILD_TIMESTAMP = '2026-05-01 21:30';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -391,11 +391,12 @@
           const isWarn = entry.cat === 1;
           t.setStyle({ color: (isError || isWarn) ? '#ff6a6a' : '#5f7388' });
           t.setText(entry.text);
+          t.setStyle({ letterSpacing: Phaser.Math.FloatBetween(-0.5, 0.5) });
 
           const totalActive = i + 1;
           for (let _li = 0; _li < totalActive; _li++) {
             const age = totalActive - _li;
-            const baseA = age === 0 ? 1.0 : Math.max(0.5, 1.0 - age * 0.06);
+            const baseA = age === 0 ? 1.0 : Math.max(0.6, 1.0 - age * 0.06);
             pool[_li].setAlpha(baseA);
           }
           t.setAlpha(1.0);
@@ -1026,10 +1027,11 @@
                 this._logMsgIndex++;
                 t.setStyle({ color: '#ff6a6a' });
                 t.setText(entry.text);
+                t.setStyle({ letterSpacing: Phaser.Math.FloatBetween(-0.5, 0.5) });
                 const totalActive = this._logActiveCount;
                 for (let _li = 0; _li < totalActive; _li++) {
                   const age = totalActive - _li;
-                  const baseA = age === 0 ? 1.0 : Math.max(0.5, 1.0 - age * 0.035);
+                  const baseA = age === 0 ? 1.0 : Math.max(0.6, 1.0 - age * 0.035);
                   this._logPool[_li].setAlpha(baseA);
                 }
                 t.setAlpha(1.0);
@@ -1176,12 +1178,13 @@
               const isWarn  = entry.cat === 1;
               t.setStyle({ color: (isError || isWarn) ? '#ff6a6a' : '#5f7388' });
               t.setText(entry.text);
+              t.setStyle({ letterSpacing: Phaser.Math.FloatBetween(-0.5, 0.5) });
 
               // 最新行は高アルファ、古い行は徐々に減衰
               const totalActive = this._logActiveCount;
               for (let _li = 0; _li < totalActive; _li++) {
                 const age = totalActive - _li;
-                const baseA = age === 0 ? 1.0 : Math.max(0.5, 1.0 - age * 0.06);
+                const baseA = age === 0 ? 1.0 : Math.max(0.6, 1.0 - age * 0.06);
                 this._logPool[_li].setAlpha(baseA);
               }
               t.setAlpha(1.0);
@@ -1286,6 +1289,64 @@
       // when present it overrides the default base fill opacity.
       function createHomeDelta() {
         return { offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1, alpha: 1, rotation: 0 };
+      }
+
+      /** Stable pseudo-random for Home UI micro-offsets (no per-frame animation). */
+      function _homeUiHash32(seed) {
+        let x = (seed >>> 0) || 1;
+        x ^= x << 13;
+        x ^= x >>> 17;
+        x ^= x << 5;
+        return x >>> 0;
+      }
+      function _homeUiUnit(seed) {
+        return (_homeUiHash32(seed) & 0xffff) / 0xffff;
+      }
+      function _homeUiRandRange(seed, lo, hi) {
+        return lo + _homeUiUnit(seed) * (hi - lo);
+      }
+      function _homeUiRandInt(seed, lo, hi) {
+        return lo + (_homeUiHash32(seed) % (hi - lo + 1));
+      }
+
+      /**
+       * Per-character labels with fixed micro-jitter (position + alpha).
+       * @returns {{ container: Phaser.GameObjects.Container, glyphs: Phaser.GameObjects.Text[] }}
+       */
+      function createHomeGlyphLabel(scene, str, fontOpts, letterSpacing, seedBase, depth) {
+        const glyphs = [];
+        let tw = 0;
+        const widths = [];
+        for (let i = 0; i < str.length; i++) {
+          const t = scene.add.text(0, 0, str[i], fontOpts).setOrigin(0.5, 0.5).setDepth(depth);
+          widths.push(t.width);
+          tw += t.width + (i < str.length - 1 ? letterSpacing : 0);
+          glyphs.push(t);
+        }
+        const container = scene.add.container(0, 0, glyphs).setDepth(depth);
+        const weakCount = 1 + (_homeUiHash32(seedBase + 901) % 2);
+        const weakSet = new Set();
+        let guard = 0;
+        while (weakSet.size < weakCount && guard < 16) {
+          weakSet.add(_homeUiRandInt(seedBase + 902 + guard * 17, 0, str.length - 1));
+          guard++;
+        }
+        let xLeft = -tw / 2;
+        for (let i = 0; i < str.length; i++) {
+          const w = widths[i];
+          const s0 = seedBase + i * 131;
+          let dx = _homeUiRandInt(s0, -2, 2);
+          let dy = _homeUiRandInt(s0 + 1, -1, 1);
+          let ga = _homeUiRandRange(s0 + 2, 0.92, 1.0);
+          if (weakSet.has(i)) {
+            ga = _homeUiRandRange(s0 + 3, 0.7, 0.85);
+          }
+          glyphs[i].setPosition(xLeft + w * 0.5 + dx, dy);
+          glyphs[i].setAlpha(ga);
+          xLeft += w + (i < str.length - 1 ? letterSpacing : 0);
+        }
+        container._glyphBaseAlphas = glyphs.map((g) => g.alpha);
+        return { container, glyphs };
       }
 
       // Merge a layout rect with a delta → { x, y, w, h, alpha, rotation }
@@ -1436,18 +1497,26 @@
           const _depthSubFill = 10;
           this._gStartFill = this.add.graphics().setDepth(_depthStart);
           this._gStartAuxFrame = this.add.graphics().setDepth(_depthStart);
+          this._gStartInnerFrame = this.add.graphics().setDepth(_depthStart);
           this._gStartTerminals = this.add.graphics().setDepth(_depthStart);
           this._gStartFrameTop    = this.add.graphics().setDepth(_depthStart);
           this._gStartFrameBottom = this.add.graphics().setDepth(_depthStart);
           this._gStartFrameLeft   = this.add.graphics().setDepth(_depthStart);
           this._gStartFrameRight  = this.add.graphics().setDepth(_depthStart);
-          this._startText = this.add.text(0, 0, 'START', {
-            fontFamily: 'system-ui, -apple-system, sans-serif',
-            fontSize: '34px',
-            fontStyle: 'bold',
-            color: START_TEXT_COL,
-            letterSpacing: 6,
-          }).setOrigin(0.5).setDepth(_depthStart);
+          const _startGlyphs = createHomeGlyphLabel(
+            this,
+            'START',
+            {
+              fontFamily: 'system-ui, -apple-system, sans-serif',
+              fontSize: '34px',
+              fontStyle: 'bold',
+              color: START_TEXT_COL,
+            },
+            6,
+            0x48543001,
+            _depthStart,
+          );
+          this._startGlyphContainer = _startGlyphs.container;
 
           // 4 independent side graphics per sub button (top, bottom, left, right)
           this._subFrameSides = HOME_LAYOUT.labels.map(() => ({
@@ -1458,13 +1527,19 @@
           }));
           this._gSubFill = HOME_LAYOUT.labels.map(() => this.add.graphics().setDepth(_depthSubFill));
           this._gSubInd = HOME_LAYOUT.labels.map(() => this.add.graphics().setDepth(_depthSub));
-          this._subTexts = HOME_LAYOUT.labels.map((label) =>
-            this.add.text(0, 0, label, {
-              fontFamily: 'monospace, system-ui, sans-serif',
-              fontSize: '14px',
-              color: SUB_TEXT,
-              letterSpacing: 4,
-            }).setOrigin(0.5).setDepth(_depthSub)
+          this._subGlyphContainers = HOME_LAYOUT.labels.map((label, i) =>
+            createHomeGlyphLabel(
+              this,
+              label,
+              {
+                fontFamily: 'monospace, system-ui, sans-serif',
+                fontSize: '14px',
+                color: SUB_TEXT,
+              },
+              4,
+              0x48543100 + i * 997,
+              _depthSub,
+            ).container,
           );
 
           // ── outerFrame: 6 independent segment graphics ───────────────────────
@@ -1514,6 +1589,12 @@
             this._homeRebuildPanel = null;
             this._homeDebris?.destroy?.();
             this._homeDebris = null;
+            this._startGlyphContainer?.destroy?.(true);
+            this._startGlyphContainer = null;
+            this._subGlyphContainers?.forEach((c) => c?.destroy?.(true));
+            this._subGlyphContainers = null;
+            this._gStartInnerFrame?.destroy?.();
+            this._gStartInnerFrame = null;
           };
           this.events.once('shutdown', cleanupHome);
 
@@ -1586,9 +1667,9 @@
           const TERM_IN = 7; // 端子を内寄せ
           const SUB_GAP = 3;
           const SUB_N = 2; // サブ角欠け（START より弱く）
-          const IND_W = 5; // 左インジケータ 4〜6px
-          const topShiftX = [0, 4, -3];
-          const botShiftX = [3, -2, 5];
+          const IND_LEN = [6, 4, 5]; // 左インジケータ縦長（ボタンごと）
+          const topShiftX = [-2, 6, -4];
+          const botShiftX = [5, -4, 7];
 
           // ── START frame (4 independent sides, shared startFrame base) ────────
           // startFrame provides the whole-button position/alpha offset.
@@ -1612,6 +1693,7 @@
             });
 
             this._gStartAuxFrame.clear();
+            this._gStartInnerFrame.clear();
             this._gStartTerminals.clear();
 
             // fill: 背景面（薄く、角丸は維持）
@@ -1706,7 +1788,21 @@
               this._gStartAuxFrame.strokePath();
             }
 
-            // 左右端子ライン（短い縦線、内寄せ）
+            // 内側細ライン（1px / メインに対し α0.25）
+            {
+              const r = _applyDelta(bx, by, bw, bh, sf);
+              const inset = 5;
+              const ix = r.x + inset;
+              const iy = r.y + inset;
+              const iw = r.w - inset * 2;
+              const ih = r.h - inset * 2;
+              const ir = Math.max(2, START_CORNER_R - inset);
+              this._gStartInnerFrame.setAlpha(r.alpha * START_MAIN_A * 0.25);
+              this._gStartInnerFrame.lineStyle(1, lc, 1.0);
+              this._gStartInnerFrame.strokeRoundedRect(ix, iy, iw, ih, ir);
+            }
+
+            // 左右端子ライン（短い縦線、内寄せ・わずかに非対称）
             {
               const r = _applyDelta(bx, by, bw, bh, sf);
               const midY = r.y + r.h * 0.5;
@@ -1714,27 +1810,43 @@
               const y2 = midY + TERM_LEN * 0.5;
               const xl = r.x + TERM_IN;
               const xr = r.x + r.w - TERM_IN;
+              const oxL = _homeUiRandInt(0x48543201, -2, 2);
+              const oyL = _homeUiRandInt(0x48543202, -2, 2);
+              const oxR = _homeUiRandInt(0x48543203, -2, 2);
+              const oyR = _homeUiRandInt(0x48543204, -2, 2);
               this._gStartTerminals.setAlpha(r.alpha * START_MAIN_A);
               this._gStartTerminals.lineStyle(START_MAIN_LW, lc, 1.0);
               this._gStartTerminals.beginPath();
-              this._gStartTerminals.moveTo(xl, y1);
-              this._gStartTerminals.lineTo(xl, y2);
-              this._gStartTerminals.moveTo(xr, y1);
-              this._gStartTerminals.lineTo(xr, y2);
+              this._gStartTerminals.moveTo(xl + oxL, y1 + oyL);
+              this._gStartTerminals.lineTo(xl + oxL, y2 + oyL);
+              this._gStartTerminals.moveTo(xr + oxR, y1 + oyR);
+              this._gStartTerminals.lineTo(xr + oxR, y2 + oyR);
               this._gStartTerminals.strokePath();
             }
           }
 
-          // ── START label ────────────────────────────────────────────────────
+          // ── START label（グリフ分割・固定微差）───────────────────────────────
           {
             const sf = this._delta.startFrame;
             const d  = this._delta.startLabel;
+            const cont = this._startGlyphContainer;
             const x = L.centerX      + sf.offsetX + d.offsetX;
             const y = L.startCenterY + sf.offsetY + d.offsetY;
-            this._startText.setPosition(x, y);
-            this._startText.setAlpha(sf.alpha * d.alpha);
-            this._startText.setAngle(sf.rotation + d.rotation);
-            this._startText.setScale(sf.scaleX * d.scaleX, sf.scaleY * d.scaleY);
+            cont.setPosition(x, y);
+            cont.setRotation(Phaser.Math.DegToRad(sf.rotation + d.rotation));
+            cont.setScale(sf.scaleX * d.scaleX, sf.scaleY * d.scaleY);
+            const wrapA = sf.alpha * d.alpha;
+            cont.setAlpha(wrapA);
+            const ba = cont._glyphBaseAlphas;
+            if (ba && cont.list) {
+              let gi = 0;
+              cont.list.forEach((ch) => {
+                if (ch.setAlpha && ba[gi] !== undefined) {
+                  ch.setAlpha(ba[gi]);
+                  gi++;
+                }
+              });
+            }
           }
 
           // ── sub-buttons (4 independent sides per button) ───────────────────
@@ -1757,8 +1869,8 @@
               gf.fillRect(bx, by, bw, bh);
             }
 
-            const _drawSubSide = (g, sideDelta, drawFn) => {
-              const effAlpha = sub.alpha * sideDelta.alpha;
+            const _drawSubSide = (g, sideDelta, drawFn, lineMul) => {
+              const effAlpha = sub.alpha * sideDelta.alpha * lineMul;
               const ex = bx + sideDelta.offsetX;
               const ey = by + sideDelta.offsetY;
               const ew = bw * sideDelta.scaleX;
@@ -1771,19 +1883,20 @@
 
             const tdx = topShiftX[i];
             const bdx = botShiftX[i];
+            const lineMul = _homeUiRandRange(0x48543310 + i * 91, 0.95, 1.0);
 
             _drawSubSide(sides.top, sub.frameTop, (g, x, y, w) => {
               g.beginPath();
               g.moveTo(x + SUB_N + SUB_GAP + tdx, y);
               g.lineTo(x + w - SUB_N - SUB_GAP + tdx, y);
               g.strokePath();
-            });
+            }, lineMul);
             _drawSubSide(sides.bottom, sub.frameBottom, (g, x, y, w, h) => {
               g.beginPath();
               g.moveTo(x + SUB_N + SUB_GAP + bdx, y + h);
               g.lineTo(x + w - SUB_N - SUB_GAP + bdx, y + h);
               g.strokePath();
-            });
+            }, lineMul);
             _drawSubSide(sides.left, sub.frameLeft, (g, x, y, w, h) => {
               const trimT = SUB_N + (i % 2);
               const trimB = SUB_N + ((i + 1) % 2) * 2;
@@ -1791,7 +1904,7 @@
               g.moveTo(x, y + trimT);
               g.lineTo(x, y + h - trimB);
               g.strokePath();
-            });
+            }, lineMul);
             _drawSubSide(sides.right, sub.frameRight, (g, x, y, w, h) => {
               const trimT = SUB_N + ((i + 1) % 3);
               const trimB = SUB_N + (i % 2) + 1;
@@ -1799,30 +1912,43 @@
               g.moveTo(x + w, y + trimT);
               g.lineTo(x + w, y + h - trimB);
               g.strokePath();
-            });
+            }, lineMul);
 
             {
               const gi = this._gSubInd[i];
               gi.clear();
-              gi.setAlpha(sub.alpha);
+              gi.setAlpha(sub.alpha * lineMul);
               gi.lineStyle(SUB_LW, SUB_LINE, 1.0);
-              const ix = bx - 9;
-              const iy0 = by + bh * 0.38;
+              const ix = bx - 9 + _homeUiRandInt(0x48543410 + i * 13, -1, 1);
+              const iy0 = by + bh * 0.38 + _homeUiRandInt(0x48543420 + i, -1, 1);
+              const indLen = IND_LEN[i];
               gi.beginPath();
               gi.moveTo(ix, iy0);
-              gi.lineTo(ix, iy0 + IND_W);
+              gi.lineTo(ix, iy0 + indLen);
               gi.strokePath();
             }
 
-            // label
+            // label（グリフ分割）
             {
               const d = sub.label;
               const x = L.centerX + sub.offsetX + d.offsetX;
               const y = baseCY    + sub.offsetY + d.offsetY;
-              this._subTexts[i].setPosition(x, y);
-              this._subTexts[i].setAlpha(sub.alpha * d.alpha);
-              this._subTexts[i].setAngle(d.rotation);
-              this._subTexts[i].setScale(d.scaleX, d.scaleY);
+              const cont = this._subGlyphContainers[i];
+              cont.setPosition(x, y);
+              cont.setRotation(Phaser.Math.DegToRad(d.rotation));
+              cont.setScale(d.scaleX, d.scaleY);
+              const wrapA = sub.alpha * d.alpha;
+              cont.setAlpha(wrapA);
+              const ba = cont._glyphBaseAlphas;
+              if (ba && cont.list) {
+                let gi = 0;
+                cont.list.forEach((ch) => {
+                  if (ch.setAlpha && ba[gi] !== undefined) {
+                    ch.setAlpha(ba[gi]);
+                    gi++;
+                  }
+                });
+              }
             }
           });
 
