@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-01 00:00';
+      const BUILD_TIMESTAMP = '2026-05-01 12:00';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1197,17 +1197,36 @@
         const H = WORLD_H;
         const centerX = W / 2;
         const cy = H / 2;
+        // 残骸PNGと create() 内の配置と同じ幾何（LOG 下端 vs 残骸上端の干渉チェック用）
+        const DEBRIS_NAT_W = 1024;
+        const DEBRIS_NAT_H = 542;
+        const _debrisScaleGeom = (W * 1.08) / DEBRIS_NAT_W;
+        const debrisTopY = (H + 20) - DEBRIS_NAT_H * _debrisScaleGeom;
+
+        const HOME_OFFSET_BASE = -H * 0.06;
+        const HOME_OFFSET_MAX = -H * 0.07;
         // 画面中央 (cx, cy) を基準。START は中央寄り（操作主役 + Boot 警告残骸との縦分離）
-        const startCenterY = cy + H * 0.05;
+        let startCenterY = cy + H * 0.05;
         const startWidth = W * 0.52;
         const startHeight = H * 0.075;
         const subButtonWidth = W * 0.44;
         const subButtonHeight = H * 0.055;
         const labels = ['ENHANCE', 'LOADOUT', 'LOG'];
         // サブボタン中心 Y（START_y = START 中心）: 上段は広め、その下は比率間隔
-        const enhanceY = startCenterY + H * 0.12;
-        const loadoutY = enhanceY + H * 0.085;
-        const logY = loadoutY + H * 0.085;
+        let enhanceY = startCenterY + H * 0.12;
+        let loadoutY = enhanceY + H * 0.085;
+        let logY = loadoutY + H * 0.085;
+
+        const logBottomWithOffset = (oy) => logY + oy + subButtonHeight / 2;
+        let HOME_Y_OFFSET = HOME_OFFSET_BASE;
+        if (logBottomWithOffset(HOME_Y_OFFSET) >= debrisTopY) {
+          HOME_Y_OFFSET = HOME_OFFSET_MAX;
+        }
+
+        startCenterY += HOME_Y_OFFSET;
+        enhanceY += HOME_Y_OFFSET;
+        loadoutY += HOME_Y_OFFSET;
+        logY += HOME_Y_OFFSET;
         const subButtonCenterYs = Object.freeze([enhanceY, loadoutY, logY]);
 
         // ── outerFrame: 6-part decomposition of one outer border ────────────
@@ -1243,6 +1262,8 @@
           subButtonCenterYs,
           labels,
           outerFrame,
+          HOME_Y_OFFSET,
+          debrisTopY,
         });
       })();
 
@@ -1289,13 +1310,17 @@
         create() {
           // ── accent colors ────────────────────────────────────────────────────
           // START uses a salmon palette; sub-buttons keep the original cyan tones
-          const FRAME_LW       = 2.3;
+          const START_MAIN_LW  = 2;
+          const START_AUX_LW   = 1;
+          const START_MAIN_A   = 0.9;
+          const START_AUX_A    = 0.35;
           const START_FILL_HEX = 0xf47b6a;   // salmon fill
           const START_LINE_HEX = 0xd45a47;   // slightly deeper frame line
           const START_TEXT_COL = '#f47b6a';
-          const SUB_LW         = 1.4;
+          const SUB_LW         = 1;
           const SUB_LINE       = 0x2ec8be;
           const SUB_TEXT       = '#2ec8be';
+          const SUB_FILL_A     = 0.025;
 
           // ── background ───────────────────────────────────────────────────────
           // グリッド (depthBase=-60) + 背景画像 (depthBase+1=-59) の2層構成。
@@ -1378,7 +1403,10 @@
           // ── Phaser display objects (allocated once, redrawn by _redrawHomeUI) ─
           const _depthStart = 12;
           const _depthSub = 11;
+          const _depthSubFill = 10;
           this._gStartFill = this.add.graphics().setDepth(_depthStart);
+          this._gStartAuxFrame = this.add.graphics().setDepth(_depthStart);
+          this._gStartTerminals = this.add.graphics().setDepth(_depthStart);
           this._gStartFrameTop    = this.add.graphics().setDepth(_depthStart);
           this._gStartFrameBottom = this.add.graphics().setDepth(_depthStart);
           this._gStartFrameLeft   = this.add.graphics().setDepth(_depthStart);
@@ -1398,6 +1426,8 @@
             left:   this.add.graphics().setDepth(_depthSub),
             right:  this.add.graphics().setDepth(_depthSub),
           }));
+          this._gSubFill = HOME_LAYOUT.labels.map(() => this.add.graphics().setDepth(_depthSubFill));
+          this._gSubInd = HOME_LAYOUT.labels.map(() => this.add.graphics().setDepth(_depthSub));
           this._subTexts = HOME_LAYOUT.labels.map((label) =>
             this.add.text(0, 0, label, {
               fontFamily: 'monospace, system-ui, sans-serif',
@@ -1420,9 +1450,12 @@
           };
 
           // stash style constants for use in _redrawHomeUI
-          this._style = { FRAME_LW, START_FILL_HEX, START_LINE_HEX, SUB_LW, SUB_LINE };
+          this._style = {
+            START_MAIN_LW, START_AUX_LW, START_MAIN_A, START_AUX_A,
+            START_FILL_HEX, START_LINE_HEX, SUB_LW, SUB_LINE, SUB_FILL_A,
+          };
           // separate state for the START fill flash (not part of collapse delta)
-          this._startFillAlpha = 0.12;
+          this._startFillAlpha = 0.08;
 
           // ── initial draw ─────────────────────────────────────────────────────
           // すべてのデルタは createHomeDelta() の中立値（正常状態）のまま使用する。
@@ -1464,12 +1497,12 @@
             if (pointer.x >= cx - hw && pointer.x <= cx + hw &&
                 pointer.y >= cy - hh && pointer.y <= cy + hh) {
               // フィードバック
-              this._startFillAlpha = 0.24;
+              this._startFillAlpha = 0.18;
               this._redrawHomeUI();
               if (_startFired) return;
               _startFired = true;
               this.time.delayedCall(80, () => {
-                this._startFillAlpha = 0.12;
+                this._startFillAlpha = 0.08;
                 this._redrawHomeUI();
                 cleanupHome();
                 this.scene.start('game');
@@ -1509,8 +1542,21 @@
         // Call this whenever any delta value changes.
         _redrawHomeUI() {
           const L = HOME_LAYOUT;
-          const { FRAME_LW, START_FILL_HEX, START_LINE_HEX, SUB_LW, SUB_LINE } = this._style;
+          const {
+            START_MAIN_LW, START_AUX_LW, START_MAIN_A, START_AUX_A,
+            START_FILL_HEX, START_LINE_HEX, SUB_LW, SUB_LINE, SUB_FILL_A,
+          } = this._style;
           const START_CORNER_R = 8;
+          const CHK = 5; // 角欠け 3〜6px
+          const AUX_OUT = 3; // 補助枠をわずかに外側へ
+          const CHK_AUX = 4;
+          const TERM_LEN = 10; // 端子 8〜12px
+          const TERM_IN = 7; // 端子を内寄せ
+          const SUB_GAP = 3;
+          const SUB_N = 2; // サブ角欠け（START より弱く）
+          const IND_W = 5; // 左インジケータ 4〜6px
+          const topShiftX = [0, 4, -3];
+          const botShiftX = [3, -2, 5];
 
           // ── START frame (4 independent sides, shared startFrame base) ────────
           // startFrame provides the whole-button position/alpha offset.
@@ -1520,7 +1566,6 @@
             const by = L.startCenterY - L.startHeight / 2;
             const bw = L.startWidth;
             const bh = L.startHeight;
-            const lw = FRAME_LW;
             const lc = START_LINE_HEX;
             const sf = this._delta.startFrame;
 
@@ -1534,7 +1579,10 @@
               rotation: sf.rotation + side.rotation,
             });
 
-            // fill: uses startFrame position, alpha is the product of sf.alpha
+            this._gStartAuxFrame.clear();
+            this._gStartTerminals.clear();
+
+            // fill: 背景面（薄く、角丸は維持）
             {
               const r = _applyDelta(bx, by, bw, bh, sf);
               this._gStartFill.clear();
@@ -1543,52 +1591,105 @@
               this._gStartFill.fillRoundedRect(r.x, r.y, r.w, r.h, START_CORNER_R);
             }
 
-            // top side
+            // メイン枠線（太さ2 / α0.9）— 四隅欠け
+            const _strokeMain = (g, r) => {
+              g.clear();
+              g.setAlpha(r.alpha * START_MAIN_A);
+              g.lineStyle(START_MAIN_LW, lc, 1.0);
+              g.beginPath();
+              g.moveTo(r.x + START_CORNER_R + CHK, r.y);
+              g.lineTo(r.x + r.w - START_CORNER_R - CHK, r.y);
+              g.strokePath();
+            };
+            const _strokeMainBot = (g, r) => {
+              g.clear();
+              g.setAlpha(r.alpha * START_MAIN_A);
+              g.lineStyle(START_MAIN_LW, lc, 1.0);
+              g.beginPath();
+              g.moveTo(r.x + START_CORNER_R + CHK, r.y + r.h);
+              g.lineTo(r.x + r.w - START_CORNER_R - CHK, r.y + r.h);
+              g.strokePath();
+            };
+            const _strokeMainL = (g, r) => {
+              g.clear();
+              g.setAlpha(r.alpha * START_MAIN_A);
+              g.lineStyle(START_MAIN_LW, lc, 1.0);
+              g.beginPath();
+              g.moveTo(r.x, r.y + START_CORNER_R + CHK);
+              g.lineTo(r.x, r.y + r.h - START_CORNER_R - CHK);
+              g.strokePath();
+            };
+            const _strokeMainR = (g, r) => {
+              g.clear();
+              g.setAlpha(r.alpha * START_MAIN_A);
+              g.lineStyle(START_MAIN_LW, lc, 1.0);
+              g.beginPath();
+              g.moveTo(r.x + r.w, r.y + START_CORNER_R + CHK);
+              g.lineTo(r.x + r.w, r.y + r.h - START_CORNER_R - CHK);
+              g.strokePath();
+            };
+
             {
               const r = _applyDelta(bx, by, bw, bh, _compose(this._delta.startFrameTop));
-              this._gStartFrameTop.clear();
-              this._gStartFrameTop.setAlpha(r.alpha);
-              this._gStartFrameTop.lineStyle(lw, lc, 1.0);
-              this._gStartFrameTop.beginPath();
-              this._gStartFrameTop.moveTo(r.x + START_CORNER_R, r.y);
-              this._gStartFrameTop.lineTo(r.x + r.w - START_CORNER_R, r.y);
-              this._gStartFrameTop.strokePath();
+              _strokeMain(this._gStartFrameTop, r);
             }
-
-            // bottom side
             {
               const r = _applyDelta(bx, by, bw, bh, _compose(this._delta.startFrameBottom));
-              this._gStartFrameBottom.clear();
-              this._gStartFrameBottom.setAlpha(r.alpha);
-              this._gStartFrameBottom.lineStyle(lw, lc, 1.0);
-              this._gStartFrameBottom.beginPath();
-              this._gStartFrameBottom.moveTo(r.x + START_CORNER_R, r.y + r.h);
-              this._gStartFrameBottom.lineTo(r.x + r.w - START_CORNER_R, r.y + r.h);
-              this._gStartFrameBottom.strokePath();
+              _strokeMainBot(this._gStartFrameBottom, r);
             }
-
-            // left side
             {
               const r = _applyDelta(bx, by, bw, bh, _compose(this._delta.startFrameLeft));
-              this._gStartFrameLeft.clear();
-              this._gStartFrameLeft.setAlpha(r.alpha);
-              this._gStartFrameLeft.lineStyle(lw, lc, 1.0);
-              this._gStartFrameLeft.beginPath();
-              this._gStartFrameLeft.moveTo(r.x, r.y + START_CORNER_R);
-              this._gStartFrameLeft.lineTo(r.x, r.y + r.h - START_CORNER_R);
-              this._gStartFrameLeft.strokePath();
+              _strokeMainL(this._gStartFrameLeft, r);
             }
-
-            // right side
             {
               const r = _applyDelta(bx, by, bw, bh, _compose(this._delta.startFrameRight));
-              this._gStartFrameRight.clear();
-              this._gStartFrameRight.setAlpha(r.alpha);
-              this._gStartFrameRight.lineStyle(lw, lc, 1.0);
-              this._gStartFrameRight.beginPath();
-              this._gStartFrameRight.moveTo(r.x + r.w, r.y + START_CORNER_R);
-              this._gStartFrameRight.lineTo(r.x + r.w, r.y + r.h - START_CORNER_R);
-              this._gStartFrameRight.strokePath();
+              _strokeMainR(this._gStartFrameRight, r);
+            }
+
+            // 補助枠（1px / α0.35、メインよりわずかに外側）
+            {
+              const r = _applyDelta(bx, by, bw, bh, sf);
+              const ix = r.x - AUX_OUT;
+              const iy = r.y - AUX_OUT;
+              const iw = r.w + AUX_OUT * 2;
+              const ih = r.h + AUX_OUT * 2;
+              const ir = START_CORNER_R + AUX_OUT;
+              this._gStartAuxFrame.setAlpha(r.alpha * START_AUX_A);
+              this._gStartAuxFrame.lineStyle(START_AUX_LW, lc, 1.0);
+              this._gStartAuxFrame.beginPath();
+              this._gStartAuxFrame.moveTo(ix + ir + CHK_AUX, iy);
+              this._gStartAuxFrame.lineTo(ix + iw - ir - CHK_AUX, iy);
+              this._gStartAuxFrame.strokePath();
+              this._gStartAuxFrame.beginPath();
+              this._gStartAuxFrame.moveTo(ix + ir + CHK_AUX, iy + ih);
+              this._gStartAuxFrame.lineTo(ix + iw - ir - CHK_AUX, iy + ih);
+              this._gStartAuxFrame.strokePath();
+              this._gStartAuxFrame.beginPath();
+              this._gStartAuxFrame.moveTo(ix, iy + ir + CHK_AUX);
+              this._gStartAuxFrame.lineTo(ix, iy + ih - ir - CHK_AUX);
+              this._gStartAuxFrame.strokePath();
+              this._gStartAuxFrame.beginPath();
+              this._gStartAuxFrame.moveTo(ix + iw, iy + ir + CHK_AUX);
+              this._gStartAuxFrame.lineTo(ix + iw, iy + ih - ir - CHK_AUX);
+              this._gStartAuxFrame.strokePath();
+            }
+
+            // 左右端子ライン（短い縦線、内寄せ）
+            {
+              const r = _applyDelta(bx, by, bw, bh, sf);
+              const midY = r.y + r.h * 0.5;
+              const y1 = midY - TERM_LEN * 0.5;
+              const y2 = midY + TERM_LEN * 0.5;
+              const xl = r.x + TERM_IN;
+              const xr = r.x + r.w - TERM_IN;
+              this._gStartTerminals.setAlpha(r.alpha * START_MAIN_A);
+              this._gStartTerminals.lineStyle(START_MAIN_LW, lc, 1.0);
+              this._gStartTerminals.beginPath();
+              this._gStartTerminals.moveTo(xl, y1);
+              this._gStartTerminals.lineTo(xl, y2);
+              this._gStartTerminals.moveTo(xr, y1);
+              this._gStartTerminals.lineTo(xr, y2);
+              this._gStartTerminals.strokePath();
             }
           }
 
@@ -1616,6 +1717,14 @@
             const bh  = L.subButtonHeight;
             const sides = this._subFrameSides[i];
 
+            {
+              const gf = this._gSubFill[i];
+              gf.clear();
+              gf.setAlpha(sub.alpha * SUB_FILL_A);
+              gf.fillStyle(SUB_LINE, 1.0);
+              gf.fillRect(bx, by, bw, bh);
+            }
+
             const _drawSubSide = (g, sideDelta, drawFn) => {
               const effAlpha = sub.alpha * sideDelta.alpha;
               const ex = bx + sideDelta.offsetX;
@@ -1628,18 +1737,50 @@
               drawFn(g, ex, ey, ew, eh);
             };
 
-            _drawSubSide(sides.top,    sub.frameTop,    (g, x, y, w) => {
-              g.beginPath(); g.moveTo(x, y); g.lineTo(x + w, y); g.strokePath();
+            const tdx = topShiftX[i];
+            const bdx = botShiftX[i];
+
+            _drawSubSide(sides.top, sub.frameTop, (g, x, y, w) => {
+              g.beginPath();
+              g.moveTo(x + SUB_N + SUB_GAP + tdx, y);
+              g.lineTo(x + w - SUB_N - SUB_GAP + tdx, y);
+              g.strokePath();
             });
             _drawSubSide(sides.bottom, sub.frameBottom, (g, x, y, w, h) => {
-              g.beginPath(); g.moveTo(x, y + h); g.lineTo(x + w, y + h); g.strokePath();
+              g.beginPath();
+              g.moveTo(x + SUB_N + SUB_GAP + bdx, y + h);
+              g.lineTo(x + w - SUB_N - SUB_GAP + bdx, y + h);
+              g.strokePath();
             });
-            _drawSubSide(sides.left,   sub.frameLeft,   (g, x, y, w, h) => {
-              g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + h); g.strokePath();
+            _drawSubSide(sides.left, sub.frameLeft, (g, x, y, w, h) => {
+              const trimT = SUB_N + (i % 2);
+              const trimB = SUB_N + ((i + 1) % 2) * 2;
+              g.beginPath();
+              g.moveTo(x, y + trimT);
+              g.lineTo(x, y + h - trimB);
+              g.strokePath();
             });
-            _drawSubSide(sides.right,  sub.frameRight,  (g, x, y, w, h) => {
-              g.beginPath(); g.moveTo(x + w, y); g.lineTo(x + w, y + h); g.strokePath();
+            _drawSubSide(sides.right, sub.frameRight, (g, x, y, w, h) => {
+              const trimT = SUB_N + ((i + 1) % 3);
+              const trimB = SUB_N + (i % 2) + 1;
+              g.beginPath();
+              g.moveTo(x + w, y + trimT);
+              g.lineTo(x + w, y + h - trimB);
+              g.strokePath();
             });
+
+            {
+              const gi = this._gSubInd[i];
+              gi.clear();
+              gi.setAlpha(sub.alpha);
+              gi.lineStyle(SUB_LW, SUB_LINE, 1.0);
+              const ix = bx - 9;
+              const iy0 = by + bh * 0.38;
+              gi.beginPath();
+              gi.moveTo(ix, iy0);
+              gi.lineTo(ix, iy0 + IND_W);
+              gi.strokePath();
+            }
 
             // label
             {
