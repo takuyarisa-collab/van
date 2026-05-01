@@ -74,8 +74,7 @@
       createBootTitleParts,
       mountBootCollapsedBackdrop,
       mountBootHomeBackdrop,
-      mountHomeNormalBg,
-      mountHomeUpperMask,
+      mountHomeGridOnly,
       mountHomeScanMask,
     } from './boot-home-bg.js';
     import {
@@ -171,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-01 12:00';
+      const BUILD_TIMESTAMP = '2026-05-01 18:45';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1311,6 +1310,13 @@
         return { x1: mx - hx, y1: my - hy, x2: mx + hx, y2: my + hy, alpha: delta.alpha };
       }
 
+      function destroyBootBgPanelForHome(bootScene) {
+        const bg = bootScene?._bootBg;
+        if (!bg || bg.destroyed) return;
+        bg.destroy();
+        bootScene._bootBg = null;
+      }
+
       class HomeScene extends Phaser.Scene {
         constructor() {
           super('home');
@@ -1337,13 +1343,24 @@
           const SUB_FILL_A     = 0.025;
 
           // ── background ───────────────────────────────────────────────────────
-          // グリッド (depthBase=-60) + 背景画像 (depthBase+1=-59) の2層構成。
-          // グラデーション塗りつぶしは使用しない（正常状態）。
-          this._homeBackdrop = mountHomeNormalBg(this, {
+          // Boot が collapse 完了時に残す home-bg-normal（白パネル）は破棄し、Home では載せない。
+          destroyBootBgPanelForHome(this.scene.get('boot'));
+
+          // Layer1: グリッドのみ（depth -59）
+          this._homeBackdrop = mountHomeGridOnly(this, {
             width: WORLD_W,
             height: WORLD_H,
           });
-          console.log('[HomeScene] backdrop created (mountHomeNormalBg: grid -60, image -59)');
+
+          // Layer3: 再構築パネル（home-bg-normal を単独 Image、スキャン専用・Boot の残骸画像とは別）
+          const _depthRebuildPanel = -48;
+          const _rebuildTexKey = 'home-bg-normal';
+          this._homeRebuildPanel = this.add.image(WORLD_W / 2, WORLD_H / 2, _rebuildTexKey)
+            .setOrigin(0.5, 0.5)
+            .setDepth(_depthRebuildPanel);
+          const _rsx = WORLD_W / this._homeRebuildPanel.width;
+          const _rsy = WORLD_H / this._homeRebuildPanel.height;
+          this._homeRebuildPanel.setScale(Math.max(_rsx, _rsy));
 
           // ── 再構築スキャンマスク（GeometryMask: 上から行単位でスキャン、STARTの少し上で停止）
           // stopY: STARTボタン上端より1グリッド行分上（グリッド境界に合わせる）
@@ -1357,14 +1374,13 @@
             stopY:            _scanStopRow * _scanGridStep,
             row0IntervalMs:   91,
             rowIntervalScale: 3.5,
-            targetImage:      this._homeBackdrop.bgImage,
+            targetImage:      this._homeRebuildPanel,
           });
 
           // ── 背景切り出し破片（下端堆積）─────────────────────────────────────
           // bg より前 (depth -10〜-7) / UI より後ろ
 
-          // ── 残骸PNG（画面下端に半埋め、背景より前・UIより後ろ）────────────
-          // depth -5: グリッド(-60)・背景画像(-59)より前、UI(1+)より後ろ
+          // ── 残骸PNG（画面下端に半埋め）Layer2: グリッドより前・再構築パネルより後ろ
           {
             const _debrisTex     = this.textures.get('home-debris').getSourceImage();
             const _debrisScale   = (WORLD_W * 1.08) / _debrisTex.width;
@@ -1374,7 +1390,7 @@
               .setScale(_debrisScale)
               .setAlpha(0.82)
               .setRotation(_debrisRot)
-              .setDepth(-5);
+              .setDepth(-54);
           }
 
           // ── deltas (one per independent element) ─────────────────────────────
@@ -1494,6 +1510,8 @@
             this._homeBackdrop = null;
             this._homeScanMask?.destroy?.();
             this._homeScanMask = null;
+            this._homeRebuildPanel?.destroy?.();
+            this._homeRebuildPanel = null;
             this._homeDebris?.destroy?.();
             this._homeDebris = null;
           };

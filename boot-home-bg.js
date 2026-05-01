@@ -1,6 +1,7 @@
 /**
  * Boot / Home 用背景（Phaser Graphics）
  * - mountHomeNormalBg       … Home 正常背景（画像 + グリッド）
+ * - mountHomeGridOnly       … Home グリッドのみ（再構築パネルは別 Image で載せる）
  * - mountBootHomeBackdrop   … 静的単色背景（後方互換 / 非 Home 正常状態用）
  * - mountBootCollapsedBackdrop … Boot 崩壊（レイヤーズレ＋微動→収束）
  * - mountHomeParticles      … 微粒子フェードアニメ（Home 専用）
@@ -326,6 +327,24 @@ export function mountHomeNormalBg(scene, opts = {}) {
     destroy() {
       gGrid.destroy();
       img.destroy();
+    },
+  };
+}
+
+/**
+ * Home 用: グリッドのみ（全画面ベタ背景画像なし）
+ *
+ * @param {number} [opts.depthBase=-60] グリッドの基準 depth（buildCleanGrid と整合）
+ */
+export function mountHomeGridOnly(scene, opts = {}) {
+  const W = opts.width ?? scene.scale.width;
+  const H = opts.height ?? scene.scale.height;
+  const depthBase = opts.depthBase ?? -60;
+  const gGrid = buildCleanGrid(scene, W, H, 1, depthBase - 1);
+  return {
+    layers: [gGrid],
+    destroy() {
+      gGrid.destroy();
     },
   };
 }
