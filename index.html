@@ -171,7 +171,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-04-30 23:18';
+      const BUILD_TIMESTAMP = '2026-05-01 00:00';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1197,11 +1197,11 @@
         const H = WORLD_H;
         const centerX = W / 2;
         const cy = H / 2;
-        // 画面中央 (cx, cy) を基準。START はやや下（視覚的に上寄りの塊として主役化 + 上部余白）
-        const startCenterY = cy + H * 0.1;
+        // 画面中央 (cx, cy) を基準。START は中央寄り（操作主役 + Boot 警告残骸との縦分離）
+        const startCenterY = cy + H * 0.05;
         const startWidth = W * 0.52;
         const startHeight = H * 0.075;
-        const subButtonWidth = W * 0.58;
+        const subButtonWidth = W * 0.44;
         const subButtonHeight = H * 0.055;
         const labels = ['ENHANCE', 'LOADOUT', 'LOG'];
         // サブボタン中心 Y（START_y = START 中心）: 上段は広め、その下は比率間隔
