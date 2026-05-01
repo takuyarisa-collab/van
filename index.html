@@ -829,6 +829,9 @@
           if (this._bootTitleImg) {
             this._bootTitleImg.clearMask(true);
           }
+          // 構造グリッドは崩壊直後は隠し、collapseNorm 0.3〜0.6 で立ち上げ（containers[1]=grid, depth -54 < bootBg -51）
+          const _structC = this._bootBackdrop?.containers?.[1];
+          if (_structC) _structC.setAlpha(0);
           console.log('[BootScene] collapse phase start', this._collapseDur, 'ms');
         }
 
@@ -841,7 +844,7 @@
           if (this._bootBg) {
             this._bootBg.setDepth(0);
             this._bootBg.setPosition(this._bootBg.x, this._bootBg.y);
-            this._bootBg.setAlpha(Phaser.Math.FloatBetween(0.68, 0.73));
+            this._bootBg.setAlpha(Phaser.Math.FloatBetween(0.22, 0.28));
           }
 
           if (this._bootTitleImg) {
@@ -925,12 +928,23 @@
           if (this._collapsePhase && !this._cleanedUp) {
             const dt = this.game.loop.delta;
             this._collapseT += dt;
+            const collapseNorm = Math.min(1, this._collapseT / this._collapseDur);
+
+            const _structLayer = this._bootBackdrop?.containers?.[1];
+            if (_structLayer) {
+              let gridLayerA = 0;
+              if (collapseNorm > 0.3) {
+                const u = Phaser.Math.Clamp((collapseNorm - 0.3) / (0.6 - 0.3), 0, 1);
+                gridLayerA = u * 0.45;
+              }
+              _structLayer.setAlpha(gridLayerA);
+            }
 
             if (this._bootBg) {
               const bgA = Phaser.Math.Clamp(
-                0.72 + 0.07 * Math.sin(this._collapseT * 0.0014) + (Math.random() - 0.5) * 0.05,
-                0.6,
-                0.85
+                0.25 + 0.05 * Math.sin(this._collapseT * 0.0014) + (Math.random() - 0.5) * 0.05,
+                0.2,
+                0.3
               );
               this._bootBg.setAlpha(bgA);
               const bgShake = Phaser.Math.FloatBetween(2, 4);
