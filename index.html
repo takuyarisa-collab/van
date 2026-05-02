@@ -170,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-02 04:11 UTC';
+      const BUILD_TIMESTAMP = '2026-05-02 14:30 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1226,8 +1226,8 @@
         const startHeight = H * 0.075;
         const subButtonWidth = W * 0.44;
         const subButtonHeight = H * 0.055;
-        /** サブ行のプレースホルダ（先頭 O/E/R は PNG 切り出し、後続のみテキスト差し替え可） */
-        const subRowTails = Object.freeze(['/OPT', '-SET', '/LOG']);
+        /** サブ行のプレースホルダ（先頭 O/E/R は PNG 1 文字切り出し、後続のみテキスト） */
+        const subRowTails = Object.freeze(['/CONF', '-VIEW', '/DATA']);
         // サブボタン中心 Y（START_y = START 中心）: 上段は広め、その下は比率間隔
         let enhanceY = startCenterY + H * 0.12;
         let loadoutY = enhanceY + H * 0.085;
@@ -1299,6 +1299,10 @@
         subO:       Object.freeze({ x: 305, y: 459, w: 99, h: 91 }),
         subE:       Object.freeze({ x: 547, y: 459, w: 81, h: 91 }),
         subR:       Object.freeze({ x: 660, y: 459, w: 87, h: 91 }),
+        /** サブ行先頭 1 文字のみ（各 sub グリフの左端） */
+        subO_head:  Object.freeze({ x: 305, y: 459, w: 36, h: 91 }),
+        subE_head:  Object.freeze({ x: 547, y: 459, w: 32, h: 91 }),
+        subR_head:  Object.freeze({ x: 660, y: 459, w: 34, h: 91 }),
       });
 
       // Returns a neutral (no-op) delta object.
@@ -1342,11 +1346,34 @@
         return scene.add.image(0, 0, key).setOrigin(0.5, 0.5).setDepth(depth);
       }
 
+      /**
+       * Home 表示時: Boot の背景パネル除去に加え、タイトル PNG・構造体・警告・ログ・
+       * マスク用テキストを破棄する（Home 上にエラー系・OVERLAP 残骸が残らないようにする）。
+       */
       function destroyBootBgPanelForHome(bootScene) {
-        const bg = bootScene?._bootBg;
-        if (!bg || bg.destroyed) return;
-        bg.destroy();
-        bootScene._bootBg = null;
+        const bs = bootScene;
+        const bg = bs?._bootBg;
+        if (bg && !bg.destroyed) {
+          bg.destroy();
+          bs._bootBg = null;
+        }
+        if (!bs) return;
+        bs._bootTitleImg?.destroy?.();
+        bs._bootTitleImg = null;
+        bs._bootTitleParts?.destroy?.();
+        bs._bootTitleParts = null;
+        bs._warnText1?.destroy?.();
+        bs._warnText2?.destroy?.();
+        bs._warnFrame?.destroy?.();
+        bs._warnText1 = bs._warnText2 = bs._warnFrame = null;
+        bs._warnLayout = null;
+        bs._logPool?.forEach((t) => t.destroy());
+        bs._logPool = null;
+        bs._overlapText?.destroy?.();
+        bs._overlapText = null;
+        bs._overlapMaskGfx?.destroy?.();
+        bs._overlapMask = null;
+        bs._overlapMaskGfx = null;
       }
 
       class HomeScene extends Phaser.Scene {
@@ -1429,7 +1456,11 @@
 
           this._startHitZone = this.add.zone(L.centerX, L.startCenterY, 120, 72).setDepth(14);
 
-          const subCrops = [HOMEOVERLAP_CROPS.subO, HOMEOVERLAP_CROPS.subE, HOMEOVERLAP_CROPS.subR];
+          const subCrops = [
+            HOMEOVERLAP_CROPS.subO_head,
+            HOMEOVERLAP_CROPS.subE_head,
+            HOMEOVERLAP_CROPS.subR_head,
+          ];
           this._subRows = HOME_LAYOUT.subRowTails.map((tail, i) => {
             const head = addOverlapCropImage(this, texKey, subCrops[i], _depthSub);
             const tailT = this.add.text(0, 0, tail, SUB_TAIL_STYLE).setOrigin(0, 0.5).setDepth(_depthSub);
@@ -1519,7 +1550,7 @@
           const baseY = L.startCenterY + sf.offsetY;
           const flashMul = this._startPressFlash ? 1.15 : 1.0;
 
-          // P — L — ▷(A) — Y : 横一列、▷ を視覚中心に（間隔はほぼ均等）
+          // P — L — ▷(A) — Y : 横一列、▷ 主役（alpha 1.0）、左右はやや低アルファ
           const crops = HOMEOVERLAP_CROPS;
           const baseS = (L.startHeight * 0.38) / 91;
           const sPx = baseS * sf.scaleX;
@@ -1528,7 +1559,8 @@
           const sLy = baseS * sf.scaleY;
           const sYx = baseS * 0.97 * sf.scaleX;
           const sYy = baseS * 0.97 * sf.scaleY;
-          const aScale = baseS * 1.32;
+          const aMul = _homeUiRandRange(0x492031, 1.25, 1.4);
+          const aScale = baseS * aMul;
           const sAx = aScale * sf.scaleX;
           const sAy = aScale * sf.scaleY;
 
@@ -1536,39 +1568,40 @@
           const wL = crops.L.w * sLx;
           const wA = crops.A.h * sAy;
           const wY = crops.V_y.w * sYx;
-          const gapPL = L.startWidth * 0.036;
-          const gapLA = L.startWidth * 0.044;
-          const gapAY = L.startWidth * 0.036;
+          const gapPL = L.startWidth * 0.032;
+          const gapLA = L.startWidth * 0.072;
+          const gapAY = L.startWidth * 0.058;
           const totalW = wP + gapPL + wL + gapLA + wA + gapAY + wY;
 
           let xCursor = baseX - totalW * 0.5;
           const j = (seed) => _homeUiRandInt(seed, -1, 1);
-          const rowAlpha = (seed) => Math.min(
+          const alphaSide = (seed) => Math.min(
             1,
-            flashMul * sf.alpha * _homeUiRandRange(seed, 0.9, 1.0),
+            flashMul * sf.alpha * _homeUiRandRange(seed, 0.85, 0.95),
           );
+          const alphaPlay = Math.min(1, flashMul * sf.alpha);
 
-          const placePL = (img, cx, cy, sx, sy, rotDeg, seed) => {
+          const placeGlyph = (img, cx, cy, sx, sy, rotDeg, seed, alpha) => {
             img.setPosition(cx + j(seed + 1), cy + j(seed + 2));
             img.setScale(sx, sy);
             img.setRotation(Phaser.Math.DegToRad(rotDeg + sf.rotation));
-            img.setAlpha(rowAlpha(seed + 3));
+            img.setAlpha(alpha);
           };
 
           const cP = xCursor + wP * 0.5;
-          placePL(this._startP, cP, baseY, sPx, sPy, 0, 0x492050);
+          placeGlyph(this._startP, cP, baseY, sPx, sPy, 0, 0x492050, alphaSide(0x492053));
           xCursor += wP + gapPL;
 
           const cL = xCursor + wL * 0.5;
-          placePL(this._startL, cL, baseY, sLx, sLy, 0, 0x492060);
+          placeGlyph(this._startL, cL, baseY, sLx, sLy, 0, 0x492060, alphaSide(0x492063));
           xCursor += wL + gapLA;
 
           const cA = xCursor + wA * 0.5;
-          placePL(this._startA, cA, baseY, sAx, sAy, -90, 0x492030);
+          placeGlyph(this._startA, cA, baseY, sAx, sAy, -90, 0x492030, alphaPlay);
           xCursor += wA + gapAY;
 
           const cY = xCursor + wY * 0.5;
-          placePL(this._startVy, cY, baseY, sYx, sYy, 0, 0x492070);
+          placeGlyph(this._startVy, cY, baseY, sYx, sYy, 0, 0x492070, alphaSide(0x492073));
 
           const parts = [this._startP, this._startL, this._startA, this._startVy];
           let minX = Infinity;
@@ -1587,31 +1620,27 @@
           this._startHitZone.setPosition((minX + maxX) * 0.5, (minY + maxY) * 0.5);
           this._startHitZone.setSize(maxX - minX + padX * 2, maxY - minY + padY * 2);
 
-          const rowAnchors = [
-            { x: -58, y: -4, headSx: 0.38, headSy: 0.4, tailDy: 1, gap: 6 },
-            { x: 44, y: 6, headSx: 0.36, headSy: 0.37, tailDy: 5, gap: 5 },
-            { x: -22, y: -2, headSx: 0.4, headSy: 0.39, tailDy: -3, gap: 7 },
-          ];
+          const subHeadScale = 0.42;
 
           this._delta.sub.forEach((sub, i) => {
             const row = this._subRows[i];
             if (!row) return;
             const baseCY = L.subButtonCenterYs[i];
-            const ra = rowAnchors[i];
             const seed = 0x493000 + i * 997;
-            const hx = L.centerX + ra.x + sub.offsetX + _homeUiRandInt(seed, -3, 3);
-            const hy = baseCY + ra.y + sub.offsetY + _homeUiRandInt(seed + 11, -2, 2);
+            const jx = _homeUiRandInt(seed, -1, 1);
+            const jy = _homeUiRandInt(seed + 11, -1, 1);
 
-            row.head.setPosition(hx, hy);
-            row.head.setScale(ra.headSx * sub.alpha, ra.headSy * sub.alpha);
-            row.head.setRotation(Phaser.Math.DegToRad(_homeUiRandInt(seed + 3, -2, 2)));
-            row.head.setAlpha(sub.alpha * _homeUiRandRange(seed + 4, 0.72, 0.94));
+            row.head.setPosition(L.centerX + sub.offsetX + jx, baseCY + sub.offsetY + jy);
+            row.head.setScale(subHeadScale * sub.alpha, subHeadScale * sub.alpha);
+            row.head.setRotation(0);
+            row.head.setAlpha(sub.alpha * _homeUiRandRange(seed + 4, 0.85, 1.0));
 
+            const gap = 5 + _homeUiRandInt(seed + 5, 0, 1);
             row.tail.setPosition(
-              hx + row.head.width * row.head.scaleX * 0.5 + ra.gap + _homeUiRandInt(seed + 5, 0, 2),
-              hy + ra.tailDy + _homeUiRandInt(seed + 6, -2, 2),
+              L.centerX + row.head.width * row.head.scaleX * 0.5 + gap + sub.offsetX + jx,
+              baseCY + sub.offsetY + jy + _homeUiRandInt(seed + 6, -1, 1),
             );
-            row.tail.setAlpha(sub.alpha * _homeUiRandRange(seed + 7, 0.78, 1.0));
+            row.tail.setAlpha(sub.alpha * _homeUiRandRange(seed + 7, 0.85, 1.0));
 
             const hb = row.head.getBounds();
             const tb = row.tail.getBounds();
