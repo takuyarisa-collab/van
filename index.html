@@ -170,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-02 08:50 UTC';
+      const BUILD_TIMESTAMP = '2026-05-02 11:12 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1287,10 +1287,11 @@
       const HOMEOVERLAP_TEX_KEY = 'home-overlap-title';
       const HOMEOVERLAP_CROPS = Object.freeze({
         A:          Object.freeze({ x: 932, y: 459, w: 61, h: 91 }),
-        P:          Object.freeze({ x: 885, y: 459, w: 52, h: 91 }),
+        /** 実字形ブロック x≈887–990（旧座標は R 側縦棒を拾っていた） */
+        P:          Object.freeze({ x: 887, y: 459, w: 104, h: 91 }),
         V:          Object.freeze({ x: 424, y: 459, w: 99, h: 91 }),
-        /** V を軽くトリムして Y 寄り（完全な y にはしない） */
-        V_y:        Object.freeze({ x: 432, y: 459, w: 83, h: 88 }),
+        /** 左腕を削って Y 寄り（回転なし） */
+        V_y:        Object.freeze({ x: 436, y: 459, w: 60, h: 90 }),
         V_frag:     Object.freeze({ x: 424, y: 502, w: 52, h: 48 }),
         L:          Object.freeze({ x: 775, y: 459, w: 71, h: 91 }),
         bottomLine: Object.freeze({ x: 455, y: 591, w: 459, h: 8 }),
@@ -1298,11 +1299,12 @@
         topR:       Object.freeze({ x: 665, y: 466, w: 72, h: 5 }),
         subO:       Object.freeze({ x: 305, y: 459, w: 99, h: 91 }),
         subE:       Object.freeze({ x: 547, y: 459, w: 81, h: 91 }),
-        subR:       Object.freeze({ x: 660, y: 459, w: 87, h: 91 }),
+        /** 実字形ブロック x≈660–745 */
+        subR:       Object.freeze({ x: 660, y: 459, w: 86, h: 91 }),
         /** サブ行先頭 1 文字のみ（O/E/R 切れ防止のため切り出し幅を広げる） */
         subO_head:  Object.freeze({ x: 305, y: 459, w: 62, h: 91 }),
         subE_head:  Object.freeze({ x: 547, y: 459, w: 54, h: 91 }),
-        subR_head:  Object.freeze({ x: 660, y: 459, w: 54, h: 91 }),
+        subR_head:  Object.freeze({ x: 660, y: 459, w: 52, h: 91 }),
         /** PLAY 枠: overlap 上帯（下ラインと同系・非完全四角用） */
         playTopBar: Object.freeze({ x: 455, y: 448, w: 459, h: 8 }),
         /** 左縦（上・下ラインの間をつなぐ細帯） */
@@ -1612,15 +1614,16 @@
           );
           const alphaPlay = Math.min(1, flashMul * sf.alpha);
 
-          const placeGlyph = (img, cx, cy, sx, sy, rotDeg, seed, alpha) => {
+          const placeGlyph = (img, cx, cy, sx, sy, rotDeg, seed, alpha, applyFrameRot = true) => {
             img.setPosition(cx + j(seed + 1), cy + j(seed + 2));
             img.setScale(sx, sy);
-            img.setRotation(Phaser.Math.DegToRad(rotDeg + sf.rotation));
+            const extraRot = applyFrameRot ? sf.rotation : 0;
+            img.setRotation(Phaser.Math.DegToRad(rotDeg + extraRot));
             img.setAlpha(alpha);
           };
 
           const cP = xCursor + wP * 0.5;
-          placeGlyph(this._startP, cP, baseY, sPx, sPy, 0, 0x492050, alphaSide(0x492053));
+          placeGlyph(this._startP, cP, baseY, sPx, sPy, 0, 0x492050, alphaSide(0x492053), false);
           xCursor += wP + gapPL;
 
           const cL = xCursor + wL * 0.5;
@@ -1676,15 +1679,15 @@
           const leftBarCx = baseX - frameInnerW * 0.5 + (natLeftW * scalePlay * 0.34) * 0.5;
           const leftBarCy = (innerTop + innerBottom) * 0.5;
           const sPlay = sf.scaleX;
-          const alphaFrm = Math.min(0.82, 0.58 + 0.24 * sf.alpha);
-          const topBarWFrac = _homeUiRandRange(0x491202, 0.36, 0.46);
-          const leftSqueeze = _homeUiRandRange(0x491203, 0.28, 0.36);
+          const alphaFrm = Math.min(0.95, 0.78 + 0.17 * sf.alpha);
+          const topBarWFrac = 1;
+          const leftSqueeze = _homeUiRandRange(0x491203, 0.72, 0.88);
 
           const applyFrame = (im, cx, cy, sx, sy) => {
             if (!im) return;
             im.setPosition(cx + j(0x494101), cy + j(0x494102));
             im.setScale(sx, sy);
-            im.setRotation(Phaser.Math.DegToRad(sf.rotation));
+            im.setRotation(0);
             im.setAlpha(alphaFrm * sf.alpha);
           };
           applyFrame(this._playFrameTop, baseX, topBarY, scalePlay * topBarWFrac * sPlay, scalePlay * sPlay);
@@ -1769,9 +1772,9 @@
             const sideCx = sideLeft
               ? boxL + (natLeftW * subScale * 0.32) * 0.5
               : boxR - (natLeftW * subScale * 0.32) * 0.5;
-            const subTopFrac = _homeUiRandRange(seed + 54, 0.4, 0.52);
-            const subLeftSqueeze = _homeUiRandRange(seed + 55, 0.26, 0.34);
-            const alphaSubFrm = Math.min(0.72, 0.5 + 0.22 * sub.alpha);
+            const subTopFrac = 1;
+            const subLeftSqueeze = _homeUiRandRange(seed + 55, 0.7, 0.88);
+            const alphaSubFrm = Math.min(0.9, 0.68 + 0.22 * sub.alpha);
 
             const applySubFrame = (im, cx, cy, sx, sy) => {
               im.setPosition(cx + j(seed + 80), cy + j(seed + 81));
