@@ -170,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-02 13:44 UTC';
+      const BUILD_TIMESTAMP = '2026-05-02 14:30 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1303,6 +1303,18 @@
         playLeftBar: Object.freeze({ x: 450, y: 481, w: 21, h: 119 }),
       });
 
+      /** V crop の左斜線を落とし右斜線のみ残す（HOMEOVERLAP_CROPS.V を基準、順番依存なし） */
+      function homeBrokenYCropFromV() {
+        const v = HOMEOVERLAP_CROPS['V'];
+        const slice = Math.max(1, Math.floor(v.w * 0.38));
+        return Object.freeze({
+          x: v.x + slice,
+          y: v.y,
+          w: Math.max(12, v.w - slice),
+          h: v.h,
+        });
+      }
+
       /** ?debug=1 時: overlap-title 上の crop 矩形をミニマップ表示（stroke + ラベル） */
       const HOMEOVERLAP_CROP_DEBUG_ENTRIES = Object.freeze([
         { label: 'O', cropKey: 'O' },
@@ -1512,7 +1524,7 @@
           this._startA = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.A, _depthStart);
           this._startP = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.P, _depthStart);
           this._startL = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.L, _depthStart);
-          this._startVy = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.V, _depthStart);
+          this._startVy = addOverlapCropImage(this, texKey, homeBrokenYCropFromV(), _depthStart);
 
           this._startHitZone = this.add.zone(L.centerX, L.startCenterY, 120, 72).setDepth(14);
 
@@ -1636,10 +1648,11 @@
           const gS = (targetSideDispH / playRefNatH) * sf.scaleX;
           const gSy = (targetSideDispH / playRefNatH) * sf.scaleY;
 
+          const brokenYCrop = homeBrokenYCropFromV();
           const wP = crops.P.w * gS;
           const wL = crops.L.w * gS;
           const wA = crops.A.h * gSy;
-          const wY = crops.V.w * gS;
+          const wY = brokenYCrop.w * gS;
           const gapPL = _homeUiRandRange(0x492010, 10, 16);
           const gapLA = _homeUiRandRange(0x492011, 18, 26);
           const gapAY = _homeUiRandRange(0x492012, 14, 22);
@@ -1689,38 +1702,41 @@
             maxY = Math.max(maxY, b.bottom);
           });
 
-          const padXPlay = _homeUiRandRange(0x491101, 18, 24);
-          const padYPlay = _homeUiRandRange(0x491102, 13, 18);
-          const contentMinX = minX - padXPlay;
-          const contentMaxX = maxX + padXPlay;
-          const contentMinY = minY - padYPlay;
-          const contentMaxY = maxY + padYPlay;
-          const contentW = contentMaxX - contentMinX;
-          const contentH = contentMaxY - contentMinY;
-          const hitCx = (contentMinX + contentMaxX) * 0.5;
-          const hitCy = (contentMinY + contentMaxY) * 0.5;
+          const playPadX = _homeUiRandRange(0x491101, 16, 24);
+          const playPadY = _homeUiRandRange(0x491102, 12, 18);
+          const playBoxL = minX - playPadX;
+          const playBoxR = maxX + playPadX;
+          const playBoxT = minY - playPadY;
+          const playBoxB = maxY + playPadY;
+          const playBoxW = playBoxR - playBoxL;
+          const playBoxH = playBoxB - playBoxT;
+          const hitCx = (playBoxL + playBoxR) * 0.5;
+          const hitCy = (playBoxT + playBoxB) * 0.5;
           this._startHitZone.setPosition(hitCx, hitCy);
-          this._startHitZone.setSize(contentW + 10, contentH + 10);
+          this._startHitZone.setSize(playBoxW + 10, playBoxH + 10);
 
           const natBarW = crops.line_bottom.w;
           const natBarH = crops.line_bottom.h;
+          const natTopW = crops.line_top.w;
+          const natTopH = crops.line_top.h;
           const natLeftH = crops.playLeftBar.h;
           const natLeftW = crops.playLeftBar.w;
-          const frameInnerW = Math.max(contentW, natBarW * 0.22);
-          const scalePlay = frameInnerW / natBarW;
-          const barHalf = (natBarH * scalePlay) * 0.5;
-          const gapFrmY = _homeUiRandRange(0x491201, 6, 10);
-          const topBarY = contentMinY - gapFrmY - barHalf;
-          const botBarY = contentMaxY + gapFrmY + barHalf;
-          const innerTop = topBarY + barHalf;
-          const innerBottom = botBarY - barHalf;
-          const innerSpan = Math.max(innerBottom - innerTop, 1);
-          const leftBarCx = baseX - frameInnerW * 0.5 + (natLeftW * scalePlay * 0.34) * 0.5;
-          const leftBarCy = (innerTop + innerBottom) * 0.5;
           const sPlay = sf.scaleX;
+          const scaleBot = (playBoxW / natBarW) * sPlay;
+          const scaleTop = (playBoxW / natTopW) * sPlay;
+          const barHalfBot = (natBarH * scaleBot) * 0.5;
+          const barHalfTop = (natTopH * scaleTop) * 0.5;
+          const gapFrmY = _homeUiRandRange(0x491201, 5, 8);
+          const topBarY = playBoxT - gapFrmY - barHalfTop;
+          const botBarY = playBoxB + gapFrmY + barHalfBot;
+          const innerTop = topBarY + barHalfTop;
+          const innerBottom = botBarY - barHalfBot;
+          const innerSpan = Math.max(innerBottom - innerTop, 1);
+          const leftSqueeze = _homeUiRandRange(0x491203, 0.78, 0.92);
+          const leftBarCx = playBoxL + (natLeftW * scaleBot * leftSqueeze * sPlay) * 0.5;
+          const leftBarCy = (innerTop + innerBottom) * 0.5;
           const alphaFrm = Math.min(0.95, 0.78 + 0.17 * sf.alpha);
-          const topBarWFrac = 1;
-          const leftSqueeze = _homeUiRandRange(0x491203, 0.72, 0.88);
+          const topBarWFrac = _homeUiRandRange(0x491204, 0.52, 0.78);
 
           const applyFrame = (im, cx, cy, sx, sy) => {
             if (!im) return;
@@ -1729,22 +1745,22 @@
             im.setRotation(0);
             im.setAlpha(alphaFrm * sf.alpha);
           };
-          applyFrame(this._playFrameTop, baseX, topBarY, scalePlay * topBarWFrac * sPlay, scalePlay * sPlay);
-          applyFrame(this._playFrameBottom, baseX, botBarY, scalePlay * sPlay, scalePlay * sPlay);
+          applyFrame(this._playFrameTop, hitCx, topBarY, scaleTop * topBarWFrac, scaleTop);
+          applyFrame(this._playFrameBottom, hitCx, botBarY, scaleBot, scaleBot);
           applyFrame(
             this._playFrameLeft,
             leftBarCx,
             leftBarCy,
-            scalePlay * leftSqueeze * sPlay,
+            scaleBot * leftSqueeze * sPlay,
             (innerSpan / natLeftH) * sPlay,
           );
 
-          const leftBarHalfW = (natLeftW * scalePlay * leftSqueeze) * 0.5;
+          const leftBarHalfW = (natLeftW * scaleBot * leftSqueeze * sPlay) * 0.5;
           const fillInnerLeft = leftBarCx + leftBarHalfW + 1;
-          const fillInnerRight = baseX + frameInnerW * 0.5 - 2;
+          const fillInnerRight = playBoxR;
           const fillInnerTop = innerTop + 1;
           const fillInnerBottom = innerBottom - 1;
-          const startFillAlpha = _homeUiRandRange(0x491301, 0.27, 0.34) * sf.alpha;
+          const startFillAlpha = _homeUiRandRange(0x491301, 0.32, 0.42) * sf.alpha;
           const g0 = this._startFill;
           g0.clear();
           g0.fillStyle(0x0b1a2a, startFillAlpha * flashMul);
@@ -1787,8 +1803,8 @@
             const rowMaxX = Math.max(hb.right, tb.right);
             const rowMinY = Math.min(hb.y, tb.y);
             const rowMaxY = Math.max(hb.bottom, tb.bottom);
-            const padXSub = _homeUiRandRange(seed + 50, 13, 17);
-            const padYSub = _homeUiRandRange(seed + 51, 9, 12);
+            const padXSub = _homeUiRandRange(seed + 50, 16, 22);
+            const padYSub = _homeUiRandRange(seed + 51, 10, 14);
             const boxL = rowMinX - padXSub;
             const boxR = rowMaxX + padXSub;
             const boxT = rowMinY - padYSub;
@@ -1796,22 +1812,20 @@
             const boxW = boxR - boxL;
             const boxH = boxB - boxT;
             const boxCx = (boxL + boxR) * 0.5;
-            const boxCy = (boxT + boxB) * 0.5;
 
-            const subScale = Math.max(boxW / natBarW, natBarW * 0.08);
-            const subBarHalf = (natBarH * subScale) * 0.5;
+            const subScaleBot = boxW / natBarW;
+            const subScaleTop = boxW / natTopW;
+            const subBarHalfBot = (natBarH * subScaleBot) * 0.5;
+            const subBarHalfTop = (natTopH * subScaleTop) * 0.5;
             const subGapY = _homeUiRandRange(seed + 52, 5, 8);
-            const subTopY = boxT - subGapY - subBarHalf;
-            const subBotY = boxB + subGapY + subBarHalf;
-            const subInnerTop = subTopY + subBarHalf;
-            const subInnerBot = subBotY - subBarHalf;
+            const subTopY = boxT - subGapY - subBarHalfTop;
+            const subBotY = boxB + subGapY + subBarHalfBot;
+            const subInnerTop = subTopY + subBarHalfTop;
+            const subInnerBot = subBotY - subBarHalfBot;
             const subSpan = Math.max(subInnerBot - subInnerTop, 1);
-            const sideLeft = _homeUiRandInt(seed + 53, 0, 1) === 0;
-            const sideCx = sideLeft
-              ? boxL + (natLeftW * subScale * 0.32) * 0.5
-              : boxR - (natLeftW * subScale * 0.32) * 0.5;
-            const subTopFrac = 1;
-            const subLeftSqueeze = _homeUiRandRange(seed + 55, 0.7, 0.88);
+            const subLeftSqueeze = _homeUiRandRange(seed + 55, 0.78, 0.92);
+            const sideCx = boxL + (natLeftW * subScaleBot * subLeftSqueeze) * 0.5;
+            const subTopFrac = _homeUiRandRange(seed + 54, 0.55, 0.72);
             const alphaSubFrm = Math.min(0.9, 0.68 + 0.22 * sub.alpha);
 
             const applySubFrame = (im, cx, cy, sx, sy) => {
@@ -1820,27 +1834,20 @@
               im.setRotation(0);
               im.setAlpha(alphaSubFrm * sub.alpha);
             };
-            applySubFrame(row.frameTop, boxCx, subTopY, subScale * subTopFrac, subScale);
-            applySubFrame(row.frameBot, boxCx, subBotY, subScale, subScale);
+            applySubFrame(row.frameTop, boxCx, subTopY, subScaleTop * subTopFrac, subScaleTop);
+            applySubFrame(row.frameBot, boxCx, subBotY, subScaleBot, subScaleBot);
             applySubFrame(
               row.frameSide,
               sideCx,
               (subInnerTop + subInnerBot) * 0.5,
-              subScale * subLeftSqueeze,
+              subScaleBot * subLeftSqueeze,
               subSpan / natLeftH,
             );
 
-            const sideHalf = (natLeftW * subScale * subLeftSqueeze) * 0.5;
-            let subFillL;
-            let subFillR;
-            if (sideLeft) {
-              subFillL = sideCx + sideHalf + 1;
-              subFillR = boxR + 1;
-            } else {
-              subFillL = boxL - 1;
-              subFillR = sideCx - sideHalf - 1;
-            }
-            const subFillAlpha = _homeUiRandRange(seed + 60, 0.2, 0.27) * sub.alpha;
+            const sideHalf = (natLeftW * subScaleBot * subLeftSqueeze) * 0.5;
+            const subFillL = sideCx + sideHalf + 1;
+            const subFillR = boxR;
+            const subFillAlpha = _homeUiRandRange(seed + 60, 0.22, 0.30) * sub.alpha;
             row.fill.clear();
             row.fill.fillStyle(0x0b1a2a, subFillAlpha);
             row.fill.fillRect(
