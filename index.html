@@ -170,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-01 21:30';
+      const BUILD_TIMESTAMP = '2026-05-02 12:00';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1200,9 +1200,8 @@
       // HOME UI — layout + delta system
       //
       // HOME_LAYOUT  : canonical positions/sizes for the normal state
-      // createHomeDelta() : neutral delta object per element (offsetX/Y,
-      //                     scaleX/Y, alpha, rotation)
-      // _applyDelta()     : merges layout + delta → actual draw coords
+      // createHomeDelta() : neutral delta object (offsetX/Y, scaleX/Y, alpha, rotation)
+      // addOverlapCropImage() : canvas 切り出しテクスチャ（overlap-title.png のみ）
       //
       // To collapse or rebuild the UI, change only the delta values and call
       // _redrawHomeUI().  The layout object never changes.
@@ -1227,7 +1226,8 @@
         const startHeight = H * 0.075;
         const subButtonWidth = W * 0.44;
         const subButtonHeight = H * 0.055;
-        const labels = ['ENHANCE', 'LOADOUT', 'LOG'];
+        /** サブ行のプレースホルダ（先頭 O/E/R は PNG 切り出し、後続のみテキスト差し替え可） */
+        const subRowTails = Object.freeze(['/OPT', '-SET', '/LOG']);
         // サブボタン中心 Y（START_y = START 中心）: 上段は広め、その下は比率間隔
         let enhanceY = startCenterY + H * 0.12;
         let loadoutY = enhanceY + H * 0.085;
@@ -1276,12 +1276,28 @@
           subButtonWidth,
           subButtonHeight,
           subButtonCenterYs,
-          labels,
+          subRowTails,
           outerFrame,
           HOME_Y_OFFSET,
           debrisTopY,
         });
       })();
+
+      /** overlap-title.png 上の切り出し矩形（1536×1024、RGBA）— Home UI はこの PNG のみ使用 */
+      const HOMEOVERLAP_TEX_KEY = 'home-overlap-title';
+      const HOMEOVERLAP_CROPS = Object.freeze({
+        A:          Object.freeze({ x: 932, y: 459, w: 61, h: 91 }),
+        P:          Object.freeze({ x: 885, y: 459, w: 52, h: 91 }),
+        V:          Object.freeze({ x: 424, y: 459, w: 99, h: 91 }),
+        V_frag:     Object.freeze({ x: 424, y: 502, w: 52, h: 48 }),
+        L:          Object.freeze({ x: 775, y: 459, w: 71, h: 91 }),
+        bottomLine: Object.freeze({ x: 455, y: 591, w: 459, h: 8 }),
+        topE:       Object.freeze({ x: 555, y: 465, w: 62, h: 5 }),
+        topR:       Object.freeze({ x: 665, y: 466, w: 72, h: 5 }),
+        subO:       Object.freeze({ x: 305, y: 459, w: 99, h: 91 }),
+        subE:       Object.freeze({ x: 547, y: 459, w: 81, h: 91 }),
+        subR:       Object.freeze({ x: 660, y: 459, w: 87, h: 91 }),
+      });
 
       // Returns a neutral (no-op) delta object.
       // Collapse / rebuild: set fields on this object then call _redrawHomeUI().
@@ -1310,65 +1326,20 @@
       }
 
       /**
-       * Per-character labels with fixed micro-jitter (position + alpha).
-       * @returns {{ container: Phaser.GameObjects.Container, glyphs: Phaser.GameObjects.Text[] }}
+       * overlap-title から canvas テクスチャを生成して Image を返す（Graphics 不使用）。
        */
-      function createHomeGlyphLabel(scene, str, fontOpts, letterSpacing, seedBase, depth) {
-        const glyphs = [];
-        let tw = 0;
-        const widths = [];
-        for (let i = 0; i < str.length; i++) {
-          const t = scene.add.text(0, 0, str[i], fontOpts).setOrigin(0.5, 0.5).setDepth(depth);
-          widths.push(t.width);
-          tw += t.width + (i < str.length - 1 ? letterSpacing : 0);
-          glyphs.push(t);
+      function addOverlapCropImage(scene, texKey, crop, depth) {
+        const key = `ov_${texKey}_${crop.x}_${crop.y}_${crop.w}_${crop.h}`;
+        if (!scene.textures.exists(key)) {
+          const src = scene.textures.get(texKey).getSourceImage();
+          const c = document.createElement('canvas');
+          c.width = crop.w;
+          c.height = crop.h;
+          const ctx = c.getContext('2d');
+          ctx.drawImage(src, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+          scene.textures.addCanvas(key, c);
         }
-        const container = scene.add.container(0, 0, glyphs).setDepth(depth);
-        const weakCount = 1 + (_homeUiHash32(seedBase + 901) % 2);
-        const weakSet = new Set();
-        let guard = 0;
-        while (weakSet.size < weakCount && guard < 16) {
-          weakSet.add(_homeUiRandInt(seedBase + 902 + guard * 17, 0, str.length - 1));
-          guard++;
-        }
-        let xLeft = -tw / 2;
-        for (let i = 0; i < str.length; i++) {
-          const w = widths[i];
-          const s0 = seedBase + i * 131;
-          let dx = _homeUiRandInt(s0, -2, 2);
-          let dy = _homeUiRandInt(s0 + 1, -1, 1);
-          let ga = _homeUiRandRange(s0 + 2, 0.92, 1.0);
-          if (weakSet.has(i)) {
-            ga = _homeUiRandRange(s0 + 3, 0.7, 0.85);
-          }
-          glyphs[i].setPosition(xLeft + w * 0.5 + dx, dy);
-          glyphs[i].setAlpha(ga);
-          xLeft += w + (i < str.length - 1 ? letterSpacing : 0);
-        }
-        container._glyphBaseAlphas = glyphs.map((g) => g.alpha);
-        return { container, glyphs };
-      }
-
-      // Merge a layout rect with a delta → { x, y, w, h, alpha, rotation }
-      function _applyDelta(baseX, baseY, baseW, baseH, delta) {
-        return {
-          x:        baseX + delta.offsetX,
-          y:        baseY + delta.offsetY,
-          w:        baseW * delta.scaleX,
-          h:        baseH * delta.scaleY,
-          alpha:    delta.alpha,
-          rotation: delta.rotation,
-        };
-      }
-
-      // Merge a layout line segment with a delta → { x1, y1, x2, y2, alpha }
-      // offsetX/Y shift the whole segment; scaleX/Y extend from the midpoint.
-      function _applySegmentDelta(seg, delta) {
-        const mx = (seg.x1 + seg.x2) * 0.5 + delta.offsetX;
-        const my = (seg.y1 + seg.y2) * 0.5 + delta.offsetY;
-        const hx = (seg.x2 - seg.x1) * 0.5 * delta.scaleX;
-        const hy = (seg.y2 - seg.y1) * 0.5 * delta.scaleY;
-        return { x1: mx - hx, y1: my - hy, x2: mx + hx, y2: my + hy, alpha: delta.alpha };
+        return scene.add.image(0, 0, key).setOrigin(0.5, 0.5).setDepth(depth);
       }
 
       function destroyBootBgPanelForHome(bootScene) {
@@ -1386,34 +1357,24 @@
         preload() {
           this.load.image('home-bg-normal', 'assets/home-bg-normal.png');
           this.load.image('home-debris', 'assets/home-debris.png');
+          this.load.image(HOMEOVERLAP_TEX_KEY, 'assets/overlap-title.png');
         }
 
         create() {
-          // ── accent colors ────────────────────────────────────────────────────
-          // START uses a salmon palette; sub-buttons keep the original cyan tones
-          const START_MAIN_LW  = 2;
-          const START_AUX_LW   = 1;
-          const START_MAIN_A   = 0.9;
-          const START_AUX_A    = 0.35;
-          const START_FILL_HEX = 0xf47b6a;   // salmon fill
-          const START_LINE_HEX = 0xd45a47;   // slightly deeper frame line
-          const START_TEXT_COL = '#f47b6a';
-          const SUB_LW         = 1;
-          const SUB_LINE       = 0x2ec8be;
-          const SUB_TEXT       = '#2ec8be';
-          const SUB_FILL_A     = 0.025;
+          const L = HOME_LAYOUT;
+          const SUB_TAIL_STYLE = {
+            fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+            fontSize: '13px',
+            color: '#9ee5df',
+          };
 
-          // ── background ───────────────────────────────────────────────────────
-          // Boot が collapse 完了時に残す home-bg-normal（白パネル）は破棄し、Home では載せない。
           destroyBootBgPanelForHome(this.scene.get('boot'));
 
-          // Layer1: グリッドのみ（depth -59）
           this._homeBackdrop = mountHomeGridOnly(this, {
             width: WORLD_W,
             height: WORLD_H,
           });
 
-          // Layer3: 再構築パネル（home-bg-normal を単独 Image、スキャン専用・Boot の残骸画像とは別）
           const _depthRebuildPanel = -48;
           const _rebuildTexKey = 'home-bg-normal';
           this._homeRebuildPanel = this.add.image(WORLD_W / 2, WORLD_H / 2, _rebuildTexKey)
@@ -1423,8 +1384,6 @@
           const _rsy = WORLD_H / this._homeRebuildPanel.height;
           this._homeRebuildPanel.setScale(Math.max(_rsx, _rsy));
 
-          // ── 再構築スキャンマスク（GeometryMask: 上から行単位でスキャン、STARTの少し上で停止）
-          // stopY: STARTボタン上端より1グリッド行分上（グリッド境界に合わせる）
           const _scanGridStep = 52;
           const _scanStopRow  = Math.ceil(
             (HOME_LAYOUT.startCenterY - HOME_LAYOUT.startHeight / 2 - _scanGridStep) / _scanGridStep,
@@ -1438,10 +1397,6 @@
             targetImage:      this._homeRebuildPanel,
           });
 
-          // ── 背景切り出し破片（下端堆積）─────────────────────────────────────
-          // bg より前 (depth -10〜-7) / UI より後ろ
-
-          // ── 残骸PNG（画面下端に半埋め）Layer2: グリッドより前・再構築パネルより後ろ
           {
             const _debrisTex     = this.textures.get('home-debris').getSourceImage();
             const _debrisScale   = (WORLD_W * 1.08) / _debrisTex.width;
@@ -1454,120 +1409,41 @@
               .setDepth(-54);
           }
 
-          // ── deltas (one per independent element) ─────────────────────────────
-          // All neutral now (normal state).  Mutate these + call _redrawHomeUI()
-          // to drive collapse / rebuild animations without touching layout.
-          //
-          // START frame: startFrame = shared position/alpha for the whole button;
-          //   startFrameTop/Bottom/Left/Right = per-side visibility overrides.
-          //   Effective position of each side = startFrame.offset + side.offset.
-          //
-          // sub[i]: offsetX/offsetY/alpha = whole-button-level transform;
-          //   frameTop/Bottom/Left/Right = per-side visibility overrides.
           this._delta = {
-            startFrame:       createHomeDelta(),
-            startFrameTop:    createHomeDelta(),
-            startFrameBottom: createHomeDelta(),
-            startFrameLeft:   createHomeDelta(),
-            startFrameRight:  createHomeDelta(),
-            startLabel: createHomeDelta(),
-            sub: HOME_LAYOUT.labels.map(() => ({
-              offsetX:    0,
-              offsetY:    0,
-              alpha:      1,
-              frameTop:    createHomeDelta(),
-              frameBottom: createHomeDelta(),
-              frameLeft:   createHomeDelta(),
-              frameRight:  createHomeDelta(),
-              label: createHomeDelta(),
+            startFrame: createHomeDelta(),
+            sub: HOME_LAYOUT.subRowTails.map(() => ({
+              offsetX: 0,
+              offsetY: 0,
+              alpha:   1,
             })),
-            outerFrame: {
-              top:         createHomeDelta(),
-              bottom:      createHomeDelta(),
-              leftTop:     createHomeDelta(),
-              leftBottom:  createHomeDelta(),
-              rightTop:    createHomeDelta(),
-              rightBottom: createHomeDelta(),
-            },
           };
 
-          // ── Phaser display objects (allocated once, redrawn by _redrawHomeUI) ─
           const _depthStart = 12;
           const _depthSub = 11;
-          const _depthSubFill = 10;
-          this._gStartFill = this.add.graphics().setDepth(_depthStart);
-          this._gStartAuxFrame = this.add.graphics().setDepth(_depthStart);
-          this._gStartInnerFrame = this.add.graphics().setDepth(_depthStart);
-          this._gStartTerminals = this.add.graphics().setDepth(_depthStart);
-          this._gStartFrameTop    = this.add.graphics().setDepth(_depthStart);
-          this._gStartFrameBottom = this.add.graphics().setDepth(_depthStart);
-          this._gStartFrameLeft   = this.add.graphics().setDepth(_depthStart);
-          this._gStartFrameRight  = this.add.graphics().setDepth(_depthStart);
-          const _startGlyphs = createHomeGlyphLabel(
-            this,
-            'START',
-            {
-              fontFamily: 'system-ui, -apple-system, sans-serif',
-              fontSize: '34px',
-              fontStyle: 'bold',
-              color: START_TEXT_COL,
-            },
-            6,
-            0x48543001,
-            _depthStart,
-          );
-          this._startGlyphContainer = _startGlyphs.container;
+          const texKey = HOMEOVERLAP_TEX_KEY;
 
-          // 4 independent side graphics per sub button (top, bottom, left, right)
-          this._subFrameSides = HOME_LAYOUT.labels.map(() => ({
-            top:    this.add.graphics().setDepth(_depthSub),
-            bottom: this.add.graphics().setDepth(_depthSub),
-            left:   this.add.graphics().setDepth(_depthSub),
-            right:  this.add.graphics().setDepth(_depthSub),
-          }));
-          this._gSubFill = HOME_LAYOUT.labels.map(() => this.add.graphics().setDepth(_depthSubFill));
-          this._gSubInd = HOME_LAYOUT.labels.map(() => this.add.graphics().setDepth(_depthSub));
-          this._subGlyphContainers = HOME_LAYOUT.labels.map((label, i) =>
-            createHomeGlyphLabel(
-              this,
-              label,
-              {
-                fontFamily: 'monospace, system-ui, sans-serif',
-                fontSize: '14px',
-                color: SUB_TEXT,
-              },
-              4,
-              0x48543100 + i * 997,
-              _depthSub,
-            ).container,
-          );
+          this._startBottom = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.bottomLine, _depthStart);
+          this._startTopE   = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.topE, _depthStart);
+          this._startTopR   = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.topR, _depthStart);
+          this._startA      = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.A, _depthStart);
+          this._startP      = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.P, _depthStart);
+          this._startVfrag  = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.V_frag, _depthStart);
+          this._startL      = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.L, _depthStart);
 
-          // ── outerFrame: 6 independent segment graphics ───────────────────────
-          // depth 1 → above grid (-54), below everything else (3+)
-          const _ofDepth = 1;
-          this._outerFrameGfx = {
-            top:         this.add.graphics().setDepth(_ofDepth),
-            bottom:      this.add.graphics().setDepth(_ofDepth),
-            leftTop:     this.add.graphics().setDepth(_ofDepth),
-            leftBottom:  this.add.graphics().setDepth(_ofDepth),
-            rightTop:    this.add.graphics().setDepth(_ofDepth),
-            rightBottom: this.add.graphics().setDepth(_ofDepth),
-          };
+          this._startHitZone = this.add.zone(L.centerX, L.startCenterY, 120, 72).setDepth(14);
 
-          // stash style constants for use in _redrawHomeUI
-          this._style = {
-            START_MAIN_LW, START_AUX_LW, START_MAIN_A, START_AUX_A,
-            START_FILL_HEX, START_LINE_HEX, SUB_LW, SUB_LINE, SUB_FILL_A,
-          };
-          // separate state for the START fill flash (not part of collapse delta)
-          this._startFillAlpha = 0.08;
+          const subCrops = [HOMEOVERLAP_CROPS.subO, HOMEOVERLAP_CROPS.subE, HOMEOVERLAP_CROPS.subR];
+          this._subRows = HOME_LAYOUT.subRowTails.map((tail, i) => {
+            const head = addOverlapCropImage(this, texKey, subCrops[i], _depthSub);
+            const tailT = this.add.text(0, 0, tail, SUB_TAIL_STYLE).setOrigin(0, 0.5).setDepth(_depthSub);
+            const z = this.add.zone(0, 0, 88, 40).setDepth(13);
+            return { head, tail: tailT, zone: z };
+          });
 
-          // ── initial draw ─────────────────────────────────────────────────────
-          // すべてのデルタは createHomeDelta() の中立値（正常状態）のまま使用する。
-          // 崩壊・再構築表現は一切加えない。
+          this._startPressFlash = 0;
+
           this._redrawHomeUI();
 
-          // ── デバッグ HUD (?debug=1 のみ) ─────────────────────────────────────
           this._homeReady = true;
           this._debugHud = createDebugHUD(this, () => ({
             scene:     'home',
@@ -1576,7 +1452,6 @@
             debris:    this._homeDebris ? this._homeDebris.alpha.toFixed(2) : '-',
           }));
 
-          // ── lifecycle ────────────────────────────────────────────────────────
           const cleanupHome = () => {
             this._debugHud?.destroy();
             this._debugHud = null;
@@ -1589,58 +1464,49 @@
             this._homeRebuildPanel = null;
             this._homeDebris?.destroy?.();
             this._homeDebris = null;
-            this._startGlyphContainer?.destroy?.(true);
-            this._startGlyphContainer = null;
-            this._subGlyphContainers?.forEach((c) => c?.destroy?.(true));
-            this._subGlyphContainers = null;
-            this._gStartInnerFrame?.destroy?.();
-            this._gStartInnerFrame = null;
+            [
+              this._startBottom, this._startTopE, this._startTopR,
+              this._startA, this._startP, this._startVfrag, this._startL,
+            ].forEach((o) => o?.destroy?.());
+            this._startBottom = this._startTopE = this._startTopR = null;
+            this._startA = this._startP = this._startVfrag = this._startL = null;
+            this._startHitZone?.destroy?.();
+            this._startHitZone = null;
+            this._subRows?.forEach((r) => {
+              r.head?.destroy?.();
+              r.tail?.destroy?.();
+              r.zone?.destroy?.();
+            });
+            this._subRows = null;
           };
           this.events.once('shutdown', cleanupHome);
 
-          // ── STARTボタン専用クリック処理（全画面タップは廃止）────────────────
-          let _startFired = false;
-          this.input.on('pointerdown', (pointer) => {
-            const L  = HOME_LAYOUT;
-            const d  = this._delta.startFrame;
-            const cx = L.centerX + d.offsetX;
-            const cy = L.startCenterY + d.offsetY;
-            const hw = (L.startWidth  * d.scaleX) / 2;
-            const hh = (L.startHeight * d.scaleY) / 2;
-            if (pointer.x >= cx - hw && pointer.x <= cx + hw &&
-                pointer.y >= cy - hh && pointer.y <= cy + hh) {
-              // フィードバック
-              this._startFillAlpha = 0.18;
-              this._redrawHomeUI();
-              if (_startFired) return;
-              _startFired = true;
-              this.time.delayedCall(80, () => {
-                this._startFillAlpha = 0.08;
-                this._redrawHomeUI();
-                cleanupHome();
-                this.scene.start('game');
-              });
-            }
-          });
-
-          // ── 下ボタン個別クリック処理（ENHANCE / LOADOUT / LOG）─────────────
           const _subHandlers = [
-            () => { console.log('[HOME] ENHANCE pressed'); },
-            () => { console.log('[HOME] LOADOUT pressed'); },
-            () => { console.log('[HOME] LOG pressed'); },
+            () => { console.log('[HOME] O row pressed'); },
+            () => { console.log('[HOME] E row pressed'); },
+            () => { console.log('[HOME] R row pressed'); },
           ];
 
+          let _startFired = false;
           this.input.on('pointerdown', (pointer) => {
-            const L = HOME_LAYOUT;
-            HOME_LAYOUT.labels.forEach((_, i) => {
-              const sub    = this._delta.sub[i];
-              const baseCY = L.subButtonCenterYs[i];
-              const cx = L.centerX + sub.offsetX;
-              const cy = baseCY   + sub.offsetY;
-              const hw = L.subButtonWidth  / 2;
-              const hh = L.subButtonHeight / 2;
-              if (pointer.x >= cx - hw && pointer.x <= cx + hw &&
-                  pointer.y >= cy - hh && pointer.y <= cy + hh) {
+            const zb = this._startHitZone.getBounds();
+            if (zb.contains(pointer.x, pointer.y)) {
+              this._startPressFlash = 1;
+              this._redrawHomeUI();
+              if (!_startFired) {
+                _startFired = true;
+                this.time.delayedCall(80, () => {
+                  this._startPressFlash = 0;
+                  this._redrawHomeUI();
+                  cleanupHome();
+                  this.scene.start('game');
+                });
+              }
+              return;
+            }
+            this._subRows?.forEach((row, i) => {
+              const b = row.zone.getBounds();
+              if (b.contains(pointer.x, pointer.y)) {
                 _subHandlers[i]();
               }
             });
@@ -1651,331 +1517,166 @@
           this._debugHud?.tick();
         }
 
-        // Redraws all home UI elements from HOME_LAYOUT + current deltas.
-        // Call this whenever any delta value changes.
         _redrawHomeUI() {
           const L = HOME_LAYOUT;
-          const {
-            START_MAIN_LW, START_AUX_LW, START_MAIN_A, START_AUX_A,
-            START_FILL_HEX, START_LINE_HEX, SUB_LW, SUB_LINE, SUB_FILL_A,
-          } = this._style;
-          const START_CORNER_R = 8;
-          const CHK = 5; // 角欠け 3〜6px
-          const AUX_OUT = 3; // 補助枠をわずかに外側へ
-          const CHK_AUX = 4;
-          const TERM_LEN = 10; // 端子 8〜12px
-          const TERM_IN = 7; // 端子を内寄せ
-          const SUB_GAP = 3;
-          const SUB_N = 2; // サブ角欠け（START より弱く）
-          const IND_LEN = [6, 4, 5]; // 左インジケータ縦長（ボタンごと）
-          const topShiftX = [-2, 6, -4];
-          const botShiftX = [5, -4, 7];
+          const sf = this._delta.startFrame;
+          const baseX = L.centerX + sf.offsetX;
+          const baseY = L.startCenterY + sf.offsetY;
+          const flashMul = this._startPressFlash ? 1.15 : 1.0;
 
-          // ── START frame (4 independent sides, shared startFrame base) ────────
-          // startFrame provides the whole-button position/alpha offset.
-          // Each side delta is composed on top: effective offset = sf + side.
-          {
-            const bx = L.centerX - L.startWidth  / 2;
-            const by = L.startCenterY - L.startHeight / 2;
-            const bw = L.startWidth;
-            const bh = L.startHeight;
-            const lc = START_LINE_HEX;
-            const sf = this._delta.startFrame;
+          const bottomC = HOMEOVERLAP_CROPS.bottomLine;
+          const bottomTargetW = L.startWidth * 0.9 * sf.scaleX;
+          const bottomScale = bottomTargetW / bottomC.w;
 
-            // Compose startFrame base with a per-side delta
-            const _compose = (side) => ({
-              offsetX:  sf.offsetX  + side.offsetX,
-              offsetY:  sf.offsetY  + side.offsetY,
-              scaleX:   sf.scaleX   * side.scaleX,
-              scaleY:   sf.scaleY   * side.scaleY,
-              alpha:    sf.alpha    * side.alpha,
-              rotation: sf.rotation + side.rotation,
-            });
+          const place = (img, x, y, sx, sy, rotDeg, seedA, seedR) => {
+            img.setPosition(
+              x + _homeUiRandInt(seedR + 1, -3, 3),
+              y + _homeUiRandInt(seedR + 2, -3, 3),
+            );
+            img.setScale(sx * sf.scaleX, sy * sf.scaleY);
+            img.setRotation(Phaser.Math.DegToRad(rotDeg + sf.rotation));
+            img.setAlpha(
+              Math.min(1, flashMul * sf.alpha * _homeUiRandRange(seedA, 0.7, 1.0)),
+            );
+          };
 
-            this._gStartAuxFrame.clear();
-            this._gStartInnerFrame.clear();
-            this._gStartTerminals.clear();
+          place(
+            this._startBottom,
+            baseX + _homeUiRandInt(0x491001, -2, 2),
+            baseY + L.startHeight * 0.32,
+            bottomScale,
+            bottomScale * 1.12,
+            _homeUiRandInt(0x491002, -1, 1) * 0.25,
+            0x492001,
+            0x492101,
+          );
 
-            // fill: 背景面（薄く、角丸は維持）
-            {
-              const r = _applyDelta(bx, by, bw, bh, sf);
-              this._gStartFill.clear();
-              this._gStartFill.setAlpha(r.alpha);
-              this._gStartFill.fillStyle(START_FILL_HEX, this._startFillAlpha);
-              this._gStartFill.fillRoundedRect(r.x, r.y, r.w, r.h, START_CORNER_R);
-            }
+          place(
+            this._startTopE,
+            baseX - L.startWidth * 0.28,
+            baseY - L.startHeight * 0.36,
+            1.35,
+            1.28,
+            _homeUiRandInt(0x491010, -2, 2) * 0.35,
+            0x492010,
+            0x492110,
+          );
 
-            // メイン枠線（太さ2 / α0.9）— 四隅欠け
-            const _strokeMain = (g, r) => {
-              g.clear();
-              g.setAlpha(r.alpha * START_MAIN_A);
-              g.lineStyle(START_MAIN_LW, lc, 1.0);
-              g.beginPath();
-              g.moveTo(r.x + START_CORNER_R + CHK, r.y);
-              g.lineTo(r.x + r.w - START_CORNER_R - CHK, r.y);
-              g.strokePath();
-            };
-            const _strokeMainBot = (g, r) => {
-              g.clear();
-              g.setAlpha(r.alpha * START_MAIN_A);
-              g.lineStyle(START_MAIN_LW, lc, 1.0);
-              g.beginPath();
-              g.moveTo(r.x + START_CORNER_R + CHK, r.y + r.h);
-              g.lineTo(r.x + r.w - START_CORNER_R - CHK, r.y + r.h);
-              g.strokePath();
-            };
-            const _strokeMainL = (g, r) => {
-              g.clear();
-              g.setAlpha(r.alpha * START_MAIN_A);
-              g.lineStyle(START_MAIN_LW, lc, 1.0);
-              g.beginPath();
-              g.moveTo(r.x, r.y + START_CORNER_R + CHK);
-              g.lineTo(r.x, r.y + r.h - START_CORNER_R - CHK);
-              g.strokePath();
-            };
-            const _strokeMainR = (g, r) => {
-              g.clear();
-              g.setAlpha(r.alpha * START_MAIN_A);
-              g.lineStyle(START_MAIN_LW, lc, 1.0);
-              g.beginPath();
-              g.moveTo(r.x + r.w, r.y + START_CORNER_R + CHK);
-              g.lineTo(r.x + r.w, r.y + r.h - START_CORNER_R - CHK);
-              g.strokePath();
-            };
+          place(
+            this._startTopR,
+            baseX + L.startWidth * 0.12,
+            baseY - L.startHeight * 0.41,
+            1.22,
+            1.35,
+            _homeUiRandInt(0x491020, -2, 3) * 0.4,
+            0x492020,
+            0x492120,
+          );
 
-            {
-              const r = _applyDelta(bx, by, bw, bh, _compose(this._delta.startFrameTop));
-              _strokeMain(this._gStartFrameTop, r);
-            }
-            {
-              const r = _applyDelta(bx, by, bw, bh, _compose(this._delta.startFrameBottom));
-              _strokeMainBot(this._gStartFrameBottom, r);
-            }
-            {
-              const r = _applyDelta(bx, by, bw, bh, _compose(this._delta.startFrameLeft));
-              _strokeMainL(this._gStartFrameLeft, r);
-            }
-            {
-              const r = _applyDelta(bx, by, bw, bh, _compose(this._delta.startFrameRight));
-              _strokeMainR(this._gStartFrameRight, r);
-            }
+          const aScale = 1.32;
+          place(
+            this._startA,
+            baseX - L.startWidth * 0.2,
+            baseY - L.startHeight * 0.02,
+            aScale,
+            aScale,
+            -90 + _homeUiRandInt(0x491030, -2, 2),
+            0x492030,
+            0x492130,
+          );
 
-            // 補助枠（1px / α0.35、メインよりわずかに外側）
-            {
-              const r = _applyDelta(bx, by, bw, bh, sf);
-              const ix = r.x - AUX_OUT;
-              const iy = r.y - AUX_OUT;
-              const iw = r.w + AUX_OUT * 2;
-              const ih = r.h + AUX_OUT * 2;
-              const ir = START_CORNER_R + AUX_OUT;
-              this._gStartAuxFrame.setAlpha(r.alpha * START_AUX_A);
-              this._gStartAuxFrame.lineStyle(START_AUX_LW, lc, 1.0);
-              this._gStartAuxFrame.beginPath();
-              this._gStartAuxFrame.moveTo(ix + ir + CHK_AUX, iy);
-              this._gStartAuxFrame.lineTo(ix + iw - ir - CHK_AUX, iy);
-              this._gStartAuxFrame.strokePath();
-              this._gStartAuxFrame.beginPath();
-              this._gStartAuxFrame.moveTo(ix + ir + CHK_AUX, iy + ih);
-              this._gStartAuxFrame.lineTo(ix + iw - ir - CHK_AUX, iy + ih);
-              this._gStartAuxFrame.strokePath();
-              this._gStartAuxFrame.beginPath();
-              this._gStartAuxFrame.moveTo(ix, iy + ir + CHK_AUX);
-              this._gStartAuxFrame.lineTo(ix, iy + ih - ir - CHK_AUX);
-              this._gStartAuxFrame.strokePath();
-              this._gStartAuxFrame.beginPath();
-              this._gStartAuxFrame.moveTo(ix + iw, iy + ir + CHK_AUX);
-              this._gStartAuxFrame.lineTo(ix + iw, iy + ih - ir - CHK_AUX);
-              this._gStartAuxFrame.strokePath();
-            }
+          const ax = this._startA.x;
+          const ay = this._startA.y;
+          const aw = this._startA.width * Math.abs(this._startA.scaleX);
+          place(
+            this._startVfrag,
+            ax + aw * 0.42 + 22,
+            ay + 18,
+            1.08,
+            1.14,
+            _homeUiRandInt(0x491040, -3, 3) * 0.9,
+            0x492040,
+            0x492140,
+          );
 
-            // 内側細ライン（1px / メインに対し α0.25）
-            {
-              const r = _applyDelta(bx, by, bw, bh, sf);
-              const inset = 5;
-              const ix = r.x + inset;
-              const iy = r.y + inset;
-              const iw = r.w - inset * 2;
-              const ih = r.h - inset * 2;
-              const ir = Math.max(2, START_CORNER_R - inset);
-              this._gStartInnerFrame.setAlpha(r.alpha * START_MAIN_A * 0.25);
-              this._gStartInnerFrame.lineStyle(1, lc, 1.0);
-              this._gStartInnerFrame.strokeRoundedRect(ix, iy, iw, ih, ir);
-            }
+          place(
+            this._startP,
+            baseX - L.startWidth * 0.36,
+            baseY - L.startHeight * 0.22,
+            0.95,
+            1.02,
+            _homeUiRandInt(0x491050, -2, 2) * 1.1,
+            0x492050,
+            0x492150,
+          );
 
-            // 左右端子ライン（短い縦線、内寄せ・わずかに非対称）
-            {
-              const r = _applyDelta(bx, by, bw, bh, sf);
-              const midY = r.y + r.h * 0.5;
-              const y1 = midY - TERM_LEN * 0.5;
-              const y2 = midY + TERM_LEN * 0.5;
-              const xl = r.x + TERM_IN;
-              const xr = r.x + r.w - TERM_IN;
-              const oxL = _homeUiRandInt(0x48543201, -2, 2);
-              const oyL = _homeUiRandInt(0x48543202, -2, 2);
-              const oxR = _homeUiRandInt(0x48543203, -2, 2);
-              const oyR = _homeUiRandInt(0x48543204, -2, 2);
-              this._gStartTerminals.setAlpha(r.alpha * START_MAIN_A);
-              this._gStartTerminals.lineStyle(START_MAIN_LW, lc, 1.0);
-              this._gStartTerminals.beginPath();
-              this._gStartTerminals.moveTo(xl + oxL, y1 + oyL);
-              this._gStartTerminals.lineTo(xl + oxL, y2 + oyL);
-              this._gStartTerminals.moveTo(xr + oxR, y1 + oyR);
-              this._gStartTerminals.lineTo(xr + oxR, y2 + oyR);
-              this._gStartTerminals.strokePath();
-            }
-          }
+          place(
+            this._startL,
+            baseX + L.startWidth * 0.26,
+            baseY + L.startHeight * 0.2,
+            0.88,
+            0.92,
+            _homeUiRandInt(0x491060, -3, 2) * 1.2,
+            0x492060,
+            0x492160,
+          );
 
-          // ── START label（グリフ分割・固定微差）───────────────────────────────
-          {
-            const sf = this._delta.startFrame;
-            const d  = this._delta.startLabel;
-            const cont = this._startGlyphContainer;
-            const x = L.centerX      + sf.offsetX + d.offsetX;
-            const y = L.startCenterY + sf.offsetY + d.offsetY;
-            cont.setPosition(x, y);
-            cont.setRotation(Phaser.Math.DegToRad(sf.rotation + d.rotation));
-            cont.setScale(sf.scaleX * d.scaleX, sf.scaleY * d.scaleY);
-            const wrapA = sf.alpha * d.alpha;
-            cont.setAlpha(wrapA);
-            const ba = cont._glyphBaseAlphas;
-            if (ba && cont.list) {
-              let gi = 0;
-              cont.list.forEach((ch) => {
-                if (ch.setAlpha && ba[gi] !== undefined) {
-                  ch.setAlpha(ba[gi]);
-                  gi++;
-                }
-              });
-            }
-          }
-
-          // ── sub-buttons (4 independent sides per button) ───────────────────
-          // sub[i].offsetX/Y/alpha = whole-button transform.
-          // sub[i].frameTop/Bottom/Left/Right = per-side visibility overrides.
-          L.labels.forEach((_, i) => {
-            const baseCY = L.subButtonCenterYs[i];
-            const sub = this._delta.sub[i];
-            const bx  = L.centerX - L.subButtonWidth / 2 + sub.offsetX;
-            const by  = baseCY - L.subButtonHeight / 2   + sub.offsetY;
-            const bw  = L.subButtonWidth;
-            const bh  = L.subButtonHeight;
-            const sides = this._subFrameSides[i];
-
-            {
-              const gf = this._gSubFill[i];
-              gf.clear();
-              gf.setAlpha(sub.alpha * SUB_FILL_A);
-              gf.fillStyle(SUB_LINE, 1.0);
-              gf.fillRect(bx, by, bw, bh);
-            }
-
-            const _drawSubSide = (g, sideDelta, drawFn, lineMul) => {
-              const effAlpha = sub.alpha * sideDelta.alpha * lineMul;
-              const ex = bx + sideDelta.offsetX;
-              const ey = by + sideDelta.offsetY;
-              const ew = bw * sideDelta.scaleX;
-              const eh = bh * sideDelta.scaleY;
-              g.clear();
-              g.setAlpha(effAlpha);
-              g.lineStyle(SUB_LW, SUB_LINE, 1.0);
-              drawFn(g, ex, ey, ew, eh);
-            };
-
-            const tdx = topShiftX[i];
-            const bdx = botShiftX[i];
-            const lineMul = _homeUiRandRange(0x48543310 + i * 91, 0.95, 1.0);
-
-            _drawSubSide(sides.top, sub.frameTop, (g, x, y, w) => {
-              g.beginPath();
-              g.moveTo(x + SUB_N + SUB_GAP + tdx, y);
-              g.lineTo(x + w - SUB_N - SUB_GAP + tdx, y);
-              g.strokePath();
-            }, lineMul);
-            _drawSubSide(sides.bottom, sub.frameBottom, (g, x, y, w, h) => {
-              g.beginPath();
-              g.moveTo(x + SUB_N + SUB_GAP + bdx, y + h);
-              g.lineTo(x + w - SUB_N - SUB_GAP + bdx, y + h);
-              g.strokePath();
-            }, lineMul);
-            _drawSubSide(sides.left, sub.frameLeft, (g, x, y, w, h) => {
-              const trimT = SUB_N + (i % 2);
-              const trimB = SUB_N + ((i + 1) % 2) * 2;
-              g.beginPath();
-              g.moveTo(x, y + trimT);
-              g.lineTo(x, y + h - trimB);
-              g.strokePath();
-            }, lineMul);
-            _drawSubSide(sides.right, sub.frameRight, (g, x, y, w, h) => {
-              const trimT = SUB_N + ((i + 1) % 3);
-              const trimB = SUB_N + (i % 2) + 1;
-              g.beginPath();
-              g.moveTo(x + w, y + trimT);
-              g.lineTo(x + w, y + h - trimB);
-              g.strokePath();
-            }, lineMul);
-
-            {
-              const gi = this._gSubInd[i];
-              gi.clear();
-              gi.setAlpha(sub.alpha * lineMul);
-              gi.lineStyle(SUB_LW, SUB_LINE, 1.0);
-              const ix = bx - 9 + _homeUiRandInt(0x48543410 + i * 13, -1, 1);
-              const iy0 = by + bh * 0.38 + _homeUiRandInt(0x48543420 + i, -1, 1);
-              const indLen = IND_LEN[i];
-              gi.beginPath();
-              gi.moveTo(ix, iy0);
-              gi.lineTo(ix, iy0 + indLen);
-              gi.strokePath();
-            }
-
-            // label（グリフ分割）
-            {
-              const d = sub.label;
-              const x = L.centerX + sub.offsetX + d.offsetX;
-              const y = baseCY    + sub.offsetY + d.offsetY;
-              const cont = this._subGlyphContainers[i];
-              cont.setPosition(x, y);
-              cont.setRotation(Phaser.Math.DegToRad(d.rotation));
-              cont.setScale(d.scaleX, d.scaleY);
-              const wrapA = sub.alpha * d.alpha;
-              cont.setAlpha(wrapA);
-              const ba = cont._glyphBaseAlphas;
-              if (ba && cont.list) {
-                let gi = 0;
-                cont.list.forEach((ch) => {
-                  if (ch.setAlpha && ba[gi] !== undefined) {
-                    ch.setAlpha(ba[gi]);
-                    gi++;
-                  }
-                });
-              }
-            }
+          const sb = this._startBottom.getBounds();
+          const parts = [
+            this._startTopE, this._startTopR, this._startA,
+            this._startP, this._startVfrag, this._startL,
+          ];
+          let minX = sb.x;
+          let minY = sb.y;
+          let maxX = sb.right;
+          let maxY = sb.bottom;
+          parts.forEach((im) => {
+            const b = im.getBounds();
+            minX = Math.min(minX, b.x);
+            minY = Math.min(minY, b.y);
+            maxX = Math.max(maxX, b.right);
+            maxY = Math.max(maxY, b.bottom);
           });
+          const padX = 18;
+          const padY = 14;
+          this._startHitZone.setPosition((minX + maxX) * 0.5, (minY + maxY) * 0.5);
+          this._startHitZone.setSize(maxX - minX + padX * 2, maxY - minY + padY * 2);
 
-          // ── outerFrame (6 segments) ───────────────────────────────────────
-          {
-            const OF_LW    = 1.4;
-            const OF_COLOR = 0x5c7cad;
-            const OF_ALPHA = 0.50;
-            const of       = L.outerFrame;
-            const gfx      = this._outerFrameGfx;
-            const dof      = this._delta.outerFrame;
+          const rowAnchors = [
+            { x: -58, y: -4, headSx: 0.38, headSy: 0.4, tailDy: 1, gap: 6 },
+            { x: 44, y: 6, headSx: 0.36, headSy: 0.37, tailDy: 5, gap: 5 },
+            { x: -22, y: -2, headSx: 0.4, headSy: 0.39, tailDy: -3, gap: 7 },
+          ];
 
-            const _drawSeg = (g, seg, delta) => {
-              const s = _applySegmentDelta(seg, delta);
-              g.clear();
-              g.setAlpha(s.alpha * OF_ALPHA);
-              g.lineStyle(OF_LW, OF_COLOR, 1.0);
-              g.lineBetween(s.x1, s.y1, s.x2, s.y2);
-            };
+          this._delta.sub.forEach((sub, i) => {
+            const row = this._subRows[i];
+            if (!row) return;
+            const baseCY = L.subButtonCenterYs[i];
+            const ra = rowAnchors[i];
+            const seed = 0x493000 + i * 997;
+            const hx = L.centerX + ra.x + sub.offsetX + _homeUiRandInt(seed, -3, 3);
+            const hy = baseCY + ra.y + sub.offsetY + _homeUiRandInt(seed + 11, -2, 2);
 
-            _drawSeg(gfx.top,         of.top,         dof.top);
-            _drawSeg(gfx.bottom,      of.bottom,      dof.bottom);
-            _drawSeg(gfx.leftTop,     of.leftTop,     dof.leftTop);
-            _drawSeg(gfx.leftBottom,  of.leftBottom,  dof.leftBottom);
-            _drawSeg(gfx.rightTop,    of.rightTop,    dof.rightTop);
-            _drawSeg(gfx.rightBottom, of.rightBottom, dof.rightBottom);
-          }
+            row.head.setPosition(hx, hy);
+            row.head.setScale(ra.headSx * sub.alpha, ra.headSy * sub.alpha);
+            row.head.setRotation(Phaser.Math.DegToRad(_homeUiRandInt(seed + 3, -2, 2)));
+            row.head.setAlpha(sub.alpha * _homeUiRandRange(seed + 4, 0.72, 0.94));
+
+            row.tail.setPosition(
+              hx + row.head.width * row.head.scaleX * 0.5 + ra.gap + _homeUiRandInt(seed + 5, 0, 2),
+              hy + ra.tailDy + _homeUiRandInt(seed + 6, -2, 2),
+            );
+            row.tail.setAlpha(sub.alpha * _homeUiRandRange(seed + 7, 0.78, 1.0));
+
+            const hb = row.head.getBounds();
+            const tb = row.tail.getBounds();
+            const zx = Math.min(hb.x, tb.x) - 4;
+            const zy = Math.min(hb.y, tb.y) - 6;
+            const zw = Math.max(hb.right, tb.right) - zx + 8;
+            const zh = Math.max(hb.bottom, tb.bottom) - zy + 10;
+            row.zone.setPosition(zx + zw * 0.5, zy + zh * 0.5);
+            row.zone.setSize(zw, zh);
+          });
         }
       }
 
