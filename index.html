@@ -170,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-02 12:45 UTC';
+      const BUILD_TIMESTAMP = '2026-05-02 13:44 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1287,41 +1287,33 @@
       /** overlap-title.png 上の切り出し矩形（1536×1024、RGBA）— Home UI はこの PNG のみ使用 */
       const HOMEOVERLAP_TEX_KEY = 'home-overlap-title';
       const HOMEOVERLAP_CROPS = Object.freeze({
-        /** PLAY 行の各字形（Pillow によるタイト bbox + 隣接排除） */
-        P:          Object.freeze({ x: 885, y: 458, w: 107, h: 93 }),
-        L:          Object.freeze({ x: 774, y: 458, w: 73, h: 92 }),
-        A:          Object.freeze({ x: 1013, y: 458, w: 93, h: 93 }),
-        V:          Object.freeze({ x: 424, y: 458, w: 99, h: 92 }),
-        /** Y 表示用: V 右側（左腕を除く） */
-        V_y:        Object.freeze({ x: 480, y: 458, w: 43, h: 92 }),
-        V_frag:     Object.freeze({ x: 424, y: 502, w: 52, h: 48 }),
-        /** 上ライン（PLAY 帯のみ・全体の飾り帯は含まない） */
-        playTopBar: Object.freeze({ x: 500, y: 458, w: 292, h: 13 }),
+        /** overlap-title 上、左→右 O / V / E / R / L / A / P（座標は画像に合わせる） */
+        O: Object.freeze({ x: 304, y: 458, w: 100, h: 92 }),
+        V: Object.freeze({ x: 424, y: 458, w: 99, h: 92 }),
+        E: Object.freeze({ x: 546, y: 458, w: 83, h: 92 }),
+        R: Object.freeze({ x: 659, y: 458, w: 88, h: 92 }),
+        L: Object.freeze({ x: 774, y: 458, w: 73, h: 92 }),
+        A: Object.freeze({ x: 885, y: 458, w: 107, h: 93 }),
+        P: Object.freeze({ x: 1013, y: 458, w: 93, h: 93 }),
+        /** 上ライン（PLAY 帯・文字 glyph とは別管理） */
+        line_top: Object.freeze({ x: 500, y: 458, w: 292, h: 13 }),
         /** 下ライン */
-        bottomLine: Object.freeze({ x: 450, y: 590, w: 466, h: 10 }),
+        line_bottom: Object.freeze({ x: 450, y: 590, w: 466, h: 10 }),
         /** 左縦（上・下ライン間） */
         playLeftBar: Object.freeze({ x: 450, y: 481, w: 21, h: 119 }),
-        topE:       Object.freeze({ x: 555, y: 465, w: 62, h: 5 }),
-        topR:       Object.freeze({ x: 665, y: 466, w: 72, h: 5 }),
-        subO:       Object.freeze({ x: 304, y: 458, w: 100, h: 92 }),
-        subE:       Object.freeze({ x: 546, y: 458, w: 83, h: 92 }),
-        subR:       Object.freeze({ x: 659, y: 458, w: 88, h: 92 }),
-        subO_head:  Object.freeze({ x: 304, y: 458, w: 100, h: 92 }),
-        subE_head:  Object.freeze({ x: 546, y: 458, w: 83, h: 92 }),
-        subR_head:  Object.freeze({ x: 659, y: 458, w: 88, h: 92 }),
       });
 
       /** ?debug=1 時: overlap-title 上の crop 矩形をミニマップ表示（stroke + ラベル） */
       const HOMEOVERLAP_CROP_DEBUG_ENTRIES = Object.freeze([
-        { label: 'P', cropKey: 'P' },
+        { label: 'O', cropKey: 'O' },
+        { label: 'V', cropKey: 'V' },
+        { label: 'E', cropKey: 'E' },
+        { label: 'R', cropKey: 'R' },
         { label: 'L', cropKey: 'L' },
         { label: 'A', cropKey: 'A' },
-        { label: 'V', cropKey: 'V_y' },
-        { label: 'O', cropKey: 'subO_head' },
-        { label: 'E', cropKey: 'subE_head' },
-        { label: 'R', cropKey: 'subR_head' },
-        { label: 'line_top', cropKey: 'playTopBar' },
-        { label: 'line_bottom', cropKey: 'bottomLine' },
+        { label: 'P', cropKey: 'P' },
+        { label: 'line_top', cropKey: 'line_top' },
+        { label: 'line_bottom', cropKey: 'line_bottom' },
       ]);
 
       function createHomeOverlapCropDebugOverlay(scene) {
@@ -1510,8 +1502,8 @@
 
           this._startFill = this.add.graphics().setDepth(_depthPlayFill);
 
-          this._playFrameTop = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.playTopBar, _depthPlayFrame);
-          this._playFrameBottom = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.bottomLine, _depthPlayFrame);
+          this._playFrameTop = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.line_top, _depthPlayFrame);
+          this._playFrameBottom = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.line_bottom, _depthPlayFrame);
           this._playFrameLeft = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.playLeftBar, _depthPlayFrame);
           [this._playFrameTop, this._playFrameBottom, this._playFrameLeft].forEach((im) => {
             im.setAlpha(0.72);
@@ -1520,22 +1512,22 @@
           this._startA = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.A, _depthStart);
           this._startP = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.P, _depthStart);
           this._startL = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.L, _depthStart);
-          this._startVy = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.V_y, _depthStart);
+          this._startVy = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.V, _depthStart);
 
           this._startHitZone = this.add.zone(L.centerX, L.startCenterY, 120, 72).setDepth(14);
 
           const subCrops = [
-            HOMEOVERLAP_CROPS.subO_head,
-            HOMEOVERLAP_CROPS.subE_head,
-            HOMEOVERLAP_CROPS.subR_head,
+            HOMEOVERLAP_CROPS.O,
+            HOMEOVERLAP_CROPS.E,
+            HOMEOVERLAP_CROPS.R,
           ];
           this._subRows = HOME_LAYOUT.subRowTails.map((tail, i) => {
             const head = addOverlapCropImage(this, texKey, subCrops[i], _depthSub);
             const tailT = this.add.text(0, 0, tail, SUB_TAIL_STYLE).setOrigin(0, 0.5).setDepth(_depthSub);
             const z = this.add.zone(0, 0, 88, 40).setDepth(13);
             const fill = this.add.graphics().setDepth(_depthSubFill);
-            const frameTop = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.playTopBar, _depthSubFrame);
-            const frameBot = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.bottomLine, _depthSubFrame);
+            const frameTop = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.line_top, _depthSubFrame);
+            const frameBot = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.line_bottom, _depthSubFrame);
             const frameSide = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.playLeftBar, _depthSubFrame);
             [frameTop, frameBot, frameSide].forEach((im) => im.setAlpha(0.62));
             return { head, tail: tailT, zone: z, fill, frameTop, frameBot, frameSide };
@@ -1638,7 +1630,7 @@
 
           // P — L — ▷(A) — Y : PLAY 行は同一スケール（▷ のみ拡大しない）
           const crops = HOMEOVERLAP_CROPS;
-          const playRefNatH = Math.max(crops.P.h, crops.L.h, crops.A.h, crops.V_y.h);
+          const playRefNatH = Math.max(crops.P.h, crops.L.h, crops.A.h, crops.V.h);
           this._homePlayRefNatH = playRefNatH;
           const targetSideDispH = _homeUiRandRange(0x4910a0, 54, 62);
           const gS = (targetSideDispH / playRefNatH) * sf.scaleX;
@@ -1647,7 +1639,7 @@
           const wP = crops.P.w * gS;
           const wL = crops.L.w * gS;
           const wA = crops.A.h * gSy;
-          const wY = crops.V_y.w * gS;
+          const wY = crops.V.w * gS;
           const gapPL = _homeUiRandRange(0x492010, 10, 16);
           const gapLA = _homeUiRandRange(0x492011, 18, 26);
           const gapAY = _homeUiRandRange(0x492012, 14, 22);
@@ -1710,8 +1702,8 @@
           this._startHitZone.setPosition(hitCx, hitCy);
           this._startHitZone.setSize(contentW + 10, contentH + 10);
 
-          const natBarW = crops.bottomLine.w;
-          const natBarH = crops.bottomLine.h;
+          const natBarW = crops.line_bottom.w;
+          const natBarH = crops.line_bottom.h;
           const natLeftH = crops.playLeftBar.h;
           const natLeftW = crops.playLeftBar.w;
           const frameInnerW = Math.max(contentW, natBarW * 0.22);
