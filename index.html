@@ -170,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-02 14:30 UTC';
+      const BUILD_TIMESTAMP = '2026-05-02 05:12 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1221,7 +1221,7 @@
         const HOME_OFFSET_BASE = -H * 0.06;
         const HOME_OFFSET_MAX = -H * 0.07;
         // 画面中央 (cx, cy) を基準。START は中央寄り（操作主役 + Boot 警告残骸との縦分離）
-        let startCenterY = cy + H * 0.05;
+        let startCenterY = cy + H * 0.028;
         const startWidth = W * 0.52;
         const startHeight = H * 0.075;
         const subButtonWidth = W * 0.44;
@@ -1229,7 +1229,7 @@
         /** サブ行のプレースホルダ（先頭 O/E/R は PNG 1 文字切り出し、後続のみテキスト） */
         const subRowTails = Object.freeze(['/CONF', '-VIEW', '/DATA']);
         // サブボタン中心 Y（START_y = START 中心）: 上段は広め、その下は比率間隔
-        let enhanceY = startCenterY + H * 0.12;
+        let enhanceY = startCenterY + H * 0.145;
         let loadoutY = enhanceY + H * 0.085;
         let logY = loadoutY + H * 0.085;
 
@@ -1299,10 +1299,14 @@
         subO:       Object.freeze({ x: 305, y: 459, w: 99, h: 91 }),
         subE:       Object.freeze({ x: 547, y: 459, w: 81, h: 91 }),
         subR:       Object.freeze({ x: 660, y: 459, w: 87, h: 91 }),
-        /** サブ行先頭 1 文字のみ（各 sub グリフの左端） */
-        subO_head:  Object.freeze({ x: 305, y: 459, w: 36, h: 91 }),
-        subE_head:  Object.freeze({ x: 547, y: 459, w: 32, h: 91 }),
-        subR_head:  Object.freeze({ x: 660, y: 459, w: 34, h: 91 }),
+        /** サブ行先頭 1 文字のみ（各 sub グリフの左端・O/E/R 全体が見える幅） */
+        subO_head:  Object.freeze({ x: 305, y: 459, w: 44, h: 91 }),
+        subE_head:  Object.freeze({ x: 547, y: 459, w: 40, h: 91 }),
+        subR_head:  Object.freeze({ x: 660, y: 459, w: 42, h: 91 }),
+        /** PLAY 枠: overlap 上帯（下ラインと同系・非完全四角用） */
+        playTopBar: Object.freeze({ x: 455, y: 448, w: 459, h: 8 }),
+        /** 左縦（上・下ラインの間をつなぐ細帯） */
+        playLeftBar: Object.freeze({ x: 455, y: 468, w: 4, h: 118 }),
       });
 
       // Returns a neutral (no-op) delta object.
@@ -1449,6 +1453,14 @@
           const _depthSub = 11;
           const texKey = HOMEOVERLAP_TEX_KEY;
 
+          const _depthPlayFrame = 10;
+          this._playFrameTop = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.playTopBar, _depthPlayFrame);
+          this._playFrameBottom = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.bottomLine, _depthPlayFrame);
+          this._playFrameLeft = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.playLeftBar, _depthPlayFrame);
+          [this._playFrameTop, this._playFrameBottom, this._playFrameLeft].forEach((im) => {
+            im.setAlpha(0.72);
+          });
+
           this._startA = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.A, _depthStart);
           this._startP = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.P, _depthStart);
           this._startL = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.L, _depthStart);
@@ -1494,8 +1506,10 @@
             this._homeDebris = null;
             [
               this._startA, this._startP, this._startL, this._startVy,
+              this._playFrameTop, this._playFrameBottom, this._playFrameLeft,
             ].forEach((o) => o?.destroy?.());
             this._startA = this._startP = this._startL = this._startVy = null;
+            this._playFrameTop = this._playFrameBottom = this._playFrameLeft = null;
             this._startHitZone?.destroy?.();
             this._startHitZone = null;
             this._subRows?.forEach((r) => {
@@ -1568,9 +1582,9 @@
           const wL = crops.L.w * sLx;
           const wA = crops.A.h * sAy;
           const wY = crops.V_y.w * sYx;
-          const gapPL = L.startWidth * 0.032;
-          const gapLA = L.startWidth * 0.072;
-          const gapAY = L.startWidth * 0.058;
+          const gapPL = L.startWidth * 0.05;
+          const gapLA = L.startWidth * 0.11;
+          const gapAY = L.startWidth * 0.09;
           const totalW = wP + gapPL + wL + gapLA + wA + gapAY + wY;
 
           let xCursor = baseX - totalW * 0.5;
@@ -1597,7 +1611,7 @@
           xCursor += wL + gapLA;
 
           const cA = xCursor + wA * 0.5;
-          placeGlyph(this._startA, cA, baseY, sAx, sAy, -90, 0x492030, alphaPlay);
+          placeGlyph(this._startA, cA, baseY, sAx, sAy, 90, 0x492030, alphaPlay);
           xCursor += wA + gapAY;
 
           const cY = xCursor + wY * 0.5;
@@ -1620,25 +1634,64 @@
           this._startHitZone.setPosition((minX + maxX) * 0.5, (minY + maxY) * 0.5);
           this._startHitZone.setSize(maxX - minX + padX * 2, maxY - minY + padY * 2);
 
+          // PLAY 枠: overlap 上帯 + 下帯 + 左縦のみ（完全な四角にしない）
+          const natBarW = HOMEOVERLAP_CROPS.bottomLine.w;
+          const natBarH = HOMEOVERLAP_CROPS.bottomLine.h;
+          const natLeftH = HOMEOVERLAP_CROPS.playLeftBar.h;
+          const natLeftW = HOMEOVERLAP_CROPS.playLeftBar.w;
+          const playPad = 12;
+          const frameInnerW = Math.max(maxX - minX + playPad * 2, natBarW * 0.2);
+          const scalePlay = frameInnerW / natBarW;
+          const barHalf = (natBarH * scalePlay) * 0.5;
+          const gapFrmY = 5;
+          const topBarY = minY - gapFrmY - barHalf;
+          const botBarY = maxY + gapFrmY + barHalf;
+          const innerTop = topBarY + barHalf;
+          const innerBottom = botBarY - barHalf;
+          const innerSpan = Math.max(innerBottom - innerTop, 1);
+          const leftBarCx = baseX - frameInnerW * 0.5 + (natLeftW * scalePlay) * 0.5;
+          const leftBarCy = (innerTop + innerBottom) * 0.5;
+          const sPlay = sf.scaleX;
+          const alphaFrm = Math.min(0.78, 0.55 + 0.25 * sf.alpha);
+
+          const applyFrame = (im, cx, cy, sx, sy) => {
+            if (!im) return;
+            im.setPosition(cx + j(0x494101), cy + j(0x494102));
+            im.setScale(sx, sy);
+            im.setRotation(Phaser.Math.DegToRad(sf.rotation));
+            im.setAlpha(alphaFrm * sf.alpha);
+          };
+          applyFrame(this._playFrameTop, baseX, topBarY, scalePlay * sPlay, scalePlay * sPlay);
+          applyFrame(this._playFrameBottom, baseX, botBarY, scalePlay * sPlay, scalePlay * sPlay);
+          applyFrame(
+            this._playFrameLeft,
+            leftBarCx,
+            leftBarCy,
+            scalePlay * sPlay,
+            (innerSpan / natLeftH) * sPlay,
+          );
+
           const subHeadScale = 0.42;
 
+          const subColX = L.centerX + _homeUiRandRange(0x493f00, -10, 10);
           this._delta.sub.forEach((sub, i) => {
             const row = this._subRows[i];
             if (!row) return;
             const baseCY = L.subButtonCenterYs[i];
             const seed = 0x493000 + i * 997;
-            const jx = _homeUiRandInt(seed, -1, 1);
-            const jy = _homeUiRandInt(seed + 11, -1, 1);
+            const jx = _homeUiRandInt(seed, -2, 2);
+            const jy = _homeUiRandInt(seed + 11, -2, 2);
+            const rowShiftX = (i - 1) * _homeUiRandRange(seed + 3, 5, 11);
 
-            row.head.setPosition(L.centerX + sub.offsetX + jx, baseCY + sub.offsetY + jy);
+            row.head.setPosition(subColX + sub.offsetX + jx + rowShiftX, baseCY + sub.offsetY + jy);
             row.head.setScale(subHeadScale * sub.alpha, subHeadScale * sub.alpha);
             row.head.setRotation(0);
             row.head.setAlpha(sub.alpha * _homeUiRandRange(seed + 4, 0.85, 1.0));
 
-            const gap = 5 + _homeUiRandInt(seed + 5, 0, 1);
+            const gap = 5 + _homeUiRandInt(seed + 5, 0, 2);
             row.tail.setPosition(
-              L.centerX + row.head.width * row.head.scaleX * 0.5 + gap + sub.offsetX + jx,
-              baseCY + sub.offsetY + jy + _homeUiRandInt(seed + 6, -1, 1),
+              subColX + row.head.width * row.head.scaleX * 0.5 + gap + sub.offsetX + jx + rowShiftX,
+              baseCY + sub.offsetY + jy + _homeUiRandInt(seed + 6, -2, 2),
             );
             row.tail.setAlpha(sub.alpha * _homeUiRandRange(seed + 7, 0.85, 1.0));
 
