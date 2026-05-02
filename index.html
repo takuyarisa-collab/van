@@ -1699,7 +1699,7 @@
 
           const leftBarHalfW = (natLeftW * scalePlay * leftSqueeze) * 0.5;
           const fillInnerLeft = leftBarCx + leftBarHalfW + 1;
-          const fillInnerRight = contentMaxX + 2;
+          const fillInnerRight = baseX + frameInnerW * 0.5 - 2;
           const fillInnerTop = innerTop + 1;
           const fillInnerBottom = innerBottom - 1;
           const startFillAlpha = _homeUiRandRange(0x491301, 0.27, 0.34) * sf.alpha;
