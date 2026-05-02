@@ -170,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-02 11:12 UTC';
+      const BUILD_TIMESTAMP = '2026-05-02 12:45 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -498,6 +498,7 @@
             `rawProgress:${s.rawProgress != null ? s.rawProgress.toFixed(3) : '-'}`,
             `tweenPlaying:${s.tweenPlaying ?? '-'}`,
             `tweenPaused:${s.tweenPaused ?? '-'}`,
+            `homePlayRefNatH:${s.playRefH ?? '-'}`,
           ];
           _text.setText(lines);
         }
@@ -1286,30 +1287,78 @@
       /** overlap-title.png 上の切り出し矩形（1536×1024、RGBA）— Home UI はこの PNG のみ使用 */
       const HOMEOVERLAP_TEX_KEY = 'home-overlap-title';
       const HOMEOVERLAP_CROPS = Object.freeze({
-        A:          Object.freeze({ x: 932, y: 459, w: 61, h: 91 }),
-        /** 実字形ブロック x≈887–990（旧座標は R 側縦棒を拾っていた） */
-        P:          Object.freeze({ x: 887, y: 459, w: 104, h: 91 }),
-        V:          Object.freeze({ x: 424, y: 459, w: 99, h: 91 }),
-        /** 左腕を削って Y 寄り（回転なし） */
-        V_y:        Object.freeze({ x: 436, y: 459, w: 60, h: 90 }),
+        /** PLAY 行の各字形（Pillow によるタイト bbox + 隣接排除） */
+        P:          Object.freeze({ x: 885, y: 458, w: 107, h: 93 }),
+        L:          Object.freeze({ x: 774, y: 458, w: 73, h: 92 }),
+        A:          Object.freeze({ x: 1013, y: 458, w: 93, h: 93 }),
+        V:          Object.freeze({ x: 424, y: 458, w: 99, h: 92 }),
+        /** Y 表示用: V 右側（左腕を除く） */
+        V_y:        Object.freeze({ x: 480, y: 458, w: 43, h: 92 }),
         V_frag:     Object.freeze({ x: 424, y: 502, w: 52, h: 48 }),
-        L:          Object.freeze({ x: 775, y: 459, w: 71, h: 91 }),
-        bottomLine: Object.freeze({ x: 455, y: 591, w: 459, h: 8 }),
+        /** 上ライン（PLAY 帯のみ・全体の飾り帯は含まない） */
+        playTopBar: Object.freeze({ x: 500, y: 458, w: 292, h: 13 }),
+        /** 下ライン */
+        bottomLine: Object.freeze({ x: 450, y: 590, w: 466, h: 10 }),
+        /** 左縦（上・下ライン間） */
+        playLeftBar: Object.freeze({ x: 450, y: 481, w: 21, h: 119 }),
         topE:       Object.freeze({ x: 555, y: 465, w: 62, h: 5 }),
         topR:       Object.freeze({ x: 665, y: 466, w: 72, h: 5 }),
-        subO:       Object.freeze({ x: 305, y: 459, w: 99, h: 91 }),
-        subE:       Object.freeze({ x: 547, y: 459, w: 81, h: 91 }),
-        /** 実字形ブロック x≈660–745 */
-        subR:       Object.freeze({ x: 660, y: 459, w: 86, h: 91 }),
-        /** サブ行先頭 1 文字のみ（O/E/R 切れ防止のため切り出し幅を広げる） */
-        subO_head:  Object.freeze({ x: 305, y: 459, w: 62, h: 91 }),
-        subE_head:  Object.freeze({ x: 547, y: 459, w: 54, h: 91 }),
-        subR_head:  Object.freeze({ x: 660, y: 459, w: 52, h: 91 }),
-        /** PLAY 枠: overlap 上帯（下ラインと同系・非完全四角用） */
-        playTopBar: Object.freeze({ x: 455, y: 448, w: 459, h: 8 }),
-        /** 左縦（上・下ラインの間をつなぐ細帯） */
-        playLeftBar: Object.freeze({ x: 455, y: 468, w: 4, h: 118 }),
+        subO:       Object.freeze({ x: 304, y: 458, w: 100, h: 92 }),
+        subE:       Object.freeze({ x: 546, y: 458, w: 83, h: 92 }),
+        subR:       Object.freeze({ x: 659, y: 458, w: 88, h: 92 }),
+        subO_head:  Object.freeze({ x: 304, y: 458, w: 100, h: 92 }),
+        subE_head:  Object.freeze({ x: 546, y: 458, w: 83, h: 92 }),
+        subR_head:  Object.freeze({ x: 659, y: 458, w: 88, h: 92 }),
       });
+
+      /** ?debug=1 時: overlap-title 上の crop 矩形をミニマップ表示（stroke + ラベル） */
+      const HOMEOVERLAP_CROP_DEBUG_ENTRIES = Object.freeze([
+        { label: 'P', cropKey: 'P' },
+        { label: 'L', cropKey: 'L' },
+        { label: 'A', cropKey: 'A' },
+        { label: 'V', cropKey: 'V_y' },
+        { label: 'O', cropKey: 'subO_head' },
+        { label: 'E', cropKey: 'subE_head' },
+        { label: 'R', cropKey: 'subR_head' },
+        { label: 'line_top', cropKey: 'playTopBar' },
+        { label: 'line_bottom', cropKey: 'bottomLine' },
+      ]);
+
+      function createHomeOverlapCropDebugOverlay(scene) {
+        if (!window.DEBUG_HUD_ENABLED) return null;
+        const S = 0.22;
+        const ox = 12;
+        const oy = 120;
+        const depth = 10001;
+        const g = scene.add.graphics().setDepth(depth).setScrollFactor(0);
+        const labels = [];
+        HOMEOVERLAP_CROP_DEBUG_ENTRIES.forEach(({ label, cropKey }) => {
+          const c = HOMEOVERLAP_CROPS[cropKey];
+          if (!c) return;
+          const x = ox + c.x * S;
+          const y = oy + c.y * S;
+          const w = c.w * S;
+          const h = c.h * S;
+          g.lineStyle(1, 0xff6b6b, 0.95);
+          g.strokeRect(x, y, w, h);
+          const t = scene.add
+            .text(x + 2, y + 1, label, {
+              fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+              fontSize: '11px',
+              color: '#ffdede',
+            })
+            .setDepth(depth + 1)
+            .setScrollFactor(0)
+            .setOrigin(0, 0);
+          labels.push(t);
+        });
+        return {
+          destroy() {
+            g.destroy();
+            labels.forEach((t) => t.destroy());
+          },
+        };
+      }
 
       // Returns a neutral (no-op) delta object.
       // Collapse / rebuild: set fields on this object then call _redrawHomeUI().
@@ -1502,11 +1551,16 @@
             homeReady: this._homeReady,
             scan:      this._homeScanMask ? 'active' : 'done',
             debris:    this._homeDebris ? this._homeDebris.alpha.toFixed(2) : '-',
+            playRefH:  this._homePlayRefNatH != null ? String(this._homePlayRefNatH) : '-',
           }));
+
+          this._homeCropDebug = createHomeOverlapCropDebugOverlay(this);
 
           const cleanupHome = () => {
             this._debugHud?.destroy();
             this._debugHud = null;
+            this._homeCropDebug?.destroy?.();
+            this._homeCropDebug = null;
             this._homeReady = false;
             this._homeBackdrop?.destroy?.();
             this._homeBackdrop = null;
@@ -1582,25 +1636,18 @@
           const baseY = L.startCenterY + sf.offsetY;
           const flashMul = this._startPressFlash ? 1.15 : 1.0;
 
-          // P — L — ▷(A) — Y : 内容＋余白でサイズ決定、▷ 主役
+          // P — L — ▷(A) — Y : PLAY 行は同一スケール（▷ のみ拡大しない）
           const crops = HOMEOVERLAP_CROPS;
-          const targetSideNatH = _homeUiRandRange(0x4910a0, 54, 62);
-          const baseS = targetSideNatH / crops.P.h;
-          const sPx = baseS * sf.scaleX;
-          const sPy = baseS * sf.scaleY;
-          const sLx = baseS * sf.scaleX;
-          const sLy = baseS * sf.scaleY;
-          const sYx = baseS * 0.98 * sf.scaleX;
-          const sYy = baseS * 0.98 * sf.scaleY;
-          const aMul = _homeUiRandRange(0x492031, 1.28, 1.45);
-          const aScale = baseS * aMul;
-          const sAx = aScale * sf.scaleX;
-          const sAy = aScale * sf.scaleY;
+          const playRefNatH = Math.max(crops.P.h, crops.L.h, crops.A.h, crops.V_y.h);
+          this._homePlayRefNatH = playRefNatH;
+          const targetSideDispH = _homeUiRandRange(0x4910a0, 54, 62);
+          const gS = (targetSideDispH / playRefNatH) * sf.scaleX;
+          const gSy = (targetSideDispH / playRefNatH) * sf.scaleY;
 
-          const wP = crops.P.w * sPx;
-          const wL = crops.L.w * sLx;
-          const wA = crops.A.h * sAy;
-          const wY = crops.V_y.w * sYx;
+          const wP = crops.P.w * gS;
+          const wL = crops.L.w * gS;
+          const wA = crops.A.h * gSy;
+          const wY = crops.V_y.w * gS;
           const gapPL = _homeUiRandRange(0x492010, 10, 16);
           const gapLA = _homeUiRandRange(0x492011, 18, 26);
           const gapAY = _homeUiRandRange(0x492012, 14, 22);
@@ -1623,19 +1670,19 @@
           };
 
           const cP = xCursor + wP * 0.5;
-          placeGlyph(this._startP, cP, baseY, sPx, sPy, 0, 0x492050, alphaSide(0x492053), false);
+          placeGlyph(this._startP, cP, baseY, gS, gSy, 0, 0x492050, alphaSide(0x492053), false);
           xCursor += wP + gapPL;
 
           const cL = xCursor + wL * 0.5;
-          placeGlyph(this._startL, cL, baseY, sLx, sLy, 0, 0x492060, alphaSide(0x492063));
+          placeGlyph(this._startL, cL, baseY, gS, gSy, 0, 0x492060, alphaSide(0x492063));
           xCursor += wL + gapLA;
 
           const cA = xCursor + wA * 0.5;
-          placeGlyph(this._startA, cA, baseY, sAx, sAy, 90, 0x492030, alphaPlay);
+          placeGlyph(this._startA, cA, baseY, gS, gSy, 90, 0x492030, alphaPlay);
           xCursor += wA + gapAY;
 
           const cY = xCursor + wY * 0.5;
-          placeGlyph(this._startVy, cY, baseY, sYx, sYy, 0, 0x492070, alphaSide(0x492073));
+          placeGlyph(this._startVy, cY, baseY, gS, gSy, 0, 0x492070, alphaSide(0x492073));
 
           const parts = [this._startP, this._startL, this._startA, this._startVy];
           let minX = Infinity;
@@ -1728,8 +1775,7 @@
             const jy = _homeUiRandInt(seed + 11, -7, 7);
             const rowShiftX = (i - 1) * _homeUiRandRange(seed + 3, 5, 9);
 
-            const subTargetDispH = _homeUiRandRange(seed + 40, 30, 36);
-            const subHeadScale = subTargetDispH / 91;
+            const subHeadScale = gS;
 
             row.head.setPosition(subColX + sub.offsetX + jx + rowShiftX, baseCY + sub.offsetY + jy);
             row.head.setScale(subHeadScale * sub.alpha, subHeadScale * sub.alpha);
