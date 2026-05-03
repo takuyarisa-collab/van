@@ -170,7 +170,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-02 14:30 UTC';
+      const BUILD_TIMESTAMP = '2026-05-03 12:00 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1303,7 +1303,7 @@
         playLeftBar: Object.freeze({ x: 450, y: 481, w: 21, h: 119 }),
       });
 
-      /** V crop の左斜線を落とし右斜線のみ残す（HOMEOVERLAP_CROPS.V を基準、順番依存なし） */
+      /** V crop の左斜線を落とし右斜線のみ残す（HOMEOVERLAP_CROPS.V を基準、順番依存なし）— 装飾用 */
       function homeBrokenYCropFromV() {
         const v = HOMEOVERLAP_CROPS['V'];
         const slice = Math.max(1, Math.floor(v.w * 0.38));
@@ -1313,6 +1313,51 @@
           w: Math.max(12, v.w - slice),
           h: v.h,
         });
+      }
+
+      /**
+       * Home 面 UI（ベース + inset グロー + 上ハイライト + 下シャドウ）— ドロップシャドウなし
+       * @param {Phaser.GameObjects.Graphics} gMain
+       * @param {Phaser.GameObjects.Graphics} gDet
+       */
+      function drawHomeFacePanel(gMain, gDet, x, y, w, h, opts) {
+        const {
+          seed,
+          flashMul = 1,
+          sfAlpha = 1,
+          baseAlphaMin,
+          baseAlphaMax,
+        } = opts;
+        gMain.clear();
+        gDet.clear();
+        const panelW = Math.max(1, w);
+        const panelH = Math.max(1, h);
+        const baseMainAlpha = _homeUiRandRange(seed, baseAlphaMin, baseAlphaMax) * flashMul * sfAlpha;
+        gMain.fillStyle(0x0b1a2a, baseMainAlpha);
+        gMain.fillRect(x, y, panelW, panelH);
+
+        const innerInset = 3;
+        const inL = x + innerInset;
+        const inT = y + innerInset;
+        const inW = Math.max(1, panelW - innerInset * 2);
+        const inH = Math.max(1, panelH - innerInset * 2);
+        const innerGlowAlpha = _homeUiRandRange(seed + 1, 0.12, 0.18) * flashMul * sfAlpha;
+        gDet.fillStyle(0x6fbaff, innerGlowAlpha);
+        gDet.fillRect(inL, inT, inW, inH);
+
+        const hiEdgeInset = 2;
+        const hiLineAlpha = _homeUiRandRange(seed + 2, 0.22, 0.32) * flashMul * sfAlpha;
+        const hiW = Math.max(1, panelW - hiEdgeInset * 2);
+        const hiX = x + (panelW - hiW) * 0.5;
+        const hiY = y + hiEdgeInset;
+        gDet.fillStyle(0xbfe3ff, hiLineAlpha);
+        gDet.fillRect(hiX, hiY, hiW, 1);
+
+        const shEdgeInset = 2;
+        const shLineAlpha = _homeUiRandRange(seed + 3, 0.25, 0.35) * flashMul * sfAlpha;
+        const shY = y + panelH - shEdgeInset - 1;
+        gDet.fillStyle(0x000000, shLineAlpha);
+        gDet.fillRect(x, shY, panelW, 1);
       }
 
       /** ?debug=1 時: overlap-title 上の crop 矩形をミニマップ表示（stroke + ラベル） */
@@ -1453,6 +1498,8 @@
             fontSize: '14px',
             color: '#9ee5df',
           };
+          /** PLAY 行の「y」— P/L/A よりわずかに明るい（モノスペ） */
+          const PLAY_Y_HEX = '#def7ff';
 
           destroyBootBgPanelForHome(this.scene.get('boot'));
 
@@ -1507,28 +1554,34 @@
           const _depthPlayBaseMain = 9;
           const _depthPlayBaseDetail = 10;
           const _depthPlayGlyph = 11;
-          const _depthPlayFrame = 12;
-          const _depthSub = 11;
-          const _depthSubFrame = 10;
-          const _depthSubFill = 9;
+          const _depthPlayTriangle = 12;
+          const _depthPlayHit = 13;
+          const _depthSubPanelMain = 9;
+          const _depthSubPanelDet = 10;
+          const _depthSubGlyph = 11;
+          const _depthSubHit = 13;
           const texKey = HOMEOVERLAP_TEX_KEY;
 
           this._playBaseMain = this.add.graphics().setDepth(_depthPlayBaseMain);
           this._playBaseDetail = this.add.graphics().setDepth(_depthPlayBaseDetail);
+          this._playTriangle = this.add.graphics().setDepth(_depthPlayTriangle);
 
-          this._playFrameTop = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.line_top, _depthPlayFrame);
-          this._playFrameBottom = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.line_bottom, _depthPlayFrame);
-          this._playFrameLeft = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.playLeftBar, _depthPlayFrame);
-          [this._playFrameTop, this._playFrameBottom, this._playFrameLeft].forEach((im) => {
-            im.setAlpha(0.72);
-          });
+          const P = HOMEOVERLAP_CROPS.P;
+          const Lc = HOMEOVERLAP_CROPS.L;
+          const Ac = HOMEOVERLAP_CROPS.A;
+          this._startA = addOverlapCropImage(this, texKey, Ac, _depthPlayGlyph);
+          this._startP = addOverlapCropImage(this, texKey, P, _depthPlayGlyph);
+          this._startL = addOverlapCropImage(this, texKey, Lc, _depthPlayGlyph);
+          this._startY = this.add
+            .text(0, 0, 'y', {
+              fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+              fontSize: '48px',
+              color: PLAY_Y_HEX,
+            })
+            .setOrigin(0.5, 0.5)
+            .setDepth(_depthPlayGlyph);
 
-          this._startA = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.A, _depthPlayGlyph);
-          this._startP = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.P, _depthPlayGlyph);
-          this._startL = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.L, _depthPlayGlyph);
-          this._startVy = addOverlapCropImage(this, texKey, homeBrokenYCropFromV(), _depthPlayGlyph);
-
-          this._startHitZone = this.add.zone(L.centerX, L.startCenterY, 120, 72).setDepth(13);
+          this._startHitZone = this.add.zone(L.centerX, L.startCenterY, 120, 72).setDepth(_depthPlayHit);
 
           const subCrops = [
             HOMEOVERLAP_CROPS.O,
@@ -1536,15 +1589,12 @@
             HOMEOVERLAP_CROPS.R,
           ];
           this._subRows = HOME_LAYOUT.subRowTails.map((tail, i) => {
-            const head = addOverlapCropImage(this, texKey, subCrops[i], _depthSub);
-            const tailT = this.add.text(0, 0, tail, SUB_TAIL_STYLE).setOrigin(0, 0.5).setDepth(_depthSub);
-            const z = this.add.zone(0, 0, 88, 40).setDepth(13);
-            const fill = this.add.graphics().setDepth(_depthSubFill);
-            const frameTop = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.line_top, _depthSubFrame);
-            const frameBot = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.line_bottom, _depthSubFrame);
-            const frameSide = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.playLeftBar, _depthSubFrame);
-            [frameTop, frameBot, frameSide].forEach((im) => im.setAlpha(0.62));
-            return { head, tail: tailT, zone: z, fill, frameTop, frameBot, frameSide };
+            const head = addOverlapCropImage(this, texKey, subCrops[i], _depthSubGlyph);
+            const tailT = this.add.text(0, 0, tail, SUB_TAIL_STYLE).setOrigin(0, 0.5).setDepth(_depthSubGlyph);
+            const z = this.add.zone(0, 0, 88, 40).setDepth(_depthSubHit);
+            const subMain = this.add.graphics().setDepth(_depthSubPanelMain);
+            const subDet = this.add.graphics().setDepth(_depthSubPanelDet);
+            return { head, tail: tailT, zone: z, subMain, subDet };
           });
 
           this._startPressFlash = 0;
@@ -1577,11 +1627,11 @@
             this._homeDebris?.destroy?.();
             this._homeDebris = null;
             [
-              this._startA, this._startP, this._startL, this._startVy,
-              this._playFrameTop, this._playFrameBottom, this._playFrameLeft,
+              this._startA, this._startP, this._startL, this._startY,
             ].forEach((o) => o?.destroy?.());
-            this._startA = this._startP = this._startL = this._startVy = null;
-            this._playFrameTop = this._playFrameBottom = this._playFrameLeft = null;
+            this._startA = this._startP = this._startL = this._startY = null;
+            this._playTriangle?.destroy?.();
+            this._playTriangle = null;
             this._playBaseMain?.destroy?.();
             this._playBaseMain = null;
             this._playBaseDetail?.destroy?.();
@@ -1592,10 +1642,8 @@
               r.head?.destroy?.();
               r.tail?.destroy?.();
               r.zone?.destroy?.();
-              r.fill?.destroy?.();
-              r.frameTop?.destroy?.();
-              r.frameBot?.destroy?.();
-              r.frameSide?.destroy?.();
+              r.subMain?.destroy?.();
+              r.subDet?.destroy?.();
             });
             this._subRows = null;
           };
@@ -1644,31 +1692,50 @@
           const baseY = L.startCenterY + sf.offsetY;
           const flashMul = this._startPressFlash ? 1.15 : 1.0;
 
-          // P — L — ▷(A) — Y : PLAY 行は同一スケール（▷ のみ拡大しない）
-          const crops = HOMEOVERLAP_CROPS;
-          const playRefNatH = Math.max(crops.P.h, crops.L.h, crops.A.h, crops.V.h);
+          const Cr = HOMEOVERLAP_CROPS;
+          const P = Cr.P;
+          const Ltr = Cr.L;
+          const A = Cr.A;
+          const playRefNatH = Math.max(P.h, Ltr.h, A.h);
           this._homePlayRefNatH = playRefNatH;
-          const targetSideDispH = _homeUiRandRange(0x4910a0, 54, 62);
-          const gS = (targetSideDispH / playRefNatH) * sf.scaleX;
-          const gSy = (targetSideDispH / playRefNatH) * sf.scaleY;
 
-          const brokenYCrop = homeBrokenYCropFromV();
-          const wP = crops.P.w * gS;
-          const wL = crops.L.w * gS;
-          const wA = crops.A.h * gSy;
-          const wY = brokenYCrop.w * gS;
+          const glyphShrink = _homeUiRandRange(0x4910a1, 0.75, 0.85);
+          const targetDispH = _homeUiRandRange(0x4910a0, 54, 62) * glyphShrink;
+          const gS = (targetDispH / playRefNatH) * sf.scaleX;
+          const gSy = (targetDispH / playRefNatH) * sf.scaleY;
+
+          const wP = P.w * gS;
+          const wL = Ltr.w * gS;
+          const wA = A.w * gS;
           const gapPL = _homeUiRandRange(0x492010, 10, 16);
-          const gapLA = _homeUiRandRange(0x492011, 18, 26);
-          const gapAY = _homeUiRandRange(0x492012, 14, 22);
-          const totalW = wP + gapPL + wL + gapLA + wA + gapAY + wY;
+          const gapLA = _homeUiRandRange(0x492011, 20, 30);
+          const gapAY = _homeUiRandRange(0x492012, 12, 18);
 
-          let xCursor = baseX - totalW * 0.5;
+          this._startY.setStyle({ fontSize: `${Math.round(targetDispH)}px` });
+          const wY = this._startY.width;
+
+          const totalW = wP + gapPL + wL + gapLA + wA + gapAY + wY;
+          const padX = _homeUiRandRange(0x491101, 16, 24);
+          const padY = _homeUiRandRange(0x491102, 16, 22);
+          const triScale = _homeUiRandRange(0x491103, 1.22, 1.30);
+          const triSize = targetDispH * triScale;
+          const midGap = _homeUiRandRange(0x491104, 8, 14);
+
+          const panelW = Math.max(totalW, triSize * 1.05) + padX * 2;
+          const panelH = padY * 2 + triSize + midGap + targetDispH;
+          const panelL = baseX - panelW * 0.5;
+          const panelT = baseY - panelH * 0.5;
+
           const j = (seed) => _homeUiRandInt(seed, -1, 1);
-          const alphaSide = (seed) => Math.min(
+          const alphaPlay = Math.min(
             1,
-            flashMul * sf.alpha * _homeUiRandRange(seed, 0.85, 0.95),
+            flashMul * sf.alpha * _homeUiRandRange(0x492100, 0.8, 0.9),
           );
-          const alphaPlay = Math.min(1, flashMul * sf.alpha);
+
+          const triCx = baseX + j(0x492200);
+          const triCy = panelT + padY + triSize * 0.5 + j(0x492201);
+          const playCy =
+            panelT + padY + triSize + midGap + targetDispH * 0.5 + j(0x492202);
 
           const placeGlyph = (img, cx, cy, sx, sy, rotDeg, seed, alpha, applyFrameRot = true) => {
             img.setPosition(cx + j(seed + 1), cy + j(seed + 2));
@@ -1678,129 +1745,46 @@
             img.setAlpha(alpha);
           };
 
+          let xCursor = baseX - totalW * 0.5;
           const cP = xCursor + wP * 0.5;
-          placeGlyph(this._startP, cP, baseY, gS, gSy, 0, 0x492050, alphaSide(0x492053), false);
+          placeGlyph(this._startP, cP, playCy, gS, gSy, 0, 0x492050, alphaPlay, false);
           xCursor += wP + gapPL;
-
           const cL = xCursor + wL * 0.5;
-          placeGlyph(this._startL, cL, baseY, gS, gSy, 0, 0x492060, alphaSide(0x492063));
+          placeGlyph(this._startL, cL, playCy, gS, gSy, 0, 0x492060, alphaPlay);
           xCursor += wL + gapLA;
-
           const cA = xCursor + wA * 0.5;
-          placeGlyph(this._startA, cA, baseY, gS, gSy, 90, 0x492030, alphaPlay);
+          placeGlyph(this._startA, cA, playCy, gS, gSy, 0, 0x492030, alphaPlay);
           xCursor += wA + gapAY;
+          this._startY.setPosition(xCursor + wY * 0.5 + j(0x492070), playCy + j(0x492071));
+          this._startY.setAlpha(alphaPlay);
 
-          const cY = xCursor + wY * 0.5;
-          placeGlyph(this._startVy, cY, baseY, gS, gSy, 0, 0x492070, alphaSide(0x492073));
-
-          const parts = [this._startP, this._startL, this._startA, this._startVy];
-          let minX = Infinity;
-          let minY = Infinity;
-          let maxX = -Infinity;
-          let maxY = -Infinity;
-          parts.forEach((im) => {
-            const b = im.getBounds();
-            minX = Math.min(minX, b.x);
-            minY = Math.min(minY, b.y);
-            maxX = Math.max(maxX, b.right);
-            maxY = Math.max(maxY, b.bottom);
+          drawHomeFacePanel(this._playBaseMain, this._playBaseDetail, panelL, panelT, panelW, panelH, {
+            seed: 0x491300,
+            flashMul,
+            sfAlpha: sf.alpha,
+            baseAlphaMin: 0.32,
+            baseAlphaMax: 0.4,
           });
 
-          const playPadX = _homeUiRandRange(0x491101, 16, 24);
-          const playPadY = _homeUiRandRange(0x491102, 10, 14);
-          const playBoxL = minX - playPadX;
-          const playBoxR = maxX + playPadX;
-          const playBoxT = minY - playPadY;
-          const playBoxB = maxY + playPadY;
-          const playBoxW = playBoxR - playBoxL;
-          const playBoxH = playBoxB - playBoxT;
-          const hitCx = (playBoxL + playBoxR) * 0.5;
-          const hitCy = (playBoxT + playBoxB) * 0.5;
-          this._startHitZone.setPosition(hitCx, hitCy);
-          this._startHitZone.setSize(playBoxW + 10, playBoxH + 10);
+          const gTri = this._playTriangle;
+          gTri.clear();
+          const tipX = triCx + triSize * 0.48;
+          const baseLX = triCx - triSize * 0.42;
+          const halfH = triSize * 0.4;
+          gTri.fillStyle(0xe8f4ff, 1);
+          gTri.beginPath();
+          gTri.moveTo(tipX, triCy);
+          gTri.lineTo(baseLX, triCy - halfH);
+          gTri.lineTo(baseLX, triCy + halfH);
+          gTri.closePath();
+          gTri.fillPath();
 
-          const natBarW = crops.line_bottom.w;
-          const natBarH = crops.line_bottom.h;
-          const natTopW = crops.line_top.w;
-          const natTopH = crops.line_top.h;
-          const natLeftH = crops.playLeftBar.h;
-          const natLeftW = crops.playLeftBar.w;
-          const sPlay = sf.scaleX;
-          const scaleBot = (playBoxW / natBarW) * sPlay;
-          const scaleTop = (playBoxW / natTopW) * sPlay;
-          const barHalfBot = (natBarH * scaleBot) * 0.5;
-          const barHalfTop = (natTopH * scaleTop) * 0.5;
-          const gapFrmY = _homeUiRandRange(0x491201, 5, 8);
-          const topBarY = playBoxT - gapFrmY - barHalfTop;
-          const botBarY = playBoxB + gapFrmY + barHalfBot;
-          const innerTop = topBarY + barHalfTop;
-          const innerBottom = botBarY - barHalfBot;
-          const innerSpan = Math.max(innerBottom - innerTop, 1);
-          const leftSqueeze = _homeUiRandRange(0x491203, 0.78, 0.92);
-          const leftBarCx = playBoxL + (natLeftW * scaleBot * leftSqueeze * sPlay) * 0.5;
-          const leftBarCy = (innerTop + innerBottom) * 0.5;
-          const alphaFrm = Math.min(0.95, 0.78 + 0.17 * sf.alpha);
-          const topBarWFrac = _homeUiRandRange(0x491204, 0.52, 0.78);
-
-          const applyFrame = (im, cx, cy, sx, sy) => {
-            if (!im) return;
-            im.setPosition(cx + j(0x494101), cy + j(0x494102));
-            im.setScale(sx, sy);
-            im.setRotation(0);
-            im.setAlpha(alphaFrm * sf.alpha);
-          };
-          applyFrame(this._playFrameTop, hitCx, topBarY, scaleTop * topBarWFrac, scaleTop);
-          applyFrame(this._playFrameBottom, hitCx, botBarY, scaleBot, scaleBot);
-          applyFrame(
-            this._playFrameLeft,
-            leftBarCx,
-            leftBarCy,
-            scaleBot * leftSqueeze * sPlay,
-            (innerSpan / natLeftH) * sPlay,
-          );
-
-          const baseMainAlpha = _homeUiRandRange(0x491300, 0.28, 0.36) * sf.alpha * flashMul;
-          const innerInset = _homeUiRandRange(0x491301, 2, 4);
-          const innerGlowAlpha = _homeUiRandRange(0x491302, 0.1, 0.16) * sf.alpha * flashMul;
-          const hiEdgeInset = _homeUiRandRange(0x491303, 1, 2);
-          const hiLineAlpha = _homeUiRandRange(0x491304, 0.18, 0.28) * sf.alpha * flashMul;
-          const hiLenFrac = _homeUiRandRange(0x491305, 0.7, 0.9);
-          const shEdgeInset = _homeUiRandRange(0x491306, 1, 2);
-          const shLineAlpha = _homeUiRandRange(0x491307, 0.2, 0.3) * sf.alpha * flashMul;
-
-          const panelL = playBoxL;
-          const panelR = playBoxR;
-          const panelT = playBoxT;
-          const panelB = playBoxB;
-          const panelW = panelR - panelL;
-          const panelH = panelB - panelT;
-
-          const gMain = this._playBaseMain;
-          const gDet = this._playBaseDetail;
-          gMain.clear();
-          gDet.clear();
-          gMain.fillStyle(0x0b1a2a, baseMainAlpha);
-          gMain.fillRect(panelL, panelT, Math.max(1, panelW), Math.max(1, panelH));
-
-          const inL = panelL + innerInset;
-          const inT = panelT + innerInset;
-          const inW = Math.max(1, panelW - innerInset * 2);
-          const inH = Math.max(1, panelH - innerInset * 2);
-          gDet.fillStyle(0x6fbaff, innerGlowAlpha);
-          gDet.fillRect(inL, inT, inW, inH);
-
-          const hiY = panelT + hiEdgeInset;
-          const hiW = Math.max(1, panelW * hiLenFrac);
-          const hiX = panelL + (panelW - hiW) * 0.5;
-          gDet.fillStyle(0xbfe3ff, hiLineAlpha);
-          gDet.fillRect(hiX, hiY, hiW, 1);
-
-          const shY = panelB - shEdgeInset - 1;
-          gDet.fillStyle(0x000000, shLineAlpha);
-          gDet.fillRect(panelL, shY, Math.max(1, panelW), 1);
+          this._startHitZone.setPosition(baseX, baseY);
+          this._startHitZone.setSize(panelW + 8, panelH + 8);
 
           const subColBias = _homeUiRandRange(0x493f00, 4, 8) * (_homeUiRandInt(0x493f01, 0, 1) ? 1 : -1);
           const subColX = L.centerX + subColBias;
+          const subScaleMul = _homeUiRandRange(0x493e00, 0.64, 0.74);
 
           this._delta.sub.forEach((sub, i) => {
             const row = this._subRows[i];
@@ -1811,7 +1795,7 @@
             const jy = _homeUiRandInt(seed + 11, -7, 7);
             const rowShiftX = (i - 1) * _homeUiRandRange(seed + 3, 5, 9);
 
-            const subHeadScale = gS;
+            const subHeadScale = gS * subScaleMul;
 
             row.head.setPosition(subColX + sub.offsetX + jx + rowShiftX, baseCY + sub.offsetY + jy);
             row.head.setScale(subHeadScale * sub.alpha, subHeadScale * sub.alpha);
@@ -1831,59 +1815,22 @@
             const rowMaxX = Math.max(hb.right, tb.right);
             const rowMinY = Math.min(hb.y, tb.y);
             const rowMaxY = Math.max(hb.bottom, tb.bottom);
-            const padXSub = _homeUiRandRange(seed + 50, 16, 22);
-            const padYSub = _homeUiRandRange(seed + 51, 10, 14);
+            const padXSub = _homeUiRandRange(seed + 50, 12, 18);
+            const padYSub = _homeUiRandRange(seed + 51, 8, 12);
             const boxL = rowMinX - padXSub;
             const boxR = rowMaxX + padXSub;
             const boxT = rowMinY - padYSub;
             const boxB = rowMaxY + padYSub;
             const boxW = boxR - boxL;
             const boxH = boxB - boxT;
-            const boxCx = (boxL + boxR) * 0.5;
 
-            const subScaleBot = boxW / natBarW;
-            const subScaleTop = boxW / natTopW;
-            const subBarHalfBot = (natBarH * subScaleBot) * 0.5;
-            const subBarHalfTop = (natTopH * subScaleTop) * 0.5;
-            const subGapY = _homeUiRandRange(seed + 52, 5, 8);
-            const subTopY = boxT - subGapY - subBarHalfTop;
-            const subBotY = boxB + subGapY + subBarHalfBot;
-            const subInnerTop = subTopY + subBarHalfTop;
-            const subInnerBot = subBotY - subBarHalfBot;
-            const subSpan = Math.max(subInnerBot - subInnerTop, 1);
-            const subLeftSqueeze = _homeUiRandRange(seed + 55, 0.78, 0.92);
-            const sideCx = boxL + (natLeftW * subScaleBot * subLeftSqueeze) * 0.5;
-            const subTopFrac = _homeUiRandRange(seed + 54, 0.55, 0.72);
-            const alphaSubFrm = Math.min(0.9, 0.68 + 0.22 * sub.alpha);
-
-            const applySubFrame = (im, cx, cy, sx, sy) => {
-              im.setPosition(cx + j(seed + 80), cy + j(seed + 81));
-              im.setScale(sx, sy);
-              im.setRotation(0);
-              im.setAlpha(alphaSubFrm * sub.alpha);
-            };
-            applySubFrame(row.frameTop, boxCx, subTopY, subScaleTop * subTopFrac, subScaleTop);
-            applySubFrame(row.frameBot, boxCx, subBotY, subScaleBot, subScaleBot);
-            applySubFrame(
-              row.frameSide,
-              sideCx,
-              (subInnerTop + subInnerBot) * 0.5,
-              subScaleBot * subLeftSqueeze,
-              subSpan / natLeftH,
-            );
-
-            const sideHalf = (natLeftW * subScaleBot * subLeftSqueeze) * 0.5;
-            const subFillL = sideCx + sideHalf + 1;
-            const subFillR = boxR;
-            const subFillAlpha = _homeUiRandRange(seed + 60, 0.22, 0.30) * sub.alpha;
-            row.fill.clear();
-            row.fill.fillStyle(0x0b1a2a, subFillAlpha);
-            row.fill.fillRect(
-              subFillL,
-              subInnerTop + 1,
-              Math.max(1, subFillR - subFillL),
-              Math.max(1, subInnerBot - subInnerTop - 2),
-            );
+            drawHomeFacePanel(row.subMain, row.subDet, boxL, boxT, boxW, boxH, {
+              seed: seed + 600,
+              flashMul: 1,
+              sfAlpha: sub.alpha,
+              baseAlphaMin: 0.22,
+              baseAlphaMax: 0.3,
+            });
 
             const zx = boxL - 2;
             const zy = boxT - 2;
