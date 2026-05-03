@@ -1504,15 +1504,17 @@
             })),
           };
 
-          const _depthStart = 12;
+          const _depthPlayBaseMain = 9;
+          const _depthPlayBaseDetail = 10;
+          const _depthPlayGlyph = 11;
+          const _depthPlayFrame = 12;
           const _depthSub = 11;
-          const _depthPlayFrame = 10;
-          const _depthPlayFill = 9;
           const _depthSubFrame = 10;
           const _depthSubFill = 9;
           const texKey = HOMEOVERLAP_TEX_KEY;
 
-          this._startFill = this.add.graphics().setDepth(_depthPlayFill);
+          this._playBaseMain = this.add.graphics().setDepth(_depthPlayBaseMain);
+          this._playBaseDetail = this.add.graphics().setDepth(_depthPlayBaseDetail);
 
           this._playFrameTop = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.line_top, _depthPlayFrame);
           this._playFrameBottom = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.line_bottom, _depthPlayFrame);
@@ -1521,12 +1523,12 @@
             im.setAlpha(0.72);
           });
 
-          this._startA = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.A, _depthStart);
-          this._startP = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.P, _depthStart);
-          this._startL = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.L, _depthStart);
-          this._startVy = addOverlapCropImage(this, texKey, homeBrokenYCropFromV(), _depthStart);
+          this._startA = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.A, _depthPlayGlyph);
+          this._startP = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.P, _depthPlayGlyph);
+          this._startL = addOverlapCropImage(this, texKey, HOMEOVERLAP_CROPS.L, _depthPlayGlyph);
+          this._startVy = addOverlapCropImage(this, texKey, homeBrokenYCropFromV(), _depthPlayGlyph);
 
-          this._startHitZone = this.add.zone(L.centerX, L.startCenterY, 120, 72).setDepth(14);
+          this._startHitZone = this.add.zone(L.centerX, L.startCenterY, 120, 72).setDepth(13);
 
           const subCrops = [
             HOMEOVERLAP_CROPS.O,
@@ -1580,8 +1582,10 @@
             ].forEach((o) => o?.destroy?.());
             this._startA = this._startP = this._startL = this._startVy = null;
             this._playFrameTop = this._playFrameBottom = this._playFrameLeft = null;
-            this._startFill?.destroy?.();
-            this._startFill = null;
+            this._playBaseMain?.destroy?.();
+            this._playBaseMain = null;
+            this._playBaseDetail?.destroy?.();
+            this._playBaseDetail = null;
             this._startHitZone?.destroy?.();
             this._startHitZone = null;
             this._subRows?.forEach((r) => {
@@ -1703,7 +1707,7 @@
           });
 
           const playPadX = _homeUiRandRange(0x491101, 16, 24);
-          const playPadY = _homeUiRandRange(0x491102, 12, 18);
+          const playPadY = _homeUiRandRange(0x491102, 10, 14);
           const playBoxL = minX - playPadX;
           const playBoxR = maxX + playPadX;
           const playBoxT = minY - playPadY;
@@ -1755,21 +1759,45 @@
             (innerSpan / natLeftH) * sPlay,
           );
 
-          const leftBarHalfW = (natLeftW * scaleBot * leftSqueeze * sPlay) * 0.5;
-          const fillInnerLeft = leftBarCx + leftBarHalfW + 1;
-          const fillInnerRight = playBoxR;
-          const fillInnerTop = innerTop + 1;
-          const fillInnerBottom = innerBottom - 1;
-          const startFillAlpha = _homeUiRandRange(0x491301, 0.32, 0.42) * sf.alpha;
-          const g0 = this._startFill;
-          g0.clear();
-          g0.fillStyle(0x0b1a2a, startFillAlpha * flashMul);
-          g0.fillRect(
-            fillInnerLeft,
-            fillInnerTop,
-            Math.max(1, fillInnerRight - fillInnerLeft),
-            Math.max(1, fillInnerBottom - fillInnerTop),
-          );
+          const baseMainAlpha = _homeUiRandRange(0x491300, 0.28, 0.36) * sf.alpha * flashMul;
+          const innerInset = _homeUiRandRange(0x491301, 2, 4);
+          const innerGlowAlpha = _homeUiRandRange(0x491302, 0.1, 0.16) * sf.alpha * flashMul;
+          const hiEdgeInset = _homeUiRandRange(0x491303, 1, 2);
+          const hiLineAlpha = _homeUiRandRange(0x491304, 0.18, 0.28) * sf.alpha * flashMul;
+          const hiLenFrac = _homeUiRandRange(0x491305, 0.7, 0.9);
+          const shEdgeInset = _homeUiRandRange(0x491306, 1, 2);
+          const shLineAlpha = _homeUiRandRange(0x491307, 0.2, 0.3) * sf.alpha * flashMul;
+
+          const panelL = playBoxL;
+          const panelR = playBoxR;
+          const panelT = playBoxT;
+          const panelB = playBoxB;
+          const panelW = panelR - panelL;
+          const panelH = panelB - panelT;
+
+          const gMain = this._playBaseMain;
+          const gDet = this._playBaseDetail;
+          gMain.clear();
+          gDet.clear();
+          gMain.fillStyle(0x0b1a2a, baseMainAlpha);
+          gMain.fillRect(panelL, panelT, Math.max(1, panelW), Math.max(1, panelH));
+
+          const inL = panelL + innerInset;
+          const inT = panelT + innerInset;
+          const inW = Math.max(1, panelW - innerInset * 2);
+          const inH = Math.max(1, panelH - innerInset * 2);
+          gDet.fillStyle(0x6fbaff, innerGlowAlpha);
+          gDet.fillRect(inL, inT, inW, inH);
+
+          const hiY = panelT + hiEdgeInset;
+          const hiW = Math.max(1, panelW * hiLenFrac);
+          const hiX = panelL + (panelW - hiW) * 0.5;
+          gDet.fillStyle(0xbfe3ff, hiLineAlpha);
+          gDet.fillRect(hiX, hiY, hiW, 1);
+
+          const shY = panelB - shEdgeInset - 1;
+          gDet.fillStyle(0x000000, shLineAlpha);
+          gDet.fillRect(panelL, shY, Math.max(1, panelW), 1);
 
           const subColBias = _homeUiRandRange(0x493f00, 4, 8) * (_homeUiRandInt(0x493f01, 0, 1) ? 1 : -1);
           const subColX = L.centerX + subColBias;
