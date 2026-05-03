@@ -36,8 +36,8 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         fontSize: '14px',
         color: '#9ee5df',
       };
-      /** PLAY 行の「y」— P/L/A よりわずかに明るい（モノスペ） */
-      const PLAY_Y_HEX = '#def7ff';
+      /** PLAY 行の「y」— P/L/A に馴染む補助文字（やや暗め・低主張） */
+      const PLAY_Y_HEX = '#a8c4d8';
 
       destroyBootBgPanelForHome(this.scene.get('boot'));
 
@@ -119,6 +119,10 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         })
         .setOrigin(0.5, 0.5)
         .setDepth(_depthPlayGlyph);
+
+      /** 「y」だけ合成アルファを下げ、グリフ行のベースライン付近に寄せる */
+      this._startYGlyphAlpha = 0.82;
+      this._startYBaselineOffset = 4;
 
       this._startHitZone = this.add.zone(L.centerX, L.startCenterY, 120, 72).setDepth(_depthPlayHit);
 
