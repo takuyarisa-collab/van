@@ -340,7 +340,8 @@ export function mountHomeGridOnly(scene, opts = {}) {
   const W = opts.width ?? scene.scale.width;
   const H = opts.height ?? scene.scale.height;
   const depthBase = opts.depthBase ?? -60;
-  const gGrid = buildCleanGrid(scene, W, H, 1, depthBase - 1);
+  // Home パネル背後のグリッドはほぼ見えない程度に弱める（不透明パネル前提）
+  const gGrid = buildCleanGrid(scene, W, H, 0.22, depthBase - 1);
   return {
     layers: [gGrid],
     destroy() {
