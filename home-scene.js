@@ -102,14 +102,15 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
 
       this._playBaseMain = this.add.graphics().setDepth(_depthPlayBaseMain);
       this._playBaseDetail = this.add.graphics().setDepth(_depthPlayBaseDetail);
-      this._playTriangle = this.add.graphics().setDepth(_depthPlayTriangle);
 
       const P = HOMEOVERLAP_CROPS.P;
       const Lc = HOMEOVERLAP_CROPS.L;
       const Ac = HOMEOVERLAP_CROPS.A;
+      const Vc = HOMEOVERLAP_CROPS.V;
       this._startA = addOverlapCropImage(this, texKey, Ac, _depthPlayGlyph);
       this._startP = addOverlapCropImage(this, texKey, P, _depthPlayGlyph);
       this._startL = addOverlapCropImage(this, texKey, Lc, _depthPlayGlyph);
+      this._startV = addOverlapCropImage(this, texKey, Vc, _depthPlayTriangle);
       this._startY = this.add
         .text(0, 0, 'y', {
           fontFamily: 'ui-monospace, SFMono-Regular, monospace',
@@ -165,11 +166,9 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this._homeDebris?.destroy?.();
         this._homeDebris = null;
         [
-          this._startA, this._startP, this._startL, this._startY,
+          this._startA, this._startP, this._startL, this._startV, this._startY,
         ].forEach((o) => o?.destroy?.());
-        this._startA = this._startP = this._startL = this._startY = null;
-        this._playTriangle?.destroy?.();
-        this._playTriangle = null;
+        this._startA = this._startP = this._startL = this._startV = this._startY = null;
         this._playBaseMain?.destroy?.();
         this._playBaseMain = null;
         this._playBaseDetail?.destroy?.();
