@@ -115,7 +115,7 @@ export function drawHomeFacePanel(gMain, gDet, x, y, w, h, opts) {
   const panelW = Math.max(1, w);
   const panelH = Math.max(1, h);
   const baseMainAlpha = _homeUiRandRange(seed, baseAlphaMin, baseAlphaMax) * flashMul * sfAlpha;
-  gMain.fillStyle(0x0b1a2a, baseMainAlpha);
+  gMain.fillStyle(0x07141f, baseMainAlpha);
   gMain.fillRect(x, y, panelW, panelH);
 
   const innerInset = 3;
@@ -123,8 +123,8 @@ export function drawHomeFacePanel(gMain, gDet, x, y, w, h, opts) {
   const inT = y + innerInset;
   const inW = Math.max(1, panelW - innerInset * 2);
   const inH = Math.max(1, panelH - innerInset * 2);
-  const innerGlowAlpha = _homeUiRandRange(seed + 1, 0.18, 0.26) * flashMul * sfAlpha;
-  gDet.fillStyle(0x6fbaff, innerGlowAlpha);
+  const innerGlowAlpha = _homeUiRandRange(seed + 1, 0.08, 0.13) * flashMul * sfAlpha;
+  gDet.fillStyle(0x5a7a94, innerGlowAlpha);
   gDet.fillRect(inL, inT, inW, inH);
 
   const hiEdgeInset = 2;
@@ -294,12 +294,12 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   const playRowDispH = playRefNatH * gSy;
 
   const totalW = wP + gapPL + wL + gapLA + wA + gapAY + wY;
-  const padX = _homeUiRandRange(0x491101, 16, 24);
-  const padY = _homeUiRandRange(0x491102, 16, 22);
+  const padX = _homeUiRandRange(0x491101, 26, 38);
+  const padY = _homeUiRandRange(0x491102, 10, 14);
   const triDispW = Vcrop.w * gS;
   const triDispH = Vcrop.h * gSy;
   const triSize = Math.max(triDispW, triDispH);
-  const midGap = _homeUiRandRange(0x491104, 8, 14);
+  const midGap = _homeUiRandRange(0x491104, 5, 9);
 
   const panelW = Math.max(totalW, triSize * 1.05) + padX * 2;
   const panelH = padY * 2 + triDispH + midGap + playRowDispH;
@@ -335,8 +335,11 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   const cA = xCursor + wA * 0.5;
   placeGlyph(scene._startA, cA, playCy, gS, gSy, 0, 0x492030, alphaPlay);
   xCursor += wA + gapAY;
-  scene._startY.setPosition(xCursor + wY * 0.5 + j(0x492070), playCy + j(0x492071));
-  scene._startY.setAlpha(alphaPlay);
+  scene._startY.setPosition(
+    xCursor + wY * 0.5 + j(0x492070),
+    playCy + j(0x492071) + (scene._startYBaselineOffset ?? 0),
+  );
+  scene._startY.setAlpha(alphaPlay * (scene._startYGlyphAlpha ?? 1));
 
   drawHomeFacePanel(scene._playBaseMain, scene._playBaseDetail, panelL, panelT, panelW, panelH, {
     seed: 0x491300,
@@ -381,8 +384,8 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     const rowMaxX = Math.max(hb.right, tb.right);
     const rowMinY = Math.min(hb.y, tb.y);
     const rowMaxY = Math.max(hb.bottom, tb.bottom);
-    const padXSub = _homeUiRandRange(seed + 50, 22, 32);
-    const padYSub = _homeUiRandRange(seed + 51, 14, 22);
+    const padXSub = _homeUiRandRange(seed + 50, 32, 46);
+    const padYSub = _homeUiRandRange(seed + 51, 20, 30);
     const boxL = rowMinX - padXSub;
     const boxR = rowMaxX + padXSub;
     const boxT = rowMinY - padYSub;
