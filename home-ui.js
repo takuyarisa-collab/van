@@ -310,12 +310,12 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   const playRowDispH = playRefNatH * gSy;
 
   const totalW = wP + gapPL + wL + gapLA + wA + gapAY + wY;
-  const padX = _homeUiRandRange(0x491101, 34, 48);
-  const padY = _homeUiRandRange(0x491102, 14, 20);
+  const padX = _homeUiRandRange(0x491101, 26, 38);
+  const padY = _homeUiRandRange(0x491102, 10, 14);
   const triDispW = Vcrop.w * gS;
   const triDispH = Vcrop.h * gSy;
   const triSize = Math.max(triDispW, triDispH);
-  const midGap = _homeUiRandRange(0x491104, 7, 11);
+  const midGap = _homeUiRandRange(0x491104, 5, 9);
 
   const panelW = Math.max(totalW, triSize * 1.05) + padX * 2;
   const panelH = padY * 2 + triDispH + midGap + playRowDispH;
@@ -365,8 +365,8 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     sfAlpha: sf.alpha,
     baseAlphaMin: 0.56,
     baseAlphaMax: 0.68,
-    visualPadX: 12,
-    visualPadY: 8,
+    visualPadX: 20,
+    visualPadY: 12,
   });
 
   placeGlyph(scene._startV, triCx, triCy, gS, gSy, -90, 0x492210, alphaPlay, false);
@@ -382,16 +382,16 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     if (!row) return;
     const baseCY = L.subButtonCenterYs[i];
     const seed = 0x493000 + i * 997;
-    const jx = _homeUiRandInt(seed, -2, 2);
-    const jy = _homeUiRandInt(seed + 11, -2, 2);
-    const rowShiftX = (i - 1) * _homeUiRandRange(seed + 3, 8, 14);
+    const jx = _homeUiRandInt(seed, -7, 7);
+    const jy = _homeUiRandInt(seed + 11, -7, 7);
+    const rowShiftX = (i - 1) * _homeUiRandRange(seed + 3, 5, 9);
 
     row.head.setPosition(subColX + sub.offsetX + jx + rowShiftX, baseCY + sub.offsetY + jy);
     row.head.setScale(gS * sub.alpha, gSy * sub.alpha);
     row.head.setRotation(0);
     row.head.setAlpha(sub.alpha * _homeUiRandRange(seed + 4, 0.85, 1.0));
 
-    const gap = 10 + _homeUiRandInt(seed + 5, 0, 4);
+    const gap = 6 + _homeUiRandInt(seed + 5, 0, 3);
     row.tail.setPosition(
       subColX + row.head.width * row.head.scaleX * 0.5 + gap + sub.offsetX + jx + rowShiftX,
       baseCY + sub.offsetY + jy + _homeUiRandInt(seed + 6, -5, 5),
@@ -404,8 +404,8 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     const rowMaxX = Math.max(hb.right, tb.right);
     const rowMinY = Math.min(hb.y, tb.y);
     const rowMaxY = Math.max(hb.bottom, tb.bottom);
-    const padXSub = _homeUiRandRange(seed + 50, 42, 58);
-    const padYSub = _homeUiRandRange(seed + 51, 24, 36);
+    const padXSub = _homeUiRandRange(seed + 50, 32, 46);
+    const padYSub = _homeUiRandRange(seed + 51, 20, 30);
     const boxL = rowMinX - padXSub;
     const boxR = rowMaxX + padXSub;
     const boxT = rowMinY - padYSub;
@@ -419,8 +419,8 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
       sfAlpha: sub.alpha,
       baseAlphaMin: 0.48,
       baseAlphaMax: 0.6,
-      visualPadX: 14,
-      visualPadY: 7,
+      visualPadX: 22,
+      visualPadY: 10,
     });
 
     const zx = boxL - 2;
