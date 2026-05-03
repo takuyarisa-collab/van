@@ -34,10 +34,10 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
       const SUB_TAIL_STYLE = {
         fontFamily: 'ui-monospace, SFMono-Regular, monospace',
         fontSize: '14px',
-        color: '#9ee5df',
+        color: '#c4f5e8',
       };
-      /** PLAY 行の「y」— P/L/A に馴染む補助文字（やや暗め・低主張） */
-      const PLAY_Y_HEX = '#a8c4d8';
+      /** PLAY 行の「y」— 緑系パネル上で読める補助文字 */
+      const PLAY_Y_HEX = '#b8e8d8';
 
       destroyBootBgPanelForHome(this.scene.get('boot'));
 

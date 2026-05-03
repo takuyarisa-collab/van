@@ -109,39 +109,55 @@ export function drawHomeFacePanel(gMain, gDet, x, y, w, h, opts) {
     sfAlpha = 1,
     baseAlphaMin,
     baseAlphaMax,
+    visualPadX = 0,
+    visualPadY = 0,
   } = opts;
   gMain.clear();
   gDet.clear();
   const panelW = Math.max(1, w);
   const panelH = Math.max(1, h);
+  const vx = x - visualPadX;
+  const vy = y - visualPadY;
+  const vW = panelW + visualPadX * 2;
+  const vH = panelH + visualPadY * 2;
+
+  const br = Math.floor(_homeUiRandRange(seed + 10, 15, 19));
+  const bgc = Math.floor(_homeUiRandRange(seed + 11, 31, 38));
+  const bb = Math.floor(_homeUiRandRange(seed + 12, 26, 31));
+  const baseRgb = (br << 16) | (bgc << 8) | bb;
+
   const baseMainAlpha = _homeUiRandRange(seed, baseAlphaMin, baseAlphaMax) * flashMul * sfAlpha;
-  gMain.fillStyle(0x07141f, baseMainAlpha);
-  gMain.fillRect(x, y, panelW, panelH);
+  gMain.fillStyle(baseRgb, baseMainAlpha);
+  gMain.fillRect(vx, vy, vW, vH);
 
   const innerInset = 3;
-  const inL = x + innerInset;
-  const inT = y + innerInset;
-  const inW = Math.max(1, panelW - innerInset * 2);
-  const inH = Math.max(1, panelH - innerInset * 2);
-  const innerGlowAlpha = _homeUiRandRange(seed + 1, 0.08, 0.13) * flashMul * sfAlpha;
-  gDet.fillStyle(0x5a7a94, innerGlowAlpha);
+  const inL = vx + innerInset;
+  const inT = vy + innerInset;
+  const inW = Math.max(1, vW - innerInset * 2);
+  const inH = Math.max(1, vH - innerInset * 2);
+  const innerGlowAlpha = _homeUiRandRange(seed + 1, 0.14, 0.21) * flashMul * sfAlpha;
+  const gR = Math.floor(_homeUiRandRange(seed + 13, 88, 110));
+  const gG = Math.floor(_homeUiRandRange(seed + 14, 148, 168));
+  const gB = Math.floor(_homeUiRandRange(seed + 15, 118, 138));
+  const innerRgb = (gR << 16) | (gG << 8) | gB;
+  gDet.fillStyle(innerRgb, innerGlowAlpha);
   gDet.fillRect(inL, inT, inW, inH);
 
   const hiEdgeInset = 2;
   const hiLineAlpha = _homeUiRandRange(seed + 2, 0.28, 0.38) * flashMul * sfAlpha;
-  const hiW = Math.max(1, panelW - hiEdgeInset * 2);
-  const hiX = x + (panelW - hiW) * 0.5;
-  const hiY = y + hiEdgeInset;
+  const hiW = Math.max(1, vW - hiEdgeInset * 2);
+  const hiX = vx + (vW - hiW) * 0.5;
+  const hiY = vy + hiEdgeInset;
   const hiH = 2;
-  gDet.fillStyle(0xbfe3ff, hiLineAlpha);
+  gDet.fillStyle(0xc8eadc, hiLineAlpha);
   gDet.fillRect(hiX, hiY, hiW, hiH);
 
   const shEdgeInset = 2;
   const shLineAlpha = _homeUiRandRange(seed + 3, 0.34, 0.48) * flashMul * sfAlpha;
   const shH = 2;
-  const shY = y + panelH - shEdgeInset - shH;
+  const shY = vy + vH - shEdgeInset - shH;
   gDet.fillStyle(0x000000, shLineAlpha);
-  gDet.fillRect(x, shY, panelW, shH);
+  gDet.fillRect(vx, shY, vW, shH);
 }
 
 /** ?debug=1 時: overlap-title 上の crop 矩形をミニマップ表示（stroke + ラベル） */
@@ -294,38 +310,40 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   const playRowDispH = playRefNatH * gSy;
 
   const totalW = wP + gapPL + wL + gapLA + wA + gapAY + wY;
-  const padX = _homeUiRandRange(0x491101, 26, 38);
-  const padY = _homeUiRandRange(0x491102, 10, 14);
+  const padX = _homeUiRandRange(0x491101, 34, 48);
+  const padY = _homeUiRandRange(0x491102, 14, 20);
   const triDispW = Vcrop.w * gS;
   const triDispH = Vcrop.h * gSy;
   const triSize = Math.max(triDispW, triDispH);
-  const midGap = _homeUiRandRange(0x491104, 5, 9);
+  const midGap = _homeUiRandRange(0x491104, 7, 11);
 
   const panelW = Math.max(totalW, triSize * 1.05) + padX * 2;
   const panelH = padY * 2 + triDispH + midGap + playRowDispH;
   const panelL = baseX - panelW * 0.5;
   const panelT = baseY - panelH * 0.5;
 
-  const j = (seed) => _homeUiRandInt(seed, -1, 1);
+  const gx = (s) => _homeUiRandInt(s, -2, 2);
+  const gy = (s) => _homeUiRandInt(s, -2, 2);
   const alphaPlay = Math.min(
     1,
-    flashMul * sf.alpha * _homeUiRandRange(0x492100, 0.8, 0.9),
+    flashMul * sf.alpha * _homeUiRandRange(0x492100, 0.85, 1.0),
   );
 
-  const triCx = baseX + j(0x492200);
-  const triCy = panelT + padY + triDispH * 0.5 + j(0x492201);
+  const playRowShiftX = _homeUiRandInt(0x49205d, -7, 7);
+  const triCx = baseX + playRowShiftX + gx(0x492200);
+  const triCy = panelT + padY + triDispH * 0.5 + gy(0x492201);
   const playCy =
-    panelT + padY + triDispH + midGap + playRowDispH * 0.5 + j(0x492202);
+    panelT + padY + triDispH + midGap + playRowDispH * 0.5 + gy(0x492202);
 
   const placeGlyph = (img, cx, cy, sx, sy, rotDeg, seed, alpha, applyFrameRot = true) => {
-    img.setPosition(cx + j(seed + 1), cy + j(seed + 2));
+    img.setPosition(cx + gx(seed + 1), cy + gy(seed + 2));
     img.setScale(sx, sy);
     const extraRot = applyFrameRot ? sf.rotation : 0;
     img.setRotation(Phaser.Math.DegToRad(rotDeg + extraRot));
     img.setAlpha(alpha);
   };
 
-  let xCursor = baseX - totalW * 0.5;
+  let xCursor = baseX - totalW * 0.5 + playRowShiftX;
   const cP = xCursor + wP * 0.5;
   placeGlyph(scene._startP, cP, playCy, gS, gSy, 0, 0x492050, alphaPlay, false);
   xCursor += wP + gapPL;
@@ -336,8 +354,8 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   placeGlyph(scene._startA, cA, playCy, gS, gSy, 0, 0x492030, alphaPlay);
   xCursor += wA + gapAY;
   scene._startY.setPosition(
-    xCursor + wY * 0.5 + j(0x492070),
-    playCy + j(0x492071) + (scene._startYBaselineOffset ?? 0),
+    xCursor + wY * 0.5 + gx(0x492070),
+    playCy + gy(0x492071) + (scene._startYBaselineOffset ?? 0),
   );
   scene._startY.setAlpha(alphaPlay * (scene._startYGlyphAlpha ?? 1));
 
@@ -345,8 +363,10 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     seed: 0x491300,
     flashMul,
     sfAlpha: sf.alpha,
-    baseAlphaMin: 0.42,
-    baseAlphaMax: 0.52,
+    baseAlphaMin: 0.56,
+    baseAlphaMax: 0.68,
+    visualPadX: 12,
+    visualPadY: 8,
   });
 
   placeGlyph(scene._startV, triCx, triCy, gS, gSy, -90, 0x492210, alphaPlay, false);
@@ -362,21 +382,21 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     if (!row) return;
     const baseCY = L.subButtonCenterYs[i];
     const seed = 0x493000 + i * 997;
-    const jx = _homeUiRandInt(seed, -7, 7);
-    const jy = _homeUiRandInt(seed + 11, -7, 7);
-    const rowShiftX = (i - 1) * _homeUiRandRange(seed + 3, 5, 9);
+    const jx = _homeUiRandInt(seed, -2, 2);
+    const jy = _homeUiRandInt(seed + 11, -2, 2);
+    const rowShiftX = (i - 1) * _homeUiRandRange(seed + 3, 8, 14);
 
     row.head.setPosition(subColX + sub.offsetX + jx + rowShiftX, baseCY + sub.offsetY + jy);
     row.head.setScale(gS * sub.alpha, gSy * sub.alpha);
     row.head.setRotation(0);
-    row.head.setAlpha(sub.alpha * _homeUiRandRange(seed + 4, 0.88, 1.0));
+    row.head.setAlpha(sub.alpha * _homeUiRandRange(seed + 4, 0.85, 1.0));
 
-    const gap = 6 + _homeUiRandInt(seed + 5, 0, 3);
+    const gap = 10 + _homeUiRandInt(seed + 5, 0, 4);
     row.tail.setPosition(
       subColX + row.head.width * row.head.scaleX * 0.5 + gap + sub.offsetX + jx + rowShiftX,
       baseCY + sub.offsetY + jy + _homeUiRandInt(seed + 6, -5, 5),
     );
-    row.tail.setAlpha(sub.alpha * _homeUiRandRange(seed + 7, 0.88, 1.0));
+    row.tail.setAlpha(sub.alpha * _homeUiRandRange(seed + 7, 0.85, 1.0));
 
     const hb = row.head.getBounds();
     const tb = row.tail.getBounds();
@@ -384,8 +404,8 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     const rowMaxX = Math.max(hb.right, tb.right);
     const rowMinY = Math.min(hb.y, tb.y);
     const rowMaxY = Math.max(hb.bottom, tb.bottom);
-    const padXSub = _homeUiRandRange(seed + 50, 32, 46);
-    const padYSub = _homeUiRandRange(seed + 51, 20, 30);
+    const padXSub = _homeUiRandRange(seed + 50, 42, 58);
+    const padYSub = _homeUiRandRange(seed + 51, 24, 36);
     const boxL = rowMinX - padXSub;
     const boxR = rowMaxX + padXSub;
     const boxT = rowMinY - padYSub;
@@ -397,8 +417,10 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
       seed: seed + 600,
       flashMul: 1,
       sfAlpha: sub.alpha,
-      baseAlphaMin: 0.32,
-      baseAlphaMax: 0.42,
+      baseAlphaMin: 0.48,
+      baseAlphaMax: 0.6,
+      visualPadX: 14,
+      visualPadY: 7,
     });
 
     const zx = boxL - 2;
