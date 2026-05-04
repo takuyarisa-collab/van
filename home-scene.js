@@ -35,10 +35,10 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
       const SUB_TAIL_STYLE = {
         fontFamily: 'ui-monospace, SFMono-Regular, monospace',
         fontSize: '14px',
-        color: '#e2ded6',
+        color: '#c04545',
       };
-      /** PLAY 行の「y」— ニュートラルパネル上で読める補助文字 */
-      const PLAY_Y_HEX = '#d4d0c8';
+      /** PLAY 行の「y」— 赤系（サブ尾より明るめ） */
+      const PLAY_Y_HEX = '#ff5a5a';
 
       destroyBootBgPanelForHome(this.scene.get('boot'));
 
@@ -144,7 +144,11 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
       ];
       this._subRows = HOME_LAYOUT.subRowTails.map((tail, i) => {
         const head = addOverlapCropImage(this, texKey, subCrops[i], _depthSubGlyph);
-        const tailT = this.add.text(0, 0, tail, SUB_TAIL_STYLE).setOrigin(0, 0.5).setDepth(_depthSubGlyph);
+        const tailT = this.add
+          .text(0, 0, tail, SUB_TAIL_STYLE)
+          .setOrigin(0, 0.5)
+          .setDepth(_depthSubGlyph)
+          .setAlpha(0.72);
         const z = this.add.zone(0, 0, 88, 40).setDepth(_depthSubHit);
         const bgPanelImg = this.add
           .image(0, 0, 'home-bg-normal')

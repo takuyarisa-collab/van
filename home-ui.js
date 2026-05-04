@@ -572,6 +572,7 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   const panelH = padY * 2 + triDispH + midGap + playRowDispH;
   const panelL = baseX - panelW * 0.5;
   const panelT = baseY - panelH * 0.5;
+  const panelMidY = panelT + panelH * 0.5;
 
   const gx = (s) => _homeUiRandInt(s, -2, 2);
   const gy = (s) => _homeUiRandInt(s, -2, 2);
@@ -588,9 +589,12 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
 
   const playRowShiftX = _homeUiRandInt(0x49205d, -2, 2);
   const triCx = baseX + playRowShiftX + gx(0x492200);
-  const triCy = panelT + padY + triDispH * 0.5 + gy(0x492201);
-  const playCy =
-    panelT + padY + triDispH + midGap + playRowDispH * 0.5 + gy(0x492202);
+  /** ▷ と P/L/A/y を縦方向では1ブロックとして panel 中央に寄せる */
+  const playContentH = triDispH + midGap + playRowDispH;
+  const gyPlayBlock = gy(0x492201);
+  const playBlockTop = panelMidY - playContentH * 0.5 + gyPlayBlock;
+  const triCy = playBlockTop + triDispH * 0.5;
+  const playCy = playBlockTop + triDispH + midGap + playRowDispH * 0.5;
 
   const placeGlyph = (img, cx, cy, sx, sy, rotDeg, seed, alpha, applyFrameRot = true) => {
     img.setPosition(cx + gx(seed + 1), cy + gy(seed + 2));
