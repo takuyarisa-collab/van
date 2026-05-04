@@ -378,7 +378,8 @@ export function layoutHomeBgNormalCropPanel(scene, img, panelL, panelT, panelW, 
   img.setPosition(panelL + panelW * 0.5, panelT + panelH * 0.5);
   img.setOrigin(0.5, 0.5);
   img.setCrop(cropX, cropY, cropW, cropH);
-  img.setDisplaySize(panelW, panelH);
+  /** 検証: 切り出しピクセルと表示を等倍（cropW×cropH）。レイアウト矩形は panelL/T/W/H のまま */
+  img.setDisplaySize(cropW, cropH);
   img.setAlpha(alpha);
   img.setVisible(true);
 
