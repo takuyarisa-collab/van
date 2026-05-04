@@ -2,6 +2,11 @@ import { HOMEOVERLAP_CROPS } from './home-overlap-crops.js';
 
 export const HOMEOVERLAP_TEX_KEY = 'home-overlap-title';
 
+export function homeUrlDebugEnabled() {
+  if (typeof window === 'undefined' || !window.location) return false;
+  return /[?&]debug=1(?:&|$)/.test(window.location.search || '');
+}
+
 /** BootScene の boot-title-png と同じ比率（index.html: (WORLD_W * 0.82) / imgNatW） */
 export function getBootOverlapTitleScale(scene) {
   const tex = scene.textures.get(HOMEOVERLAP_TEX_KEY);
@@ -316,6 +321,8 @@ function _homeFillPanelMottle(g, vx, vy, vW, vH, baseRgb, baseAlpha, seed) {
  * @param {object} [opts]
  * @param {string} [opts.textureKey='home-bg-normal']
  * @param {number} [opts.alpha=1]
+ * @param {'PLAY'|'SUB'} [opts.debugLogKind] ?debug=1 のときだけ console.log に渡す
+ * @param {number} [opts.debugRowIndex] SUB 行番号（0-based）
  */
 export function layoutHomeBgNormalCropPanel(scene, img, panelL, panelT, panelW, panelH, opts = {}) {
   if (!img || img.destroyed) return;
@@ -323,6 +330,22 @@ export function layoutHomeBgNormalCropPanel(scene, img, panelL, panelT, panelW, 
   const alpha = opts.alpha ?? 1;
   if (!scene.textures.exists(texKey)) {
     img.setVisible(false);
+    if (homeUrlDebugEnabled()) {
+      const kind = opts.debugLogKind ?? '?';
+      const row = opts.debugRowIndex;
+      console.log('[home-bg-crop-panel]', {
+        kind,
+        row,
+        panelL,
+        panelT,
+        panelW,
+        panelH,
+        note: 'texture missing',
+        textureKey: texKey,
+        imgVisible: img.visible,
+        imgDepth: img.depth,
+      });
+    }
     return;
   }
   const W = scene.scale.width;
@@ -346,18 +369,41 @@ export function layoutHomeBgNormalCropPanel(scene, img, panelL, panelT, panelW, 
   tw = Math.max(1, Math.min(tw, srcW - tx0));
   th = Math.max(1, Math.min(th, srcH - ty0));
 
+  const cropX = Math.max(0, Math.floor(tx0));
+  const cropY = Math.max(0, Math.floor(ty0));
+  const cropW = Math.min(Math.ceil(tw), srcW - cropX);
+  const cropH = Math.min(Math.ceil(th), srcH - cropY);
+
   img.setTexture(texKey);
   img.setPosition(panelL + panelW * 0.5, panelT + panelH * 0.5);
   img.setOrigin(0.5, 0.5);
-  img.setCrop(
-    Math.max(0, Math.floor(tx0)),
-    Math.max(0, Math.floor(ty0)),
-    Math.min(Math.ceil(tw), srcW - Math.max(0, Math.floor(tx0))),
-    Math.min(Math.ceil(th), srcH - Math.max(0, Math.floor(ty0))),
-  );
+  img.setCrop(cropX, cropY, cropW, cropH);
   img.setDisplaySize(panelW, panelH);
   img.setAlpha(alpha);
   img.setVisible(true);
+
+  if (homeUrlDebugEnabled()) {
+    const kind = opts.debugLogKind ?? '?';
+    const row = opts.debugRowIndex;
+    console.log('[home-bg-crop-panel]', {
+      kind,
+      row,
+      panelL,
+      panelT,
+      panelW,
+      panelH,
+      cropX,
+      cropY,
+      cropW,
+      cropH,
+      imgDisplayWidth: img.displayWidth,
+      imgDisplayHeight: img.displayHeight,
+      imgWidth: img.width,
+      imgHeight: img.height,
+      imgVisible: img.visible,
+      imgDepth: img.depth,
+    });
+  }
 }
 
 /**
@@ -516,6 +562,7 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
 
   layoutHomeBgNormalCropPanel(scene, scene._playBgPanelImg, panelL, panelT, panelW, panelH, {
     alpha: alphaPlay,
+    debugLogKind: 'PLAY',
   });
 
   const playRowShiftX = _homeUiRandInt(0x49205d, -2, 2);
@@ -613,6 +660,8 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
 
     layoutHomeBgNormalCropPanel(scene, row.bgPanelImg, boxL, boxTAdj, boxW, boxH, {
       alpha: subRowAlpha,
+      debugLogKind: 'SUB',
+      debugRowIndex: i,
     });
 
     const zx = boxL - 2;
