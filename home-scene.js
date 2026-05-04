@@ -90,18 +90,18 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
       };
 
       const _depthPlayBaseMain = 9;
-      const _depthPlayBaseDetail = 10;
       const _depthPlayGlyph = 11;
       const _depthPlayTriangle = 12;
       const _depthPlayHit = 13;
       const _depthSubPanelMain = 9;
-      const _depthSubPanelDet = 10;
       const _depthSubGlyph = 11;
       const _depthSubHit = 13;
       const texKey = HOMEOVERLAP_TEX_KEY;
 
-      this._playBaseMain = this.add.graphics().setDepth(_depthPlayBaseMain);
-      this._playBaseDetail = this.add.graphics().setDepth(_depthPlayBaseDetail);
+      this._playBgPanelImg = this.add
+        .image(0, 0, 'home-bg-normal')
+        .setDepth(_depthPlayBaseMain)
+        .setVisible(false);
 
       const P = HOMEOVERLAP_CROPS.P;
       const Lc = HOMEOVERLAP_CROPS.L;
@@ -135,9 +135,11 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         const head = addOverlapCropImage(this, texKey, subCrops[i], _depthSubGlyph);
         const tailT = this.add.text(0, 0, tail, SUB_TAIL_STYLE).setOrigin(0, 0.5).setDepth(_depthSubGlyph);
         const z = this.add.zone(0, 0, 88, 40).setDepth(_depthSubHit);
-        const subMain = this.add.graphics().setDepth(_depthSubPanelMain);
-        const subDet = this.add.graphics().setDepth(_depthSubPanelDet);
-        return { head, tail: tailT, zone: z, subMain, subDet };
+        const bgPanelImg = this.add
+          .image(0, 0, 'home-bg-normal')
+          .setDepth(_depthSubPanelMain)
+          .setVisible(false);
+        return { head, tail: tailT, zone: z, bgPanelImg };
       });
 
       this._startPressFlash = 0;
@@ -176,18 +178,15 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
           this._startA, this._startP, this._startL, this._startV, this._startY,
         ].forEach((o) => o?.destroy?.());
         this._startA = this._startP = this._startL = this._startV = this._startY = null;
-        this._playBaseMain?.destroy?.();
-        this._playBaseMain = null;
-        this._playBaseDetail?.destroy?.();
-        this._playBaseDetail = null;
+        this._playBgPanelImg?.destroy?.();
+        this._playBgPanelImg = null;
         this._startHitZone?.destroy?.();
         this._startHitZone = null;
         this._subRows?.forEach((r) => {
           r.head?.destroy?.();
           r.tail?.destroy?.();
           r.zone?.destroy?.();
-          r.subMain?.destroy?.();
-          r.subDet?.destroy?.();
+          r.bgPanelImg?.destroy?.();
         });
         this._subRows = null;
       };
