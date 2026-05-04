@@ -70,8 +70,6 @@
     onerror="console.error('[INIT] script load FAILED')"></script>
   <script type="module">
     import {
-      createScatteredBootTitle,
-      createBootTitleParts,
       mountBootCollapsedBackdrop,
       mountBootHomeBackdrop,
     } from './boot-home-bg.js';
@@ -169,7 +167,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-04 00:24 UTC';
+      const BUILD_TIMESTAMP = '2026-05-04 01:43 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -304,7 +302,7 @@
         };
         // ?debug=1 のときだけデバッグHUDを表示する
         window.DEBUG_HUD_ENABLED = window.BOOT_PARAM_getBool('debug', false);
-        // Home 全体 Y: ?homeYOffset=20（px、正で下）。未指定・空は自動のみ（加算なし）
+        // Home 全体 Y: 既定で +150px（旧 ?homeYOffset=150 相当）。?homeYOffset=N はその上に加算（デバッグ）
         const _hyRaw = _qp.get('homeYOffset');
         if (_hyRaw === null || _hyRaw === '') {
           window.HOME_PARAM_homeYOffsetPx = null;
@@ -507,6 +505,7 @@
             `tweenPaused:${s.tweenPaused ?? '-'}`,
             `homePlayRefNatH:${s.playRefH ?? '-'}`,
             `homeYOffsetPx:${s.homeYOffsetPx != null ? String(s.homeYOffsetPx) : '-'}`,
+            `homeYOffsetAppliedPx:${s.homeYOffsetAppliedPx != null ? String(s.homeYOffsetAppliedPx) : '-'}`,
             `homeAutoOffset:${s.homeAutoOffset != null ? String(s.homeAutoOffset) : '-'}`,
           ];
           _text.setText(lines);
@@ -667,23 +666,11 @@
 
           seedBootLogLines(this);
 
-          // ── "Overlap" タイトル: フォント版（非表示・構造体版に切替済み） ─
-          // cx+1px: 意図的な微ズレ（微違和感）
-          this._overlapText = this.add.text(cx + 1, cy + 27, 'Overlap', {
-            fontFamily: 'system-ui, sans-serif',
-            fontSize: '52px',
-            fontStyle: 'bold',
-            color: '#58f0ff',
-            stroke: '#0a2833',
-            strokeThickness: 4,
-          }).setOrigin(0.5).setAlpha(0).setDepth(11).setVisible(false);
-
-          // GeometryMask: 左→右へ展開する矩形で Overlap を段階表示
+          // GeometryMask: 左→右へ展開する矩形で PNG タイトルを段階表示
           // noTitleMask=true の場合はマスクを使わず全体を表示
           this._overlapMaskGfx = this.make.graphics({ add: false });
           if (!BOOT_DEBUG.noTitleMask) {
             this._overlapMask = this._overlapMaskGfx.createGeometryMask();
-            this._overlapText.setMask(this._overlapMask);
           } else {
             this._overlapMask = null;
           }
@@ -691,7 +678,7 @@
           // Overlap 描画先端の縦スキャンバー (depth 12)
           this._titleScanGfx = this.add.graphics().setDepth(12);
 
-          // ── PNG タイトル: 構造体との重ね合わせ確認用 (depth 10) ─────────────
+          // ── PNG タイトル (depth 10) ──────────────────────────────────────
           // 構造体(depth 11)より下に配置し、PNG を視覚基準として使う
           this._bootTitleImg = this.add.image(cx + 1, cy + 27, 'boot-title-png')
             .setOrigin(0.5, 0.5)
@@ -705,21 +692,6 @@
           if (!BOOT_DEBUG.noTitleMask && this._overlapMask) {
             this._bootTitleImg.setMask(this._overlapMask);
           }
-
-          // ── タイトル構造体: "OVERLAP" をフォントではなく矩形パーツで描画 ──
-          // OVER=stable(整列), L=transition(微ズレ), AP=broken(崩壊)
-          // _overlapText は非表示のまま残す（マスク計算の参照用に保持）
-          this._bootTitleParts = createBootTitleParts(this, {
-            cx: cx + 1,
-            cy: cy + 27,
-            depth: 11,
-            seed: 0x70b44f,
-          });
-
-          // ?debug=1 のときのみ構造体を表示（通常時は非表示）
-          this._bootTitleParts.gfxList.forEach(g => {
-            g.setVisible(BOOT_DEBUG.debug === true);
-          });
 
           // ── progress tween: Quart.easeOut で 0→1 / 1200ms ───────────────
           // Quart.easeOut = 1-(1-t)^4: 最初速く、p=0.85 以降は極端に遅くなる
@@ -803,14 +775,10 @@
           this._warnFrame = null;
           this._logPool?.forEach(t => t.destroy());
           this._logPool = null;
-          this._overlapText?.destroy();
           this._overlapMaskGfx?.destroy();
-          this._bootTitleParts?.destroy?.();
+          this._overlapMask = null;
+          this._overlapMaskGfx = null;
           this._bootTitleImg?.destroy();
-          this._bootBg?.destroy();
-          this._debugHud?.destroy();
-          this._bootBackdrop = null;
-          this._bootTitleParts = null;
           this._bootTitleImg = null;
           this._bootBg = null;
           this._debugHud = null;
@@ -1083,17 +1051,13 @@
             this._scanLineGfx.lineBetween(0, revealY, W, revealY);
           }
 
-          // ── フェーズ3: "Overlap" タイトル描画（p=titleStart〜） ─────────────────
+          // ── フェーズ3: PNG タイトル（p=titleStart〜） ─────────────────
           const { titleStart, titleStop, noTitleMask } = BOOT_DEBUG;
           if (pTitle < titleStart) {
-            this._overlapText.setAlpha(0);
             this._overlapMaskGfx.clear();
             this._titleScanGfx.clear();
           } else {
             const titleP = titleStart < 1 ? (pTitle - titleStart) / (1 - titleStart) : 1; // 0→1 as p: titleStart→1.0
-
-            // アルファ: 出現直後に素早くフェードイン
-            this._overlapText.setAlpha(Math.min(1, titleP * 3));
 
             // 左→右マスク展開: 最大 titleStop 幅（最後の約1文字が未表示のまま停止）
             const revealWidth = noTitleMask ? 1 : Math.min(titleStop, titleP * titleStop);

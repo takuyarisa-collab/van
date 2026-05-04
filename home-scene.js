@@ -152,6 +152,7 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         debris:    this._homeDebris ? this._homeDebris.alpha.toFixed(2) : '-',
         playRefH:  this._homePlayRefNatH != null ? String(this._homePlayRefNatH) : '-',
         homeYOffsetPx: HOME_LAYOUT.homeYOffsetPxParam,
+        homeYOffsetAppliedPx: HOME_LAYOUT.homeYOffsetPxApplied,
         homeAutoOffset: HOME_LAYOUT.homeYAutoOffset,
       }));
 
