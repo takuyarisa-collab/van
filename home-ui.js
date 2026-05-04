@@ -541,8 +541,8 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   const playRowDispH = playRefNatH * gSy;
 
   const totalW = wP + gapPL + wL + gapLA + wA + gapAY + wY;
-  const padX = _homeUiRandRange(0x491101, 26, 38);
-  const padY = _homeUiRandRange(0x491102, 10, 14);
+  const padX = _homeUiRandRange(0x491101, 41, 60);
+  const padY = _homeUiRandRange(0x491102, 22, 34);
   const triDispW = Vcrop.w * gS;
   const triDispH = Vcrop.h * gSy;
   const triSize = Math.max(triDispW, triDispH);
@@ -638,8 +638,8 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     const rowMaxX = Math.max(hb.right, tb.right);
     const rowMinY = Math.min(hb.y, tb.y);
     const rowMaxY = Math.max(hb.bottom, tb.bottom);
-    const padXSub = _homeUiRandRange(seed + 50, 32, 46);
-    const padYSub = _homeUiRandRange(seed + 51, 20, 30);
+    const padXSub = _homeUiRandRange(seed + 50, 52, 72);
+    const padYSub = _homeUiRandRange(seed + 51, 32, 46);
     const boxL = rowMinX - padXSub;
     const boxR = rowMaxX + padXSub;
     const boxT = rowMinY - padYSub;
