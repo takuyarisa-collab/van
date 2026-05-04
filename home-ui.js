@@ -20,8 +20,8 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
   const _debrisScaleGeom = (W * 1.08) / DEBRIS_NAT_W;
   const debrisTopY = (H + 20) - DEBRIS_NAT_H * _debrisScaleGeom;
 
-  const HOME_OFFSET_BASE = -H * 0.06;
-  const HOME_OFFSET_MAX = -H * 0.07;
+  const HOME_OFFSET_BASE = -H * 0.045;
+  const HOME_OFFSET_MAX = -H * 0.055;
   // 画面中央 (cx, cy) を基準。START は中央寄り（操作主役 + Boot 警告残骸との縦分離）
   let startCenterY = cy + H * 0.028;
   const startWidth = W * 0.52;
@@ -108,6 +108,17 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
   }
   let loadoutY = enhanceY + subCenterStep;
   let logY = loadoutY + subCenterStep;
+
+  const homeYOffsetPxParam =
+    typeof window !== 'undefined' && window.HOME_PARAM_homeYOffsetPx != null
+      ? window.HOME_PARAM_homeYOffsetPx
+      : null;
+  const homeYOffsetPxApplied = homeYOffsetPxParam ?? 0;
+  startCenterY += homeYOffsetPxApplied;
+  enhanceY += homeYOffsetPxApplied;
+  loadoutY += homeYOffsetPxApplied;
+  logY += homeYOffsetPxApplied;
+
   const subButtonCenterYs = Object.freeze([enhanceY, loadoutY, logY]);
 
   // ── outerFrame: 6-part decomposition of one outer border ────────────
@@ -144,6 +155,8 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
     subRowTails,
     outerFrame,
     HOME_Y_OFFSET,
+    homeYOffsetPxParam,
+    homeYAutoOffset: HOME_Y_OFFSET,
     debrisTopY,
   });
 }

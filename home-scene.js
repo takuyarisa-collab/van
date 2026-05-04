@@ -151,6 +151,8 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         scan:      this._homeScanMask ? 'active' : 'done',
         debris:    this._homeDebris ? this._homeDebris.alpha.toFixed(2) : '-',
         playRefH:  this._homePlayRefNatH != null ? String(this._homePlayRefNatH) : '-',
+        homeYOffsetPx: HOME_LAYOUT.homeYOffsetPxParam,
+        homeAutoOffset: HOME_LAYOUT.homeYAutoOffset,
       }));
 
       this._homeCropDebug = createHomeOverlapCropDebugOverlay(this);
