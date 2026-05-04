@@ -169,7 +169,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-03 09:58 UTC';
+      const BUILD_TIMESTAMP = '2026-05-04 00:24 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -304,6 +304,14 @@
         };
         // ?debug=1 のときだけデバッグHUDを表示する
         window.DEBUG_HUD_ENABLED = window.BOOT_PARAM_getBool('debug', false);
+        // Home 全体 Y: ?homeYOffset=20（px、正で下）。未指定・空は自動のみ（加算なし）
+        const _hyRaw = _qp.get('homeYOffset');
+        if (_hyRaw === null || _hyRaw === '') {
+          window.HOME_PARAM_homeYOffsetPx = null;
+        } else {
+          const _hyN = parseFloat(_hyRaw);
+          window.HOME_PARAM_homeYOffsetPx = isFinite(_hyN) ? _hyN : null;
+        }
       })();
 
       const BOOT_DEBUG = {
@@ -498,6 +506,8 @@
             `tweenPlaying:${s.tweenPlaying ?? '-'}`,
             `tweenPaused:${s.tweenPaused ?? '-'}`,
             `homePlayRefNatH:${s.playRefH ?? '-'}`,
+            `homeYOffsetPx:${s.homeYOffsetPx != null ? String(s.homeYOffsetPx) : '-'}`,
+            `homeAutoOffset:${s.homeAutoOffset != null ? String(s.homeAutoOffset) : '-'}`,
           ];
           _text.setText(lines);
         }
