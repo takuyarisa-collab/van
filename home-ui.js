@@ -303,6 +303,64 @@ function _homeFillPanelMottle(g, vx, vy, vW, vH, baseRgb, baseAlpha, seed) {
 }
 
 /**
+ * Boot / Home の full-bleed 背景（home-bg-normal）と同じ cover 幾何で、ワールド矩形に対応する
+ * テクスチャ領域を setCrop し、表示サイズを panelW×panelH に合わせる。
+ * _homeRebuildPanel（center, max(rsx,rsy)）と同じ Ox, Oy, coverScale。
+ *
+ * @param {Phaser.Scene} scene
+ * @param {Phaser.GameObjects.Image} img
+ * @param {number} panelL
+ * @param {number} panelT
+ * @param {number} panelW
+ * @param {number} panelH
+ * @param {object} [opts]
+ * @param {string} [opts.textureKey='home-bg-normal']
+ * @param {number} [opts.alpha=1]
+ */
+export function layoutHomeBgNormalCropPanel(scene, img, panelL, panelT, panelW, panelH, opts = {}) {
+  if (!img || img.destroyed) return;
+  const texKey = opts.textureKey ?? 'home-bg-normal';
+  const alpha = opts.alpha ?? 1;
+  if (!scene.textures.exists(texKey)) {
+    img.setVisible(false);
+    return;
+  }
+  const W = scene.scale.width;
+  const H = scene.scale.height;
+  const tex = scene.textures.get(texKey);
+  const srcW = tex.source[0]?.width ?? W;
+  const srcH = tex.source[0]?.height ?? H;
+  const coverScale = Math.max(W / srcW, H / srcH);
+  const dispW = srcW * coverScale;
+  const dispH = srcH * coverScale;
+  const Ox = (W - dispW) * 0.5;
+  const Oy = (H - dispH) * 0.5;
+
+  let tx0 = (panelL - Ox) / coverScale;
+  let ty0 = (panelT - Oy) / coverScale;
+  let tw = panelW / coverScale;
+  let th = panelH / coverScale;
+
+  tx0 = Math.max(0, tx0);
+  ty0 = Math.max(0, ty0);
+  tw = Math.max(1, Math.min(tw, srcW - tx0));
+  th = Math.max(1, Math.min(th, srcH - ty0));
+
+  img.setTexture(texKey);
+  img.setPosition(panelL + panelW * 0.5, panelT + panelH * 0.5);
+  img.setOrigin(0.5, 0.5);
+  img.setCrop(
+    Math.max(0, Math.floor(tx0)),
+    Math.max(0, Math.floor(ty0)),
+    Math.min(Math.ceil(tw), srcW - Math.max(0, Math.floor(tx0))),
+    Math.min(Math.ceil(th), srcH - Math.max(0, Math.floor(ty0))),
+  );
+  img.setDisplaySize(panelW, panelH);
+  img.setAlpha(alpha);
+  img.setVisible(true);
+}
+
+/**
  * Home 面 UI（ニュートラル板 + わずかなムラ + inset + 上ハイライト + 下シャドウ）— ドロップシャドウなし
  * @param {Phaser.GameObjects.Graphics} gMain
  * @param {Phaser.GameObjects.Graphics} gDet
@@ -456,6 +514,10 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     flashMul * sf.alpha * _homeUiRandRange(0x492100, 0.85, 1.0),
   );
 
+  layoutHomeBgNormalCropPanel(scene, scene._playBgPanelImg, panelL, panelT, panelW, panelH, {
+    alpha: alphaPlay,
+  });
+
   const playRowShiftX = _homeUiRandInt(0x49205d, -2, 2);
   const triCx = baseX + playRowShiftX + gx(0x492200);
   const triCy = panelT + padY + triDispH * 0.5 + gy(0x492201);
@@ -486,16 +548,6 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   );
   scene._startY.setAlpha(alphaPlay * (scene._startYGlyphAlpha ?? 1));
 
-  drawHomeFacePanel(scene._playBaseMain, scene._playBaseDetail, panelL, panelT, panelW, panelH, {
-    seed: 0x491300,
-    flashMul,
-    sfAlpha: sf.alpha,
-    baseAlphaMin: 0.72,
-    baseAlphaMax: 0.84,
-    visualPadX: 20,
-    visualPadY: 12,
-  });
-
   placeGlyph(scene._startV, triCx, triCy, gS, gSy, -90, 0x492210, alphaPlay, false);
 
   scene._startHitZone.setPosition(baseX, baseY);
@@ -519,10 +571,12 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     const jy = _homeUiRandInt(seed + 11, -2, 2);
     const rowShiftX = (i - 1) * _homeUiRandInt(seed + 3, 3, 7);
 
+    const subRowAlpha = sub.alpha * _homeUiRandRange(seed + 4, 0.85, 1.0);
+
     row.head.setPosition(subColX + sub.offsetX + jx + rowShiftX, baseCY + sub.offsetY + jy);
     row.head.setScale(gS * sub.alpha, gSy * sub.alpha);
     row.head.setRotation(0);
-    row.head.setAlpha(sub.alpha * _homeUiRandRange(seed + 4, 0.85, 1.0));
+    row.head.setAlpha(subRowAlpha);
 
     const gap = 6 + _homeUiRandInt(seed + 5, 0, 3);
     row.tail.setPosition(
@@ -556,16 +610,9 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     else boxH = Math.min(boxH, maxH2);
     const cyBox = (rowMinY + rowMaxY) * 0.5;
     const boxTAdj = cyBox - boxH * 0.5;
-    const boxBAdj = cyBox + boxH * 0.5;
 
-    drawHomeFacePanel(row.subMain, row.subDet, boxL, boxTAdj, boxW, boxH, {
-      seed: seed + 600,
-      flashMul: 1,
-      sfAlpha: sub.alpha,
-      baseAlphaMin: 0.68,
-      baseAlphaMax: 0.82,
-      visualPadX: 22,
-      visualPadY: 10,
+    layoutHomeBgNormalCropPanel(scene, row.bgPanelImg, boxL, boxTAdj, boxW, boxH, {
+      alpha: subRowAlpha,
     });
 
     const zx = boxL - 2;
