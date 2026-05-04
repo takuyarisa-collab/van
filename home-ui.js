@@ -109,11 +109,13 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
   let loadoutY = enhanceY + subCenterStep;
   let logY = loadoutY + subCenterStep;
 
+  /** URL 未指定時と同等のベース位置（px、正で下）。?homeYOffset= はこれに加算 */
+  const HOME_Y_OFFSET_BASE_PX = 150;
   const homeYOffsetPxParam =
     typeof window !== 'undefined' && window.HOME_PARAM_homeYOffsetPx != null
       ? window.HOME_PARAM_homeYOffsetPx
       : null;
-  const homeYOffsetPxApplied = homeYOffsetPxParam ?? 0;
+  const homeYOffsetPxApplied = HOME_Y_OFFSET_BASE_PX + (homeYOffsetPxParam ?? 0);
   startCenterY += homeYOffsetPxApplied;
   enhanceY += homeYOffsetPxApplied;
   loadoutY += homeYOffsetPxApplied;
@@ -156,6 +158,8 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
     outerFrame,
     HOME_Y_OFFSET,
     homeYOffsetPxParam,
+    /** ベース150px + URL の追加オフセットの合計 */
+    homeYOffsetPxApplied,
     homeYAutoOffset: HOME_Y_OFFSET,
     debrisTopY,
   });
@@ -378,8 +382,8 @@ export function addOverlapCropImage(scene, texKey, crop, depth) {
 }
 
 /**
- * Home 表示時: Boot の背景パネル除去に加え、タイトル PNG・構造体・警告・ログ・
- * マスク用テキストを破棄する（Home 上にエラー系・OVERLAP 残骸が残らないようにする）。
+ * Home 表示時: Boot の背景パネル除去に加え、タイトル PNG・警告・ログを破棄する
+ * （Home 上にエラー系・OVERLAP 残骸が残らないようにする）。
  */
 export function destroyBootBgPanelForHome(bootScene) {
   const bs = bootScene;
@@ -391,8 +395,6 @@ export function destroyBootBgPanelForHome(bootScene) {
   if (!bs) return;
   bs._bootTitleImg?.destroy?.();
   bs._bootTitleImg = null;
-  bs._bootTitleParts?.destroy?.();
-  bs._bootTitleParts = null;
   bs._warnText1?.destroy?.();
   bs._warnText2?.destroy?.();
   bs._warnFrame?.destroy?.();
@@ -400,8 +402,6 @@ export function destroyBootBgPanelForHome(bootScene) {
   bs._warnLayout = null;
   bs._logPool?.forEach((t) => t.destroy());
   bs._logPool = null;
-  bs._overlapText?.destroy?.();
-  bs._overlapText = null;
   bs._overlapMaskGfx?.destroy?.();
   bs._overlapMask = null;
   bs._overlapMaskGfx = null;
