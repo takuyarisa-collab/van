@@ -1,4 +1,5 @@
 import { HOMEOVERLAP_CROPS } from './home-overlap-crops.js';
+import { HOME_BG_PANEL_CROPS } from './home-bg-panel-crops.js';
 
 export const HOMEOVERLAP_TEX_KEY = 'home-overlap-title';
 
@@ -308,9 +309,8 @@ function _homeFillPanelMottle(g, vx, vy, vW, vH, baseRgb, baseAlpha, seed) {
 }
 
 /**
- * Boot / Home の full-bleed 背景（home-bg-normal）と同じ cover 幾何で、ワールド矩形に対応する
- * テクスチャ領域を setCrop し、表示サイズを panelW×panelH に合わせる。
- * _homeRebuildPanel（center, max(rsx,rsy)）と同じ Ox, Oy, coverScale。
+ * Boot / Home 背景（home-bg-normal）から HOME_BG_PANEL_CROPS で定義した矩形を setCrop し、
+ * 表示サイズを cropW×cropH（等倍）にする。ワールド上の位置・ヒット矩形は panelL/T/W/H のまま。
  *
  * @param {Phaser.Scene} scene
  * @param {Phaser.GameObjects.Image} img
@@ -321,6 +321,7 @@ function _homeFillPanelMottle(g, vx, vy, vW, vH, baseRgb, baseAlpha, seed) {
  * @param {object} [opts]
  * @param {string} [opts.textureKey='home-bg-normal']
  * @param {number} [opts.alpha=1]
+ * @param {{ x: number, y: number, w: number, h: number }} opts.panelCrop HOME_BG_PANEL_CROPS の矩形（等倍表示用）
  * @param {'PLAY'|'SUB'} [opts.debugLogKind] ?debug=1 のときだけ console.log に渡す
  * @param {number} [opts.debugRowIndex] SUB 行番号（0-based）
  */
@@ -328,6 +329,20 @@ export function layoutHomeBgNormalCropPanel(scene, img, panelL, panelT, panelW, 
   if (!img || img.destroyed) return;
   const texKey = opts.textureKey ?? 'home-bg-normal';
   const alpha = opts.alpha ?? 1;
+  const panelCrop = opts.panelCrop;
+  if (
+    !panelCrop ||
+    typeof panelCrop.x !== 'number' ||
+    typeof panelCrop.y !== 'number' ||
+    typeof panelCrop.w !== 'number' ||
+    typeof panelCrop.h !== 'number'
+  ) {
+    img.setVisible(false);
+    if (homeUrlDebugEnabled()) {
+      console.warn('[home-bg-crop-panel] panelCrop missing or invalid', { textureKey: texKey, opts });
+    }
+    return;
+  }
   if (!scene.textures.exists(texKey)) {
     img.setVisible(false);
     if (homeUrlDebugEnabled()) {
@@ -348,31 +363,35 @@ export function layoutHomeBgNormalCropPanel(scene, img, panelL, panelT, panelW, 
     }
     return;
   }
-  const W = scene.scale.width;
-  const H = scene.scale.height;
   const tex = scene.textures.get(texKey);
-  const srcW = tex.source[0]?.width ?? W;
-  const srcH = tex.source[0]?.height ?? H;
-  const coverScale = Math.max(W / srcW, H / srcH);
-  const dispW = srcW * coverScale;
-  const dispH = srcH * coverScale;
-  const Ox = (W - dispW) * 0.5;
-  const Oy = (H - dispH) * 0.5;
-
-  let tx0 = (panelL - Ox) / coverScale;
-  let ty0 = (panelT - Oy) / coverScale;
-  let tw = panelW / coverScale;
-  let th = panelH / coverScale;
-
-  tx0 = Math.max(0, tx0);
-  ty0 = Math.max(0, ty0);
-  tw = Math.max(1, Math.min(tw, srcW - tx0));
-  th = Math.max(1, Math.min(th, srcH - ty0));
-
-  const cropX = Math.max(0, Math.floor(tx0));
-  const cropY = Math.max(0, Math.floor(ty0));
-  const cropW = Math.min(Math.ceil(tw), srcW - cropX);
-  const cropH = Math.min(Math.ceil(th), srcH - cropY);
+  const srcW = tex.source[0]?.width ?? 0;
+  const srcH = tex.source[0]?.height ?? 0;
+  const cropX = panelCrop.x;
+  const cropY = panelCrop.y;
+  const cropW = panelCrop.w;
+  const cropH = panelCrop.h;
+  if (
+    cropX < 0 ||
+    cropY < 0 ||
+    cropW < 1 ||
+    cropH < 1 ||
+    cropX + cropW > srcW ||
+    cropY + cropH > srcH
+  ) {
+    img.setVisible(false);
+    if (homeUrlDebugEnabled()) {
+      console.warn('[home-bg-crop-panel] panelCrop out of texture bounds', {
+        textureKey: texKey,
+        srcW,
+        srcH,
+        cropX,
+        cropY,
+        cropW,
+        cropH,
+      });
+    }
+    return;
+  }
 
   img.setTexture(texKey);
   img.setPosition(panelL + panelW * 0.5, panelT + panelH * 0.5);
@@ -563,6 +582,7 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
 
   layoutHomeBgNormalCropPanel(scene, scene._playBgPanelImg, panelL, panelT, panelW, panelH, {
     alpha: alphaPlay,
+    panelCrop: HOME_BG_PANEL_CROPS.PLAY_PANEL,
     debugLogKind: 'PLAY',
   });
 
@@ -659,8 +679,10 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     const cyBox = (rowMinY + rowMaxY) * 0.5;
     const boxTAdj = cyBox - boxH * 0.5;
 
+    const subCropKeys = ['SUB_PANEL_0', 'SUB_PANEL_1', 'SUB_PANEL_2'];
     layoutHomeBgNormalCropPanel(scene, row.bgPanelImg, boxL, boxTAdj, boxW, boxH, {
       alpha: subRowAlpha,
+      panelCrop: HOME_BG_PANEL_CROPS[subCropKeys[i]],
       debugLogKind: 'SUB',
       debugRowIndex: i,
     });
