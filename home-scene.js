@@ -6,6 +6,7 @@ import {
   createHomeOverlapCropDebugOverlay,
   destroyBootBgPanelForHome,
   getHomeLayout,
+  homeUrlDebugEnabled,
   redrawHomeUI,
 } from './home-ui.js';
 import { HOMEOVERLAP_CROPS } from './home-overlap-crops.js';
@@ -103,6 +104,16 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         .setDepth(_depthPlayBaseMain)
         .setVisible(false);
 
+      if (homeUrlDebugEnabled()) {
+        const p = this._playBgPanelImg;
+        console.log('[home-bg-panel-create]', {
+          kind: 'PLAY',
+          created: Boolean(p && !p.destroyed),
+          depth: p?.depth,
+          key: p?.texture?.key,
+        });
+      }
+
       const P = HOMEOVERLAP_CROPS.P;
       const Lc = HOMEOVERLAP_CROPS.L;
       const Ac = HOMEOVERLAP_CROPS.A;
@@ -141,6 +152,26 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
           .setVisible(false);
         return { head, tail: tailT, zone: z, bgPanelImg };
       });
+
+      if (homeUrlDebugEnabled()) {
+        const n = this._subRows?.length ?? 0;
+        console.log('[home-bg-panel-create]', {
+          kind: 'SUB',
+          rowCount: n,
+          expectedRows: 3,
+          allRowsHaveBgPanel: this._subRows?.every((r) => r?.bgPanelImg && !r.bgPanelImg.destroyed),
+        });
+        this._subRows?.forEach((r, i) => {
+          const img = r?.bgPanelImg;
+          console.log('[home-bg-panel-create]', {
+            kind: 'SUB_ROW',
+            row: i,
+            created: Boolean(img && !img.destroyed),
+            depth: img?.depth,
+            key: img?.texture?.key,
+          });
+        });
+      }
 
       this._startPressFlash = 0;
 
