@@ -27,26 +27,87 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
   const startWidth = W * 0.52;
   const startHeight = H * 0.075;
   const subButtonWidth = W * 0.44;
-  const subButtonHeight = H * 0.055;
+  /** ヒットゾーン高さ（home-scene.js の zone と一致させる） */
+  const subButtonHeight = 40;
   /** サブ行のプレースホルダ（先頭 O/E/R は PNG 1 文字切り出し、後続のみテキスト） */
   const subRowTails = Object.freeze(['/CONF', '-VIEW', '/DATA']);
-  // サブボタン中心 Y（START_y = START 中心）: 上段は広め、その下は比率間隔
-  let enhanceY = startCenterY + H * 0.175;
-  // サブ行パネル（bounds+pad）が隣接中心間で重ならないよう、中心間隔を広げる
-  const subCenterStep = H * 0.132;
-  let loadoutY = enhanceY + subCenterStep;
-  let logY = loadoutY + subCenterStep;
 
-  const logBottomWithOffset = (oy) => logY + oy + subButtonHeight / 2;
+  /** redrawHomeUI と同じ BOOT タイトルスケール（PLAY パネル下端の見積り用） */
+  const bootTitleScale = (W * 0.82) / DEBRIS_NAT_W;
+  const gSy = bootTitleScale;
+  const playRefNatH = Math.max(
+    HOMEOVERLAP_CROPS.P.h,
+    HOMEOVERLAP_CROPS.L.h,
+    HOMEOVERLAP_CROPS.A.h,
+  );
+  const playRowDispH = playRefNatH * gSy;
+  const triDispH = HOMEOVERLAP_CROPS.V.h * gSy;
+  const padYPlay = 12;
+  const midGapPlay = 7;
+  const playPanelHalfH = (padYPlay * 2 + triDispH + midGapPlay + playRowDispH) * 0.5;
+  const playBottomY = (scy) => scy + playPanelHalfH;
+
+  /** サブ面の描画が中心より下へはみ出す分（redrawHomeUI: padYSub + visualPadY の保守的下限） */
+  const subVisualFootBelowCenter = H * 0.028;
+  const clearanceAboveDebris = H * 0.012;
+
+  const subLogRowBottomExtent = (enhanceY0, step) => {
+    const logY0 = enhanceY0 + step * 2;
+    return logY0 + subButtonHeight * 0.5 + subVisualFootBelowCenter;
+  };
+
+  /** ログ行中心の上限: 面の下端が残骸に届かないよう logY + subHalf + foot を抑える */
+  const logCenterYMax =
+    debrisTopY - clearanceAboveDebris - subVisualFootBelowCenter - subButtonHeight * 0.5;
+
   let HOME_Y_OFFSET = HOME_OFFSET_BASE;
-  if (logBottomWithOffset(HOME_Y_OFFSET) >= debrisTopY) {
+  let subCenterStep = H * 0.132;
+  const playSubGapMin = H * 0.052;
+  const stepMin = H * 0.062;
+  const stepMax = H * 0.1;
+  const homeYScanMin = -H * 0.28;
+
+  const layoutForHomeY = (oy) => {
+    const scy = startCenterY + oy;
+    const pb = playBottomY(scy);
+    let enhanceY0 = Math.max(scy + H * 0.175, pb + playSubGapMin);
+    const stepCap = (logCenterYMax - enhanceY0) * 0.5;
+    if (stepCap < stepMin) return null;
+    const step = Math.min(stepMax, Math.max(stepMin, stepCap));
+    if (subLogRowBottomExtent(enhanceY0, step) > debrisTopY - clearanceAboveDebris) {
+      return null;
+    }
+    return { enhanceY0, step };
+  };
+
+  let chosen = layoutForHomeY(HOME_Y_OFFSET);
+  if (!chosen) {
     HOME_Y_OFFSET = HOME_OFFSET_MAX;
+    chosen = layoutForHomeY(HOME_Y_OFFSET);
+  }
+  while (!chosen && HOME_Y_OFFSET > homeYScanMin) {
+    HOME_Y_OFFSET -= 4;
+    chosen = layoutForHomeY(HOME_Y_OFFSET);
+  }
+  if (chosen) {
+    subCenterStep = chosen.step;
+  } else {
+    HOME_Y_OFFSET = homeYScanMin;
+    chosen = layoutForHomeY(HOME_Y_OFFSET);
+    if (chosen) subCenterStep = chosen.step;
   }
 
   startCenterY += HOME_Y_OFFSET;
-  enhanceY += HOME_Y_OFFSET;
-  loadoutY += HOME_Y_OFFSET;
-  logY += HOME_Y_OFFSET;
+  let enhanceY = startCenterY + H * 0.175;
+  const playBottom = playBottomY(startCenterY);
+  if (enhanceY < playBottom + playSubGapMin) {
+    enhanceY = playBottom + playSubGapMin;
+  }
+  if (chosen && enhanceY + subCenterStep * 2 + subButtonHeight * 0.5 + subVisualFootBelowCenter > debrisTopY - clearanceAboveDebris) {
+    enhanceY = chosen.enhanceY0;
+  }
+  let loadoutY = enhanceY + subCenterStep;
+  let logY = loadoutY + subCenterStep;
   const subButtonCenterYs = Object.freeze([enhanceY, loadoutY, logY]);
 
   // ── outerFrame: 6-part decomposition of one outer border ────────────
