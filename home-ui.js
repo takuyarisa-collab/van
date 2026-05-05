@@ -308,6 +308,18 @@ function _homeFillPanelMottle(g, vx, vy, vW, vH, baseRgb, baseAlpha, seed) {
   }
 }
 
+function _homeUrlBgDisplayOverrides() {
+  if (typeof window === 'undefined') {
+    return { playW: null, playH: null, subW: null, subH: null };
+  }
+  return {
+    playW: window.HOME_PARAM_playDisplayW ?? null,
+    playH: window.HOME_PARAM_playDisplayH ?? null,
+    subW: window.HOME_PARAM_subDisplayW ?? null,
+    subH: window.HOME_PARAM_subDisplayH ?? null,
+  };
+}
+
 /** PLAY 背景パネル画像の表示サイズ（crop とは独立。素材は HOME_BG_PANEL_CROPS.PLAY_PANEL） */
 const PLAY_BG_DISPLAY_W_MIN = 260;
 const PLAY_BG_DISPLAY_W_MAX = 320;
@@ -556,6 +568,7 @@ export function destroyBootBgPanelForHome(bootScene) {
 
 export function redrawHomeUI(scene, HOME_LAYOUT) {
   const L = HOME_LAYOUT;
+  const urlBgDisp = _homeUrlBgDisplayOverrides();
   const sf = scene._delta.startFrame;
   const baseX = L.centerX + sf.offsetX;
   const baseY = L.startCenterY + sf.offsetY;
@@ -599,15 +612,19 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
 
   const playContentH = triDispH + midGap + playRowDispH;
   const playBgPadX = _homeUiRandRange(0x491105, 20, 36);
-  const playBgDispW = Math.min(
+  let playBgDispW = Math.min(
     PLAY_BG_DISPLAY_W_MAX,
     Math.max(PLAY_BG_DISPLAY_W_MIN, totalW + playBgPadX),
   );
   const playBgPadY = _homeUiRandRange(0x491106, 16, 26);
-  const playBgDispH = Math.min(
+  let playBgDispH = Math.min(
     PLAY_BG_DISPLAY_H_MAX,
     Math.max(PLAY_BG_DISPLAY_H_MIN, playContentH + playBgPadY),
   );
+  if (urlBgDisp.playW != null) playBgDispW = urlBgDisp.playW;
+  if (urlBgDisp.playH != null) playBgDispH = urlBgDisp.playH;
+  scene._homeDbgPlayDisplayW = playBgDispW;
+  scene._homeDbgPlayDisplayH = playBgDispH;
 
   const gx = (s) => _homeUiRandInt(s, -2, 2);
   const gy = (s) => _homeUiRandInt(s, -2, 2);
@@ -728,8 +745,12 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     const cyBox = (rowMinY + rowMaxY) * 0.5;
     const boxTAdj = cyBox - boxH * 0.5;
 
-    const subBgDispW = _homeUiRandRange(seed + 80, SUB_BG_DISPLAY_W_MIN, SUB_BG_DISPLAY_W_MAX);
-    const subBgDispH = _homeUiRandRange(seed + 81, SUB_BG_DISPLAY_H_MIN, SUB_BG_DISPLAY_H_MAX);
+    let subBgDispW = _homeUiRandRange(seed + 80, SUB_BG_DISPLAY_W_MIN, SUB_BG_DISPLAY_W_MAX);
+    let subBgDispH = _homeUiRandRange(seed + 81, SUB_BG_DISPLAY_H_MIN, SUB_BG_DISPLAY_H_MAX);
+    if (urlBgDisp.subW != null) subBgDispW = urlBgDisp.subW;
+    if (urlBgDisp.subH != null) subBgDispH = urlBgDisp.subH;
+    scene._homeDbgSubDisplayW = subBgDispW;
+    scene._homeDbgSubDisplayH = subBgDispH;
 
     const subCropKeys = ['SUB_PANEL_0', 'SUB_PANEL_1', 'SUB_PANEL_2'];
     layoutHomeBgNormalCropPanel(scene, row.bgPanelImg, boxL, boxTAdj, boxW, boxH, {
