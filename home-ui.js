@@ -308,9 +308,20 @@ function _homeFillPanelMottle(g, vx, vy, vW, vH, baseRgb, baseAlpha, seed) {
   }
 }
 
+/** PLAY 背景パネル画像の表示サイズ（crop とは独立。素材は HOME_BG_PANEL_CROPS.PLAY_PANEL） */
+const PLAY_BG_DISPLAY_W_MIN = 260;
+const PLAY_BG_DISPLAY_W_MAX = 320;
+const PLAY_BG_DISPLAY_H_MIN = 120;
+const PLAY_BG_DISPLAY_H_MAX = 135;
+/** サブ背景パネル画像の表示サイズ（crop とは独立） */
+const SUB_BG_DISPLAY_W_MIN = 190;
+const SUB_BG_DISPLAY_W_MAX = 230;
+const SUB_BG_DISPLAY_H_MIN = 56;
+const SUB_BG_DISPLAY_H_MAX = 70;
+
 /**
  * Boot / Home 背景（home-bg-normal）から HOME_BG_PANEL_CROPS で定義した矩形を setCrop し、
- * 表示サイズを cropW×cropH（等倍）にする。ワールド上の位置・ヒット矩形は panelL/T/W/H のまま。
+ * 表示サイズは opts.displayW / opts.displayH で指定（crop との分離）。未指定時は非推奨だが crop と同寸にフォールバック。
  *
  * @param {Phaser.Scene} scene
  * @param {Phaser.GameObjects.Image} img
@@ -321,7 +332,11 @@ function _homeFillPanelMottle(g, vx, vy, vW, vH, baseRgb, baseAlpha, seed) {
  * @param {object} [opts]
  * @param {string} [opts.textureKey='home-bg-normal']
  * @param {number} [opts.alpha=1]
- * @param {{ x: number, y: number, w: number, h: number }} opts.panelCrop HOME_BG_PANEL_CROPS の矩形（等倍表示用）
+ * @param {{ x: number, y: number, w: number, h: number }} opts.panelCrop HOME_BG_PANEL_CROPS の矩形（素材範囲のみ）
+ * @param {number} [opts.displayW] テクスチャ表示幅（setDisplaySize）
+ * @param {number} [opts.displayH] テクスチャ表示高さ（setDisplaySize）
+ * @param {number} [opts.imgCenterX] 画像中心 X（未指定時は panel 矩形の中心）
+ * @param {number} [opts.imgCenterY] 画像中心 Y（未指定時は panel 矩形の中心）
  * @param {'PLAY'|'SUB'} [opts.debugLogKind] ?debug=1 のときだけ console.log に渡す
  * @param {number} [opts.debugRowIndex] SUB 行番号（0-based）
  */
@@ -393,12 +408,16 @@ export function layoutHomeBgNormalCropPanel(scene, img, panelL, panelT, panelW, 
     return;
   }
 
+  const displayW = opts.displayW ?? cropW;
+  const displayH = opts.displayH ?? cropH;
+  const imgCx = opts.imgCenterX != null ? opts.imgCenterX : panelL + panelW * 0.5;
+  const imgCy = opts.imgCenterY != null ? opts.imgCenterY : panelT + panelH * 0.5;
+
   img.setTexture(texKey);
-  img.setPosition(panelL + panelW * 0.5, panelT + panelH * 0.5);
+  img.setPosition(imgCx, imgCy);
   img.setOrigin(0.5, 0.5);
   img.setCrop(cropX, cropY, cropW, cropH);
-  /** 検証: 切り出しピクセルと表示を等倍（cropW×cropH）。レイアウト矩形は panelL/T/W/H のまま */
-  img.setDisplaySize(cropW, cropH);
+  img.setDisplaySize(displayW, displayH);
   img.setAlpha(alpha);
   img.setVisible(true);
 
@@ -416,6 +435,10 @@ export function layoutHomeBgNormalCropPanel(scene, img, panelL, panelT, panelW, 
       cropY,
       cropW,
       cropH,
+      displayW,
+      displayH,
+      imgCenterX: imgCx,
+      imgCenterY: imgCy,
       imgDisplayWidth: img.displayWidth,
       imgDisplayHeight: img.displayHeight,
       imgWidth: img.width,
@@ -568,11 +591,23 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   const triSize = Math.max(triDispW, triDispH);
   const midGap = _homeUiRandRange(0x491104, 5, 9);
 
+  /** クリック用ヒット矩形（従来どおり・変更しない） */
   const panelW = Math.max(totalW, triSize * 1.05) + padX * 2;
   const panelH = padY * 2 + triDispH + midGap + playRowDispH;
   const panelL = baseX - panelW * 0.5;
   const panelT = baseY - panelH * 0.5;
-  const panelMidY = panelT + panelH * 0.5;
+
+  const playContentH = triDispH + midGap + playRowDispH;
+  const playBgPadX = _homeUiRandRange(0x491105, 20, 36);
+  const playBgDispW = Math.min(
+    PLAY_BG_DISPLAY_W_MAX,
+    Math.max(PLAY_BG_DISPLAY_W_MIN, totalW + playBgPadX),
+  );
+  const playBgPadY = _homeUiRandRange(0x491106, 16, 26);
+  const playBgDispH = Math.min(
+    PLAY_BG_DISPLAY_H_MAX,
+    Math.max(PLAY_BG_DISPLAY_H_MIN, playContentH + playBgPadY),
+  );
 
   const gx = (s) => _homeUiRandInt(s, -2, 2);
   const gy = (s) => _homeUiRandInt(s, -2, 2);
@@ -584,15 +619,18 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   layoutHomeBgNormalCropPanel(scene, scene._playBgPanelImg, panelL, panelT, panelW, panelH, {
     alpha: alphaPlay,
     panelCrop: HOME_BG_PANEL_CROPS.PLAY_PANEL,
+    displayW: playBgDispW,
+    displayH: playBgDispH,
+    imgCenterX: baseX,
+    imgCenterY: baseY,
     debugLogKind: 'PLAY',
   });
 
   const playRowShiftX = _homeUiRandInt(0x49205d, -2, 2);
   const triCx = baseX + playRowShiftX + gx(0x492200);
-  /** ▷ と P/L/A/y を縦方向では1ブロックとして panel 中央に寄せる */
-  const playContentH = triDispH + midGap + playRowDispH;
+  /** ▷ + P/L/A/y を背景パネル表示矩形（display）の中央基準で縦ブロック配置 */
   const gyPlayBlock = gy(0x492201);
-  const playBlockTop = panelMidY - playContentH * 0.5 + gyPlayBlock;
+  const playBlockTop = baseY - playContentH * 0.5 + gyPlayBlock;
   const triCy = playBlockTop + triDispH * 0.5;
   const playCy = playBlockTop + triDispH + midGap + playRowDispH * 0.5;
 
@@ -645,16 +683,23 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
 
     const subRowAlpha = sub.alpha * _homeUiRandRange(seed + 4, 0.85, 1.0);
 
-    row.head.setPosition(subColX + sub.offsetX + jx + rowShiftX, baseCY + sub.offsetY + jy);
     row.head.setScale(gS * sub.alpha, gSy * sub.alpha);
+
+    const gap = 6 + _homeUiRandInt(seed + 5, 0, 3);
+    const tailYJ = _homeUiRandInt(seed + 6, -2, 2);
+    const rowCenterX = subColX + sub.offsetX + jx + rowShiftX;
+    const rowCenterY = baseCY + sub.offsetY + jy;
+
+    const headW = row.head.displayWidth;
+    const tailW = row.tail.width;
+    const headHalfW = headW * 0.5;
+    /** head 中心と tail 中心の中点が rowCenterX になるよう head 中心を決める */
+    const hx = rowCenterX - (headHalfW + gap + tailW * 0.5) * 0.5;
+    row.head.setPosition(hx, rowCenterY);
     row.head.setRotation(0);
     row.head.setAlpha(subRowAlpha);
 
-    const gap = 6 + _homeUiRandInt(seed + 5, 0, 3);
-    row.tail.setPosition(
-      subColX + row.head.width * row.head.scaleX * 0.5 + gap + sub.offsetX + jx + rowShiftX,
-      baseCY + sub.offsetY + jy + _homeUiRandInt(seed + 6, -2, 2),
-    );
+    row.tail.setPosition(hx + headHalfW + gap, rowCenterY + tailYJ);
     row.tail.setAlpha(sub.alpha * _homeUiRandRange(seed + 7, 0.85, 1.0));
 
     const hb = row.head.getBounds();
@@ -683,10 +728,17 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     const cyBox = (rowMinY + rowMaxY) * 0.5;
     const boxTAdj = cyBox - boxH * 0.5;
 
+    const subBgDispW = _homeUiRandRange(seed + 80, SUB_BG_DISPLAY_W_MIN, SUB_BG_DISPLAY_W_MAX);
+    const subBgDispH = _homeUiRandRange(seed + 81, SUB_BG_DISPLAY_H_MIN, SUB_BG_DISPLAY_H_MAX);
+
     const subCropKeys = ['SUB_PANEL_0', 'SUB_PANEL_1', 'SUB_PANEL_2'];
     layoutHomeBgNormalCropPanel(scene, row.bgPanelImg, boxL, boxTAdj, boxW, boxH, {
       alpha: subRowAlpha,
       panelCrop: HOME_BG_PANEL_CROPS[subCropKeys[i]],
+      displayW: subBgDispW,
+      displayH: subBgDispH,
+      imgCenterX: rowCenterX,
+      imgCenterY: rowCenterY,
       debugLogKind: 'SUB',
       debugRowIndex: i,
     });
