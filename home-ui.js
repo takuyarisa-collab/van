@@ -15,6 +15,17 @@ export function getBootOverlapTitleScale(scene) {
   return (scene.scale.width * 0.82) / srcW;
 }
 
+/** サブ行間計算用（?subH= があるときのみ上書き。getHomeLayout と redraw で同一基準） */
+const SUB_BG_PANEL_DISPLAY_H_DEFAULT = 420;
+function _homeResolvedSubDisplayHForLayout() {
+  if (typeof window === 'undefined') return SUB_BG_PANEL_DISPLAY_H_DEFAULT;
+  const url = window.HOME_PARAM_subDisplayH;
+  if (url != null && typeof url === 'number' && url > 0 && Number.isFinite(url)) {
+    return url;
+  }
+  return SUB_BG_PANEL_DISPLAY_H_DEFAULT;
+}
+
 export function getHomeLayout(WORLD_W, WORLD_H) {
   const W = WORLD_W;
   const H = WORLD_H;
@@ -62,28 +73,21 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
     return logY0 + subButtonHeight * 0.5 + subVisualFootBelowCenter;
   };
 
-  /** ログ行中心の上限: 面の下端が残骸に届かないよう logY + subHalf + foot を抑える */
-  const logCenterYMax =
-    debrisTopY - clearanceAboveDebris - subVisualFootBelowCenter - subButtonHeight * 0.5;
+  const subDisplayHResolved = _homeResolvedSubDisplayHForLayout();
+  const subRowSpacing = subDisplayHResolved * 0.4;
 
   let HOME_Y_OFFSET = HOME_OFFSET_BASE;
-  let subCenterStep = H * 0.132;
   const playSubGapMin = H * 0.052;
-  const stepMin = H * 0.062;
-  const stepMax = H * 0.1;
   const homeYScanMin = -H * 0.28;
 
   const layoutForHomeY = (oy) => {
     const scy = startCenterY + oy;
     const pb = playBottomY(scy);
-    let enhanceY0 = Math.max(scy + H * 0.175, pb + playSubGapMin);
-    const stepCap = (logCenterYMax - enhanceY0) * 0.5;
-    if (stepCap < stepMin) return null;
-    const step = Math.min(stepMax, Math.max(stepMin, stepCap));
-    if (subLogRowBottomExtent(enhanceY0, step) > debrisTopY - clearanceAboveDebris) {
+    const enhanceY0 = Math.max(scy + H * 0.175, pb + playSubGapMin);
+    if (subLogRowBottomExtent(enhanceY0, subRowSpacing) > debrisTopY - clearanceAboveDebris) {
       return null;
     }
-    return { enhanceY0, step };
+    return { enhanceY0 };
   };
 
   let chosen = layoutForHomeY(HOME_Y_OFFSET);
@@ -95,12 +99,9 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
     HOME_Y_OFFSET -= 4;
     chosen = layoutForHomeY(HOME_Y_OFFSET);
   }
-  if (chosen) {
-    subCenterStep = chosen.step;
-  } else {
+  if (!chosen) {
     HOME_Y_OFFSET = homeYScanMin;
     chosen = layoutForHomeY(HOME_Y_OFFSET);
-    if (chosen) subCenterStep = chosen.step;
   }
 
   startCenterY += HOME_Y_OFFSET;
@@ -109,11 +110,15 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
   if (enhanceY < playBottom + playSubGapMin) {
     enhanceY = playBottom + playSubGapMin;
   }
-  if (chosen && enhanceY + subCenterStep * 2 + subButtonHeight * 0.5 + subVisualFootBelowCenter > debrisTopY - clearanceAboveDebris) {
+  if (
+    chosen &&
+    enhanceY + subRowSpacing * 2 + subButtonHeight * 0.5 + subVisualFootBelowCenter >
+      debrisTopY - clearanceAboveDebris
+  ) {
     enhanceY = chosen.enhanceY0;
   }
-  let loadoutY = enhanceY + subCenterStep;
-  let logY = loadoutY + subCenterStep;
+  let loadoutY = enhanceY + subRowSpacing;
+  let logY = loadoutY + subRowSpacing;
 
   /** URL 未指定時と同等のベース位置（px、正で下）。?homeYOffset= はこれに加算 */
   const HOME_Y_OFFSET_BASE_PX = 150;
@@ -168,6 +173,8 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
     homeYOffsetPxApplied,
     homeYAutoOffset: HOME_Y_OFFSET,
     debrisTopY,
+    /** サブ行の中心間隔（subDisplayH × 0.4） */
+    subRowSpacing,
   });
 }
 
@@ -320,20 +327,15 @@ function _homeUrlBgDisplayOverrides() {
   };
 }
 
-/** PLAY 背景パネル画像の表示サイズ（crop とは独立。素材は HOME_BG_PANEL_CROPS.PLAY_PANEL） */
-const PLAY_BG_DISPLAY_W_MIN = 260;
-const PLAY_BG_DISPLAY_W_MAX = 320;
-const PLAY_BG_DISPLAY_H_MIN = 120;
-const PLAY_BG_DISPLAY_H_MAX = 135;
-/** サブ背景パネル画像の表示サイズ（crop とは独立） */
-const SUB_BG_DISPLAY_W_MIN = 190;
-const SUB_BG_DISPLAY_W_MAX = 230;
-const SUB_BG_DISPLAY_H_MIN = 56;
-const SUB_BG_DISPLAY_H_MAX = 70;
+/** PLAY 背景パネル表示サイズ（crop 独立。?playW= / ?playH= で上書き） */
+const PLAY_BG_PANEL_DISPLAY_W_DEFAULT = 560;
+const PLAY_BG_PANEL_DISPLAY_H_DEFAULT = 430;
+/** サブ背景パネル表示サイズ（3行共通。?subW= / ?subH= で上書き） */
+const SUB_BG_PANEL_DISPLAY_W_DEFAULT = 380;
 
 /**
  * Boot / Home 背景（home-bg-normal）から HOME_BG_PANEL_CROPS で定義した矩形を setCrop し、
- * 表示サイズは opts.displayW / opts.displayH で指定（crop との分離）。未指定時は非推奨だが crop と同寸にフォールバック。
+ * 表示サイズは opts.displayW / opts.displayH で指定（crop との分離）。未指定時は crop と同寸にフォールバック。
  *
  * @param {Phaser.Scene} scene
  * @param {Phaser.GameObjects.Image} img
@@ -611,16 +613,8 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   const panelT = baseY - panelH * 0.5;
 
   const playContentH = triDispH + midGap + playRowDispH;
-  const playBgPadX = _homeUiRandRange(0x491105, 20, 36);
-  let playBgDispW = Math.min(
-    PLAY_BG_DISPLAY_W_MAX,
-    Math.max(PLAY_BG_DISPLAY_W_MIN, totalW + playBgPadX),
-  );
-  const playBgPadY = _homeUiRandRange(0x491106, 16, 26);
-  let playBgDispH = Math.min(
-    PLAY_BG_DISPLAY_H_MAX,
-    Math.max(PLAY_BG_DISPLAY_H_MIN, playContentH + playBgPadY),
-  );
+  let playBgDispW = PLAY_BG_PANEL_DISPLAY_W_DEFAULT;
+  let playBgDispH = PLAY_BG_PANEL_DISPLAY_H_DEFAULT;
   if (urlBgDisp.playW != null) playBgDispW = urlBgDisp.playW;
   if (urlBgDisp.playH != null) playBgDispH = urlBgDisp.playH;
   scene._homeDbgPlayDisplayW = playBgDispW;
@@ -645,9 +639,8 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
 
   const playRowShiftX = _homeUiRandInt(0x49205d, -2, 2);
   const triCx = baseX + playRowShiftX + gx(0x492200);
-  /** ▷ + P/L/A/y を背景パネル表示矩形（display）の中央基準で縦ブロック配置 */
-  const gyPlayBlock = gy(0x492201);
-  const playBlockTop = baseY - playContentH * 0.5 + gyPlayBlock;
+  /** ▷ + P/L/A/y を1ブロックとし、そのブロック中心を PLAY 背景 display の中央（baseY）に合わせる */
+  const playBlockTop = baseY - playContentH * 0.5;
   const triCy = playBlockTop + triDispH * 0.5;
   const playCy = playBlockTop + triDispH + midGap + playRowDispH * 0.5;
 
@@ -683,11 +676,12 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   const subColBias = _homeUiRandRange(0x493f00, 4, 8) * (_homeUiRandInt(0x493f01, 0, 1) ? 1 : -1);
   const subColX = L.centerX + subColBias;
 
-  const _cy0 = L.subButtonCenterYs[0];
-  const _cy1 = L.subButtonCenterYs[1];
-  const _cy2 = L.subButtonCenterYs[2];
-  const _subGap01 = _cy1 - _cy0;
-  const _subGap12 = _cy2 - _cy1;
+  let subBgDispW = SUB_BG_PANEL_DISPLAY_W_DEFAULT;
+  let subBgDispH = SUB_BG_PANEL_DISPLAY_H_DEFAULT;
+  if (urlBgDisp.subW != null) subBgDispW = urlBgDisp.subW;
+  if (urlBgDisp.subH != null) subBgDispH = urlBgDisp.subH;
+  scene._homeDbgSubDisplayW = subBgDispW;
+  scene._homeDbgSubDisplayH = subBgDispH;
 
   scene._delta.sub.forEach((sub, i) => {
     const row = scene._subRows[i];
@@ -703,20 +697,19 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     row.head.setScale(gS * sub.alpha, gSy * sub.alpha);
 
     const gap = 6 + _homeUiRandInt(seed + 5, 0, 3);
-    const tailYJ = _homeUiRandInt(seed + 6, -2, 2);
     const rowCenterX = subColX + sub.offsetX + jx + rowShiftX;
-    const rowCenterY = baseCY + sub.offsetY + jy;
+    const panelCenterY = baseCY + sub.offsetY + jy;
 
     const headW = row.head.displayWidth;
     const tailW = row.tail.width;
     const headHalfW = headW * 0.5;
     /** head 中心と tail 中心の中点が rowCenterX になるよう head 中心を決める */
     const hx = rowCenterX - (headHalfW + gap + tailW * 0.5) * 0.5;
-    row.head.setPosition(hx, rowCenterY);
+    row.head.setPosition(hx, panelCenterY);
     row.head.setRotation(0);
     row.head.setAlpha(subRowAlpha);
 
-    row.tail.setPosition(hx + headHalfW + gap, rowCenterY + tailYJ);
+    row.tail.setPosition(hx + headHalfW + gap, panelCenterY);
     row.tail.setAlpha(sub.alpha * _homeUiRandRange(seed + 7, 0.85, 1.0));
 
     const hb = row.head.getBounds();
@@ -732,34 +725,17 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     const boxT = rowMinY - padYSub;
     const boxB = rowMaxY + padYSub;
     const boxW = boxR - boxL;
-    let boxH = boxB - boxT;
-    /** 描画は visualPadY 分上下に広がるため、隣接行中心間で重ならないよう高さを抑える */
-    const _vPadSub = 10;
-    const _gapSafe = 6;
-    const maxH0 = Math.max(28, _subGap01 - 2 * _vPadSub - _gapSafe);
-    const maxH1 = Math.max(28, Math.min(_subGap01, _subGap12) - 2 * _vPadSub - _gapSafe);
-    const maxH2 = Math.max(28, _subGap12 - 2 * _vPadSub - _gapSafe);
-    if (i === 0) boxH = Math.min(boxH, maxH0);
-    else if (i === 1) boxH = Math.min(boxH, maxH1);
-    else boxH = Math.min(boxH, maxH2);
-    const cyBox = (rowMinY + rowMaxY) * 0.5;
-    const boxTAdj = cyBox - boxH * 0.5;
-
-    let subBgDispW = _homeUiRandRange(seed + 80, SUB_BG_DISPLAY_W_MIN, SUB_BG_DISPLAY_W_MAX);
-    let subBgDispH = _homeUiRandRange(seed + 81, SUB_BG_DISPLAY_H_MIN, SUB_BG_DISPLAY_H_MAX);
-    if (urlBgDisp.subW != null) subBgDispW = urlBgDisp.subW;
-    if (urlBgDisp.subH != null) subBgDispH = urlBgDisp.subH;
-    scene._homeDbgSubDisplayW = subBgDispW;
-    scene._homeDbgSubDisplayH = subBgDispH;
+    const boxH = boxB - boxT;
+    const boxTAdj = panelCenterY - subBgDispH * 0.5;
 
     const subCropKeys = ['SUB_PANEL_0', 'SUB_PANEL_1', 'SUB_PANEL_2'];
-    layoutHomeBgNormalCropPanel(scene, row.bgPanelImg, boxL, boxTAdj, boxW, boxH, {
+    layoutHomeBgNormalCropPanel(scene, row.bgPanelImg, boxL, boxTAdj, boxW, subBgDispH, {
       alpha: subRowAlpha,
       panelCrop: HOME_BG_PANEL_CROPS[subCropKeys[i]],
       displayW: subBgDispW,
       displayH: subBgDispH,
       imgCenterX: rowCenterX,
-      imgCenterY: rowCenterY,
+      imgCenterY: panelCenterY,
       debugLogKind: 'SUB',
       debugRowIndex: i,
     });
