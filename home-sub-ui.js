@@ -47,19 +47,19 @@ export function redrawHomeSubUI(scene, L, urlBgDisp) {
     const headW = row.head.displayWidth;
     const tailW = row.tail.width;
     const tailH = row.tail.height;
-    const headHalfW = headW * 0.5;
-    /** head 中心と tail 中心の中点が rowCenterX になるよう head 中心を決める */
-    const hx = rowCenterX - (headHalfW + gap + tailW * 0.5) * 0.5;
-    row.head.setPosition(hx, panelCenterY);
+    const totalW = headW + gap + tailW;
+    const leftX = rowCenterX - totalW * 0.5;
+    const headCenterX = leftX + headW * 0.5;
+    const tailLeftX = leftX + headW + gap;
+    row.head.setPosition(headCenterX, panelCenterY);
     row.head.setRotation(0);
     row.head.setAlpha(subRowAlpha);
 
-    row.tail.setPosition(hx + headHalfW + gap, panelCenterY);
+    row.tail.setPosition(tailLeftX, panelCenterY);
     row.tail.setAlpha(sub.alpha * _homeUiRandRange(seed + 7, 0.85, 1.0));
 
     const headH = row.head.displayHeight;
-    const tailLeftX = hx + headHalfW + gap;
-    const rowMinX = hx - headHalfW;
+    const rowMinX = leftX;
     const rowMaxX = tailLeftX + tailW;
     const rowMinY = panelCenterY - Math.max(headH, tailH) * 0.5;
     const rowMaxY = panelCenterY + Math.max(headH, tailH) * 0.5;
