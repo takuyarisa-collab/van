@@ -167,7 +167,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-05 14:20 UTC';
+      const BUILD_TIMESTAMP = '2026-05-05 16:05 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -310,6 +310,16 @@
           const _hyN = parseFloat(_hyRaw);
           window.HOME_PARAM_homeYOffsetPx = isFinite(_hyN) ? _hyN : null;
         }
+        const _homeParamOptionalPositive = (key) => {
+          const raw = _qp.get(key);
+          if (raw === null || raw === '') return null;
+          const n = parseFloat(raw);
+          return isFinite(n) && n > 0 ? n : null;
+        };
+        window.HOME_PARAM_playDisplayW = _homeParamOptionalPositive('playW');
+        window.HOME_PARAM_playDisplayH = _homeParamOptionalPositive('playH');
+        window.HOME_PARAM_subDisplayW = _homeParamOptionalPositive('subW');
+        window.HOME_PARAM_subDisplayH = _homeParamOptionalPositive('subH');
       })();
 
       const BOOT_DEBUG = {
@@ -507,6 +517,8 @@
             `homeYOffsetPx:${s.homeYOffsetPx != null ? String(s.homeYOffsetPx) : '-'}`,
             `homeYOffsetAppliedPx:${s.homeYOffsetAppliedPx != null ? String(s.homeYOffsetAppliedPx) : '-'}`,
             `homeAutoOffset:${s.homeAutoOffset != null ? String(s.homeAutoOffset) : '-'}`,
+            `playDisplay:${s.playDisplay ?? '-'}`,
+            `subDisplay:${s.subDisplay ?? '-'}`,
           ];
           _text.setText(lines);
         }

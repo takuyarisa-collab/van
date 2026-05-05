@@ -191,6 +191,14 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         homeYOffsetPx: HOME_LAYOUT.homeYOffsetPxParam,
         homeYOffsetAppliedPx: HOME_LAYOUT.homeYOffsetPxApplied,
         homeAutoOffset: HOME_LAYOUT.homeYAutoOffset,
+        playDisplay:
+          this._homeDbgPlayDisplayW != null && this._homeDbgPlayDisplayH != null
+            ? `${Math.round(this._homeDbgPlayDisplayW)} x ${Math.round(this._homeDbgPlayDisplayH)}`
+            : '-',
+        subDisplay:
+          this._homeDbgSubDisplayW != null && this._homeDbgSubDisplayH != null
+            ? `${Math.round(this._homeDbgSubDisplayW)} x ${Math.round(this._homeDbgSubDisplayH)}`
+            : '-',
       }));
 
       this._homeCropDebug = createHomeOverlapCropDebugOverlay(this);
