@@ -621,6 +621,7 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   const panelL = playCenterX - panelW * 0.5;
   const panelT = playCenterY - panelH * 0.5;
 
+  const playContentH = triDispH + midGap + playRowDispH;
   let playBgDispW = PLAY_BG_PANEL_DISPLAY_W_DEFAULT;
   let playBgDispH = PLAY_BG_PANEL_DISPLAY_H_DEFAULT;
   if (urlBgDisp.playW != null) playBgDispW = urlBgDisp.playW;
@@ -645,10 +646,8 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     debugLogKind: 'PLAY',
   });
 
-  /** ▷ 行と P/L/A/y 行を同じ重みの2質点とみなし、ブロック重心を playCenter に置く */
-  const playBlockTop =
-    playCenterY -
-    0.5 * (triDispH * 1.5 + midGap + playRowDispH * 0.5);
+  /** ▷ + P/L/A/y の外接矩形の中心を playCenter に一致 */
+  const playBlockTop = playCenterY - playContentH * 0.5;
   const triCx = playCenterX;
   const triCy = playBlockTop + triDispH * 0.5;
   const playCy = playBlockTop + triDispH + midGap + playRowDispH * 0.5;
