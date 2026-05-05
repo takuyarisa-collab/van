@@ -58,7 +58,7 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
 
       const _scanGridStep = 52;
       const _scanStopRow  = Math.ceil(
-        (HOME_LAYOUT.startCenterY - HOME_LAYOUT.startHeight / 2 - _scanGridStep) / _scanGridStep,
+        (HOME_LAYOUT.playCenterY - HOME_LAYOUT.startHeight / 2 - _scanGridStep) / _scanGridStep,
       );
       this._homeScanMask = mountHomeScanMask(this, {
         width:            WORLD_W,
@@ -135,7 +135,7 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
       this._startYGlyphAlpha = 0.82;
       this._startYBaselineOffset = 4;
 
-      this._startHitZone = this.add.zone(L.centerX, L.startCenterY, 120, 72).setDepth(_depthPlayHit);
+      this._startHitZone = this.add.zone(L.playCenterX, L.playCenterY, 120, 72).setDepth(_depthPlayHit);
 
       const subCrops = [
         HOMEOVERLAP_CROPS.O,
