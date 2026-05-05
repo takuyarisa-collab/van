@@ -630,7 +630,6 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   scene._homeDbgPlayDisplayH = playBgDispH;
 
   const gx = (s) => _homeUiRandInt(s, -2, 2);
-  const gy = (s) => _homeUiRandInt(s, -2, 2);
   const alphaPlay = Math.min(
     1,
     flashMul * sf.alpha * _homeUiRandRange(0x492100, 0.85, 1.0),
@@ -653,7 +652,7 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   const playCy = playBlockTop + triDispH + midGap + playRowDispH * 0.5;
 
   const placeGlyph = (img, cx, cy, sx, sy, rotDeg, seed, alpha, applyFrameRot = true) => {
-    img.setPosition(cx + gx(seed + 1), cy + gy(seed + 2));
+    img.setPosition(cx + gx(seed + 1), cy);
     img.setScale(sx, sy);
     const extraRot = applyFrameRot ? sf.rotation : 0;
     img.setRotation(Phaser.Math.DegToRad(rotDeg + extraRot));
@@ -672,7 +671,7 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   xCursor += wA + gapAY;
   scene._startY.setPosition(
     xCursor + wY * 0.5 + gx(0x492070),
-    playCy + gy(0x492071) + (scene._startYBaselineOffset ?? 0),
+    playCy + (scene._startYBaselineOffset ?? 0),
   );
   scene._startY.setAlpha(alphaPlay * (scene._startYGlyphAlpha ?? 1));
 
@@ -696,8 +695,7 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     if (!row) return;
     const seed = 0x493000 + i * 997;
     const jx = _homeUiRandInt(seed, -2, 2);
-    const jy = _homeUiRandInt(seed + 11, -2, 2);
-    const rowCenterY = L.subCenterY[i] + sub.offsetY + jy;
+    const rowCenterY = L.subCenterY[i];
     const rowShiftX = (i - 1) * _homeUiRandInt(seed + 3, 3, 7);
 
     const subRowAlpha = sub.alpha * _homeUiRandRange(seed + 4, 0.85, 1.0);
