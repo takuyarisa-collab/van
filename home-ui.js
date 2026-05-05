@@ -132,7 +132,12 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
   loadoutY += homeYOffsetPxApplied;
   logY += homeYOffsetPxApplied;
 
-  const subButtonCenterYs = Object.freeze([enhanceY, loadoutY, logY]);
+  const playCenterX = centerX;
+  const playCenterY = startCenterY;
+  const subCenterX = centerX;
+  const subCenterY = Object.freeze([enhanceY, loadoutY, logY]);
+  /** 後方互換: 各行の論理中心（背景・文字の subCenterY[i] と同一） */
+  const subButtonCenterYs = subCenterY;
 
   // ── outerFrame: 6-part decomposition of one outer border ────────────
   // padding from world edges
@@ -160,6 +165,10 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
   return Object.freeze({
     centerX,
     startCenterY,
+    playCenterX,
+    playCenterY,
+    subCenterX,
+    subCenterY,
     startWidth,
     startHeight,
     subButtonWidth,
@@ -572,8 +581,8 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   const L = HOME_LAYOUT;
   const urlBgDisp = _homeUrlBgDisplayOverrides();
   const sf = scene._delta.startFrame;
-  const baseX = L.centerX + sf.offsetX;
-  const baseY = L.startCenterY + sf.offsetY;
+  const playCenterX = L.playCenterX + sf.offsetX;
+  const playCenterY = L.playCenterY + sf.offsetY;
   const flashMul = scene._startPressFlash ? 1.15 : 1.0;
 
   const Cr = HOMEOVERLAP_CROPS;
@@ -609,8 +618,8 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   /** クリック用ヒット矩形（従来どおり・変更しない） */
   const panelW = Math.max(totalW, triSize * 1.05) + padX * 2;
   const panelH = padY * 2 + triDispH + midGap + playRowDispH;
-  const panelL = baseX - panelW * 0.5;
-  const panelT = baseY - panelH * 0.5;
+  const panelL = playCenterX - panelW * 0.5;
+  const panelT = playCenterY - panelH * 0.5;
 
   const playContentH = triDispH + midGap + playRowDispH;
   let playBgDispW = PLAY_BG_PANEL_DISPLAY_W_DEFAULT;
@@ -632,15 +641,14 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     panelCrop: HOME_BG_PANEL_CROPS.PLAY_PANEL,
     displayW: playBgDispW,
     displayH: playBgDispH,
-    imgCenterX: baseX,
-    imgCenterY: baseY,
+    imgCenterX: playCenterX,
+    imgCenterY: playCenterY,
     debugLogKind: 'PLAY',
   });
 
-  const playRowShiftX = _homeUiRandInt(0x49205d, -2, 2);
-  const triCx = baseX + playRowShiftX + gx(0x492200);
-  /** ▷ + P/L/A/y を1ブロックとし、そのブロック中心を PLAY 背景 display の中央（baseY）に合わせる */
-  const playBlockTop = baseY - playContentH * 0.5;
+  /** ▷ + P/L/A/y の外接矩形の中心を playCenter に一致 */
+  const playBlockTop = playCenterY - playContentH * 0.5;
+  const triCx = playCenterX;
   const triCy = playBlockTop + triDispH * 0.5;
   const playCy = playBlockTop + triDispH + midGap + playRowDispH * 0.5;
 
@@ -652,7 +660,7 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     img.setAlpha(alpha);
   };
 
-  let xCursor = baseX - totalW * 0.5 + playRowShiftX;
+  let xCursor = playCenterX - totalW * 0.5;
   const cP = xCursor + wP * 0.5;
   placeGlyph(scene._startP, cP, playCy, gS, gSy, 0, 0x492050, alphaPlay, false);
   xCursor += wP + gapPL;
@@ -670,11 +678,11 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
 
   placeGlyph(scene._startV, triCx, triCy, gS, gSy, -90, 0x492210, alphaPlay, false);
 
-  scene._startHitZone.setPosition(baseX, baseY);
+  scene._startHitZone.setPosition(playCenterX, playCenterY);
   scene._startHitZone.setSize(panelW + 8, panelH + 8);
 
   const subColBias = _homeUiRandRange(0x493f00, 4, 8) * (_homeUiRandInt(0x493f01, 0, 1) ? 1 : -1);
-  const subColX = L.centerX + subColBias;
+  const subColX = L.subCenterX + subColBias;
 
   let subBgDispW = SUB_BG_PANEL_DISPLAY_W_DEFAULT;
   let subBgDispH = SUB_BG_PANEL_DISPLAY_H_DEFAULT;
@@ -686,10 +694,10 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   scene._delta.sub.forEach((sub, i) => {
     const row = scene._subRows[i];
     if (!row) return;
-    const baseCY = L.subButtonCenterYs[i];
     const seed = 0x493000 + i * 997;
     const jx = _homeUiRandInt(seed, -2, 2);
     const jy = _homeUiRandInt(seed + 11, -2, 2);
+    const rowCenterY = L.subCenterY[i] + sub.offsetY + jy;
     const rowShiftX = (i - 1) * _homeUiRandInt(seed + 3, 3, 7);
 
     const subRowAlpha = sub.alpha * _homeUiRandRange(seed + 4, 0.85, 1.0);
@@ -698,10 +706,11 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
 
     const gap = 6 + _homeUiRandInt(seed + 5, 0, 3);
     const rowCenterX = subColX + sub.offsetX + jx + rowShiftX;
-    const panelCenterY = baseCY + sub.offsetY + jy;
+    const panelCenterY = rowCenterY;
 
     const headW = row.head.displayWidth;
     const tailW = row.tail.width;
+    const tailH = row.tail.height;
     const headHalfW = headW * 0.5;
     /** head 中心と tail 中心の中点が rowCenterX になるよう head 中心を決める */
     const hx = rowCenterX - (headHalfW + gap + tailW * 0.5) * 0.5;
@@ -712,12 +721,12 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     row.tail.setPosition(hx + headHalfW + gap, panelCenterY);
     row.tail.setAlpha(sub.alpha * _homeUiRandRange(seed + 7, 0.85, 1.0));
 
-    const hb = row.head.getBounds();
-    const tb = row.tail.getBounds();
-    const rowMinX = Math.min(hb.x, tb.x);
-    const rowMaxX = Math.max(hb.right, tb.right);
-    const rowMinY = Math.min(hb.y, tb.y);
-    const rowMaxY = Math.max(hb.bottom, tb.bottom);
+    const headH = row.head.displayHeight;
+    const tailLeftX = hx + headHalfW + gap;
+    const rowMinX = hx - headHalfW;
+    const rowMaxX = tailLeftX + tailW;
+    const rowMinY = panelCenterY - Math.max(headH, tailH) * 0.5;
+    const rowMaxY = panelCenterY + Math.max(headH, tailH) * 0.5;
     const padXSub = _homeUiRandRange(seed + 50, 52, 72);
     const padYSub = _homeUiRandRange(seed + 51, 32, 46);
     const boxL = rowMinX - padXSub;
@@ -725,11 +734,9 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
     const boxT = rowMinY - padYSub;
     const boxB = rowMaxY + padYSub;
     const boxW = boxR - boxL;
-    const boxH = boxB - boxT;
-    const boxTAdj = panelCenterY - subBgDispH * 0.5;
 
     const subCropKeys = ['SUB_PANEL_0', 'SUB_PANEL_1', 'SUB_PANEL_2'];
-    layoutHomeBgNormalCropPanel(scene, row.bgPanelImg, boxL, boxTAdj, boxW, subBgDispH, {
+    layoutHomeBgNormalCropPanel(scene, row.bgPanelImg, boxL, panelCenterY - subBgDispH * 0.5, boxW, subBgDispH, {
       alpha: subRowAlpha,
       panelCrop: HOME_BG_PANEL_CROPS[subCropKeys[i]],
       displayW: subBgDispW,
