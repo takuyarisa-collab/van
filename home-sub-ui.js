@@ -4,6 +4,7 @@ import {
   SUB_BG_PANEL_DISPLAY_W_DEFAULT,
   layoutHomeBgNormalCropPanel,
 } from './home-bg-panels.js';
+import { homeUrlDebugEnabled } from './home-url-debug.js';
 import { getBootOverlapTitleScale } from './home-boot-title-scale.js';
 import { _homeUiRandInt, _homeUiRandRange } from './home-rand.js';
 
@@ -89,5 +90,17 @@ export function redrawHomeSubUI(scene, L, urlBgDisp) {
     const zh = boxB - zy + 4;
     row.zone.setPosition(zx + zw * 0.5, zy + zh * 0.5);
     row.zone.setSize(zw, zh);
+
+    if (homeUrlDebugEnabled()) {
+      console.log('[SUB_Y_CHECK]', {
+        row: i,
+        rowCenterY,
+        panelCenterY,
+        bgY: row.bgPanelImg ? row.bgPanelImg.y : null,
+        headY: row.head.y,
+        tailY: row.tail.y,
+        subDisplayH: subBgDispH,
+      });
+    }
   });
 }
