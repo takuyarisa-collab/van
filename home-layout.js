@@ -1,7 +1,8 @@
 import { HOMEOVERLAP_CROPS } from './home-overlap-crops.js';
+import { SUB_BG_PANEL_DISPLAY_H_DEFAULT } from './home-bg-panels.js';
 
-/** サブ行間計算用（?subH= があるときのみ上書き。getHomeLayout と redraw で同一基準） */
-const SUB_BG_PANEL_DISPLAY_H_DEFAULT = 420;
+/** サブ行の中心間隔（px）。?subSpacing= で上書き */
+const SUB_ROW_SPACING_DEFAULT_PX = 80;
 function _homeResolvedSubDisplayHForLayout() {
   if (typeof window === 'undefined') return SUB_BG_PANEL_DISPLAY_H_DEFAULT;
   const url = window.HOME_PARAM_subDisplayH;
@@ -11,13 +12,13 @@ function _homeResolvedSubDisplayHForLayout() {
   return SUB_BG_PANEL_DISPLAY_H_DEFAULT;
 }
 
-/** 行中心間隔（?subSpacing= があれば上書き、なければ subDisplayH×0.4） */
+/** 行中心間隔（?subSpacing= があれば上書き、なければ既定 px） */
 function _homeResolvedSubSpacingForLayout() {
   if (typeof window !== 'undefined' && window.HOME_PARAM_subSpacing != null) {
     const u = window.HOME_PARAM_subSpacing;
     if (typeof u === 'number' && u > 0 && Number.isFinite(u)) return u;
   }
-  return _homeResolvedSubDisplayHForLayout() * 0.4;
+  return SUB_ROW_SPACING_DEFAULT_PX;
 }
 
 export function getHomeLayout(WORLD_W, WORLD_H) {
@@ -190,7 +191,7 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
     homeYOffsetPxApplied,
     homeYAutoOffset: HOME_Y_OFFSET,
     debrisTopY,
-    /** サブ行の中心間隔（URL subSpacing または subDisplayH×0.4） */
+    /** サブ行の中心間隔（URL subSpacing または既定 px） */
     subRowSpacing: subSpacingResolved,
     subSpacing: subSpacingResolved,
     /** 先頭サブ行の中心 Y（rowIndex=0）。rowCenterY = baseRowCenterY + subSpacing*rowIndex + subNOffsetY */
