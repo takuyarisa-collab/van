@@ -95,7 +95,6 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
       const _depthPlayTriangle = 12;
       const _depthPlayHit = 13;
       const _depthSubPanelMain = 9;
-      const _depthSubRowFrame = 10;
       const _depthSubGlyph = 11;
       const _depthSubHit = 13;
       const texKey = HOMEOVERLAP_TEX_KEY;
@@ -105,15 +104,6 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         .setDepth(_depthPlayBaseMain)
         .setVisible(false);
 
-      this._subBgPanelImg = this.add
-        .image(0, 0, 'home-bg-normal')
-        .setDepth(_depthSubPanelMain)
-        .setVisible(false);
-
-      this._subRowFrameGfxs = [0, 1, 2].map(() =>
-        this.add.graphics().setDepth(_depthSubRowFrame),
-      );
-
       if (homeUrlDebugEnabled()) {
         const p = this._playBgPanelImg;
         console.log('[home-bg-panel-create]', {
@@ -121,13 +111,6 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
           created: Boolean(p && !p.destroyed),
           depth: p?.depth,
           key: p?.texture?.key,
-        });
-        const s = this._subBgPanelImg;
-        console.log('[home-bg-panel-create]', {
-          kind: 'SUB_UNIFIED',
-          created: Boolean(s && !s.destroyed),
-          depth: s?.depth,
-          key: s?.texture?.key,
         });
       }
 
@@ -166,8 +149,12 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
           .setOrigin(0, 0.5)
           .setDepth(_depthSubGlyph)
           .setAlpha(0.72);
+        const bgPanelImg = this.add
+          .image(0, 0, 'home-bg-normal')
+          .setDepth(_depthSubPanelMain)
+          .setVisible(false);
         const z = this.add.zone(0, 0, 88, 40).setDepth(_depthSubHit);
-        return { head, tail: tailT, zone: z };
+        return { head, tail: tailT, zone: z, bgPanelImg };
       });
 
       if (homeUrlDebugEnabled()) {
@@ -176,15 +163,16 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
           kind: 'SUB',
           rowCount: n,
           expectedRows: 3,
-          subUnifiedBgPanel: Boolean(this._subBgPanelImg && !this._subBgPanelImg.destroyed),
+          perRowBgPanels: Boolean(
+            this._subRows?.every((r) => r.bgPanelImg && !r.bgPanelImg.destroyed),
+          ),
         });
         this._subRows?.forEach((r, i) => {
-          const g = this._subRowFrameGfxs?.[i];
           console.log('[home-bg-panel-create]', {
             kind: 'SUB_ROW',
             row: i,
-            frameGfx: Boolean(g && !g.destroyed),
-            depth: g?.depth,
+            bgPanel: Boolean(r.bgPanelImg && !r.bgPanelImg.destroyed),
+            depth: r.bgPanelImg?.depth,
           });
         });
       }
@@ -235,16 +223,13 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this._startA = this._startP = this._startL = this._startV = this._startY = null;
         this._playBgPanelImg?.destroy?.();
         this._playBgPanelImg = null;
-        this._subBgPanelImg?.destroy?.();
-        this._subBgPanelImg = null;
-        this._subRowFrameGfxs?.forEach((g) => g?.destroy?.());
-        this._subRowFrameGfxs = null;
         this._startHitZone?.destroy?.();
         this._startHitZone = null;
         this._subRows?.forEach((r) => {
           r.head?.destroy?.();
           r.tail?.destroy?.();
           r.zone?.destroy?.();
+          r.bgPanelImg?.destroy?.();
         });
         this._subRows = null;
       };

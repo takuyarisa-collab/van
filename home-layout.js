@@ -11,6 +11,15 @@ function _homeResolvedSubDisplayHForLayout() {
   return SUB_BG_PANEL_DISPLAY_H_DEFAULT;
 }
 
+/** 行中心間隔（?subSpacing= があれば上書き、なければ subDisplayH×0.4） */
+function _homeResolvedSubSpacingForLayout() {
+  if (typeof window !== 'undefined' && window.HOME_PARAM_subSpacing != null) {
+    const u = window.HOME_PARAM_subSpacing;
+    if (typeof u === 'number' && u > 0 && Number.isFinite(u)) return u;
+  }
+  return _homeResolvedSubDisplayHForLayout() * 0.4;
+}
+
 export function getHomeLayout(WORLD_W, WORLD_H) {
   const W = WORLD_W;
   const H = WORLD_H;
@@ -58,8 +67,7 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
     return logY0 + subButtonHeight * 0.5 + subVisualFootBelowCenter;
   };
 
-  const subDisplayHResolved = _homeResolvedSubDisplayHForLayout();
-  const subRowSpacing = subDisplayHResolved * 0.4;
+  const subSpacingResolved = _homeResolvedSubSpacingForLayout();
 
   let HOME_Y_OFFSET = HOME_OFFSET_BASE;
   const playSubGapMin = H * 0.052;
@@ -69,7 +77,7 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
     const scy = startCenterY + oy;
     const pb = playBottomY(scy);
     const enhanceY0 = Math.max(scy + H * 0.175, pb + playSubGapMin);
-    if (subLogRowBottomExtent(enhanceY0, subRowSpacing) > debrisTopY - clearanceAboveDebris) {
+    if (subLogRowBottomExtent(enhanceY0, subSpacingResolved) > debrisTopY - clearanceAboveDebris) {
       return null;
     }
     return { enhanceY0 };
@@ -97,13 +105,13 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
   }
   if (
     chosen &&
-    enhanceY + subRowSpacing * 2 + subButtonHeight * 0.5 + subVisualFootBelowCenter >
+    enhanceY + subSpacingResolved * 2 + subButtonHeight * 0.5 + subVisualFootBelowCenter >
       debrisTopY - clearanceAboveDebris
   ) {
     enhanceY = chosen.enhanceY0;
   }
-  let loadoutY = enhanceY + subRowSpacing;
-  let logY = loadoutY + subRowSpacing;
+  let loadoutY = enhanceY + subSpacingResolved;
+  let logY = loadoutY + subSpacingResolved;
 
   /** URL 未指定時と同等のベース位置（px、正で下）。?homeYOffset= はこれに加算 */
   const HOME_Y_OFFSET_BASE_PX = 150;
@@ -117,8 +125,12 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
   loadoutY += homeYOffsetPxApplied;
   logY += homeYOffsetPxApplied;
 
+  /** homeYOffset 適用後の先頭サブ行中心 Y */
+  const baseRowCenterY = enhanceY;
+
   const playCenterX = centerX;
   const playCenterY = startCenterY;
+  const baseSubCenterX = centerX;
   const subCenterX = centerX;
   const subCenterY = Object.freeze([enhanceY, loadoutY, logY]);
   /** 後方互換: 各行の論理中心（背景・文字の subCenterY[i] と同一） */
@@ -167,7 +179,12 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
     homeYOffsetPxApplied,
     homeYAutoOffset: HOME_Y_OFFSET,
     debrisTopY,
-    /** サブ行の中心間隔（subDisplayH × 0.4） */
-    subRowSpacing,
+    /** サブ行の中心間隔（URL subSpacing または subDisplayH×0.4） */
+    subRowSpacing: subSpacingResolved,
+    subSpacing: subSpacingResolved,
+    /** 先頭サブ行の中心 Y（rowIndex=0）。rowCenterY = baseRowCenterY + subSpacing*rowIndex + subNOffsetY */
+    baseRowCenterY,
+    /** サブ列の基準 X（rowCenterX = baseSubCenterX + sub.offsetX + subNOffsetX） */
+    baseSubCenterX,
   });
 }

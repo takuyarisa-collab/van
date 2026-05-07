@@ -167,7 +167,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-06 00:00 UTC';
+      const BUILD_TIMESTAMP = '2026-05-07 00:00 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -318,8 +318,25 @@
         };
         window.HOME_PARAM_playDisplayW = _homeParamOptionalPositive('playW');
         window.HOME_PARAM_playDisplayH = _homeParamOptionalPositive('playH');
+        // tpr2pu: subW subH subSpacing
         window.HOME_PARAM_subDisplayW = _homeParamOptionalPositive('subW');
         window.HOME_PARAM_subDisplayH = _homeParamOptionalPositive('subH');
+        window.HOME_PARAM_subSpacing = _homeParamOptionalPositive('subSpacing');
+        const _homeParamSignedNum = (key) => {
+          const raw = _qp.get(key);
+          if (raw === null || raw === '') return 0;
+          const n = parseFloat(raw);
+          return isFinite(n) ? n : 0;
+        };
+        // g8l1ja: sub0..2 OffsetX/Y
+        window.HOME_PARAM_sub0OffsetX = _homeParamSignedNum('sub0OffsetX');
+        window.HOME_PARAM_sub1OffsetX = _homeParamSignedNum('sub1OffsetX');
+        window.HOME_PARAM_sub2OffsetX = _homeParamSignedNum('sub2OffsetX');
+        window.HOME_PARAM_sub0OffsetY = _homeParamSignedNum('sub0OffsetY');
+        window.HOME_PARAM_sub1OffsetY = _homeParamSignedNum('sub1OffsetY');
+        window.HOME_PARAM_sub2OffsetY = _homeParamSignedNum('sub2OffsetY');
+        // whclom example:
+        // ?debug=1&subW=520&subH=420&subSpacing=120&sub0OffsetX=-10&sub1OffsetX=4&sub2OffsetX=12&sub0OffsetY=-6&sub1OffsetY=0&sub2OffsetY=8
       })();
 
       const BOOT_DEBUG = {
