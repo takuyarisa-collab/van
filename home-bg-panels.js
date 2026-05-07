@@ -13,11 +13,11 @@ function _homeUrlBgDisplayOverrides() {
 }
 
 /** PLAY 背景パネル表示サイズ（crop 独立。?playW= / ?playH= で上書き） */
-export const PLAY_BG_PANEL_DISPLAY_W_DEFAULT = 560;
-export const PLAY_BG_PANEL_DISPLAY_H_DEFAULT = 430;
+export const PLAY_BG_PANEL_DISPLAY_W_DEFAULT = 580;
+export const PLAY_BG_PANEL_DISPLAY_H_DEFAULT = 450;
 /** サブ背景パネル表示サイズ（3行共通。?subW= / ?subH= で上書き） */
-export const SUB_BG_PANEL_DISPLAY_W_DEFAULT = 380;
-export const SUB_BG_PANEL_DISPLAY_H_DEFAULT = 420;
+export const SUB_BG_PANEL_DISPLAY_W_DEFAULT = 550;
+export const SUB_BG_PANEL_DISPLAY_H_DEFAULT = 450;
 
 /**
  * Boot / Home 背景（home-bg-normal）から HOME_BG_PANEL_CROPS で定義した矩形を setCrop し、
