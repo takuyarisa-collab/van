@@ -125,7 +125,18 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
   loadoutY += homeYOffsetPxApplied;
   logY += homeYOffsetPxApplied;
 
-  /** homeYOffset 適用後の先頭サブ行中心 Y */
+  /** PLAY 先頭サブ行との距離（px、正でサブ列を下へ）。PLAY 位置には影響しない */
+  const playSubGapPx =
+    typeof window !== 'undefined' &&
+    typeof window.HOME_PARAM_playSubGapPx === 'number' &&
+    Number.isFinite(window.HOME_PARAM_playSubGapPx)
+      ? window.HOME_PARAM_playSubGapPx
+      : 0;
+  enhanceY += playSubGapPx;
+  loadoutY += playSubGapPx;
+  logY += playSubGapPx;
+
+  /** homeYOffset・playSubGap 適用後の先頭サブ行中心 Y */
   const baseRowCenterY = enhanceY;
 
   const playCenterX = centerX;
@@ -186,5 +197,7 @@ export function getHomeLayout(WORLD_W, WORLD_H) {
     baseRowCenterY,
     /** サブ列の基準 X（rowCenterX = baseSubCenterX + sub.offsetX + subNOffsetX） */
     baseSubCenterX,
+    /** ?playSubGap= でサブ行のみ縦シフトした px（PLAY には非適用） */
+    playSubGapPx,
   });
 }

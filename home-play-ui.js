@@ -8,6 +8,28 @@ import {
 } from './home-bg-panels.js';
 import { _homeUiRandInt, _homeUiRandRange } from './home-rand.js';
 
+function _homePlayUrlOffsets() {
+  if (typeof window === 'undefined') {
+    return {
+      poX: 0,
+      poY: 0,
+      ppX: 0,
+      ppY: 0,
+      ptX: 0,
+      ptY: 0,
+    };
+  }
+  const n = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  return {
+    poX: n(window.HOME_PARAM_playOffsetX),
+    poY: n(window.HOME_PARAM_playOffsetY),
+    ppX: n(window.HOME_PARAM_playPanelOffsetX),
+    ppY: n(window.HOME_PARAM_playPanelOffsetY),
+    ptX: n(window.HOME_PARAM_playTextOffsetX),
+    ptY: n(window.HOME_PARAM_playTextOffsetY),
+  };
+}
+
 /**
  * @param {Phaser.Scene} scene
  * @param {object} L HOME_LAYOUT
@@ -17,6 +39,21 @@ export function redrawHomePlayUI(scene, L, urlBgDisp) {
   const sf = scene._delta.startFrame;
   const playCenterX = L.playCenterX + sf.offsetX;
   const playCenterY = L.playCenterY + sf.offsetY;
+  const {
+    poX,
+    poY,
+    ppX,
+    ppY,
+    ptX,
+    ptY,
+  } = _homePlayUrlOffsets();
+  /** PLAY 全体の基準中心（▷+文字+ヒット）。パネル専用・文字専用オフセットの共通起点 */
+  const baseCx = playCenterX + poX;
+  const baseCy = playCenterY + poY;
+  const textCx = baseCx + ptX;
+  const textCy = baseCy + ptY;
+  const panelImgCx = baseCx + ppX;
+  const panelImgCy = baseCy + ppY;
   const flashMul = scene._startPressFlash ? 1.15 : 1.0;
 
   const Cr = HOMEOVERLAP_CROPS;
@@ -52,8 +89,8 @@ export function redrawHomePlayUI(scene, L, urlBgDisp) {
   /** クリック用ヒット矩形（従来どおり・変更しない） */
   const panelW = Math.max(totalW, triSize * 1.05) + padX * 2;
   const panelH = padY * 2 + triDispH + midGap + playRowDispH;
-  const panelL = playCenterX - panelW * 0.5;
-  const panelT = playCenterY - panelH * 0.5;
+  const panelL = baseCx - panelW * 0.5;
+  const panelT = baseCy - panelH * 0.5;
 
   const playContentH = triDispH + midGap + playRowDispH;
   let playBgDispW = PLAY_BG_PANEL_DISPLAY_W_DEFAULT;
@@ -74,14 +111,14 @@ export function redrawHomePlayUI(scene, L, urlBgDisp) {
     panelCrop: HOME_BG_PANEL_CROPS.PLAY_PANEL,
     displayW: playBgDispW,
     displayH: playBgDispH,
-    imgCenterX: playCenterX,
-    imgCenterY: playCenterY,
+    imgCenterX: panelImgCx,
+    imgCenterY: panelImgCy,
     debugLogKind: 'PLAY',
   });
 
-  /** ▷ + P/L/A/y の外接矩形の中心を playCenter に一致 */
-  const playBlockTop = playCenterY - playContentH * 0.5;
-  const triCx = playCenterX;
+  /** ▷ + P/L/A/y の外接矩形の中心を text 基準に一致（パネル専用オフセットの影響を受けない） */
+  const playBlockTop = textCy - playContentH * 0.5;
+  const triCx = textCx;
   const triCy = playBlockTop + triDispH * 0.5;
   const playCy = playBlockTop + triDispH + midGap + playRowDispH * 0.5;
 
@@ -93,7 +130,7 @@ export function redrawHomePlayUI(scene, L, urlBgDisp) {
     img.setAlpha(alpha);
   };
 
-  let xCursor = playCenterX - totalW * 0.5;
+  let xCursor = textCx - totalW * 0.5;
   const cP = xCursor + wP * 0.5;
   placeGlyph(scene._startP, cP, playCy, gS, gSy, 0, 0x492050, alphaPlay, false);
   xCursor += wP + gapPL;
@@ -111,6 +148,6 @@ export function redrawHomePlayUI(scene, L, urlBgDisp) {
 
   placeGlyph(scene._startV, triCx, triCy, gS, gSy, -90, 0x492210, alphaPlay, false);
 
-  scene._startHitZone.setPosition(playCenterX, playCenterY);
+  scene._startHitZone.setPosition(baseCx, baseCy);
   scene._startHitZone.setSize(panelW + 8, panelH + 8);
 }

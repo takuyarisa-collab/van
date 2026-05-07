@@ -167,7 +167,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-07 00:00 UTC';
+      const BUILD_TIMESTAMP = '2026-05-07 14:30 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -335,6 +335,25 @@
         window.HOME_PARAM_sub0OffsetY = _homeParamSignedNum('sub0OffsetY');
         window.HOME_PARAM_sub1OffsetY = _homeParamSignedNum('sub1OffsetY');
         window.HOME_PARAM_sub2OffsetY = _homeParamSignedNum('sub2OffsetY');
+        window.HOME_PARAM_playOffsetX = _homeParamSignedNum('playOffsetX');
+        window.HOME_PARAM_playOffsetY = _homeParamSignedNum('playOffsetY');
+        window.HOME_PARAM_playPanelOffsetX = _homeParamSignedNum('playPanelOffsetX');
+        window.HOME_PARAM_playPanelOffsetY = _homeParamSignedNum('playPanelOffsetY');
+        window.HOME_PARAM_playTextOffsetX = _homeParamSignedNum('playTextOffsetX');
+        window.HOME_PARAM_playTextOffsetY = _homeParamSignedNum('playTextOffsetY');
+        window.HOME_PARAM_playSubGapPx = _homeParamSignedNum('playSubGap');
+        window.HOME_PARAM_sub0PanelOffsetX = _homeParamSignedNum('sub0PanelOffsetX');
+        window.HOME_PARAM_sub1PanelOffsetX = _homeParamSignedNum('sub1PanelOffsetX');
+        window.HOME_PARAM_sub2PanelOffsetX = _homeParamSignedNum('sub2PanelOffsetX');
+        window.HOME_PARAM_sub0PanelOffsetY = _homeParamSignedNum('sub0PanelOffsetY');
+        window.HOME_PARAM_sub1PanelOffsetY = _homeParamSignedNum('sub1PanelOffsetY');
+        window.HOME_PARAM_sub2PanelOffsetY = _homeParamSignedNum('sub2PanelOffsetY');
+        window.HOME_PARAM_sub0TextOffsetX = _homeParamSignedNum('sub0TextOffsetX');
+        window.HOME_PARAM_sub1TextOffsetX = _homeParamSignedNum('sub1TextOffsetX');
+        window.HOME_PARAM_sub2TextOffsetX = _homeParamSignedNum('sub2TextOffsetX');
+        window.HOME_PARAM_sub0TextOffsetY = _homeParamSignedNum('sub0TextOffsetY');
+        window.HOME_PARAM_sub1TextOffsetY = _homeParamSignedNum('sub1TextOffsetY');
+        window.HOME_PARAM_sub2TextOffsetY = _homeParamSignedNum('sub2TextOffsetY');
         // whclom example:
         // ?debug=1&subW=520&subH=420&subSpacing=120&sub0OffsetX=-10&sub1OffsetX=4&sub2OffsetX=12&sub0OffsetY=-6&sub1OffsetY=0&sub2OffsetY=8
       })();
@@ -536,6 +555,12 @@
             `homeAutoOffset:${s.homeAutoOffset != null ? String(s.homeAutoOffset) : '-'}`,
             `playDisplay:${s.playDisplay ?? '-'}`,
             `subDisplay:${s.subDisplay ?? '-'}`,
+            `playSubGapPx:${s.playSubGapPx != null ? String(s.playSubGapPx) : '-'}`,
+            `playOffsetXY:${s.playOffsetXY ?? '-'}`,
+            `playPanelOffsetXY:${s.playPanelOffsetXY ?? '-'}`,
+            `playTextOffsetXY:${s.playTextOffsetXY ?? '-'}`,
+            `sub012PanelXY:${s.sub012PanelXY ?? '-'}`,
+            `sub012TextXY:${s.sub012TextXY ?? '-'}`,
           ];
           _text.setText(lines);
         }

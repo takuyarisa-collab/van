@@ -2,6 +2,7 @@ import { HOMEOVERLAP_CROPS } from './home-overlap-crops.js';
 import { getHomeUrlBgDisplayOverrides } from './home-bg-panels.js';
 import { redrawHomePlayUI } from './home-play-ui.js';
 import { redrawHomeSubUI } from './home-sub-ui.js';
+import { logHomeUrlLayoutDebugOnce } from './home-url-debug.js';
 
 export { HOMEOVERLAP_TEX_KEY } from './home-overlap-constants.js';
 export { homeUrlDebugEnabled } from './home-url-debug.js';
@@ -126,4 +127,5 @@ export function redrawHomeUI(scene, HOME_LAYOUT) {
   const urlBgDisp = getHomeUrlBgDisplayOverrides();
   redrawHomePlayUI(scene, L, urlBgDisp);
   redrawHomeSubUI(scene, L, urlBgDisp);
+  logHomeUrlLayoutDebugOnce(scene);
 }

@@ -182,24 +182,38 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
       this._redrawHomeUI();
 
       this._homeReady = true;
-      this._debugHud = createDebugHUD(this, () => ({
-        scene:     'home',
-        homeReady: this._homeReady,
-        scan:      this._homeScanMask ? 'active' : 'done',
-        debris:    this._homeDebris ? this._homeDebris.alpha.toFixed(2) : '-',
-        playRefH:  this._homePlayRefNatH != null ? String(this._homePlayRefNatH) : '-',
-        homeYOffsetPx: HOME_LAYOUT.homeYOffsetPxParam,
-        homeYOffsetAppliedPx: HOME_LAYOUT.homeYOffsetPxApplied,
-        homeAutoOffset: HOME_LAYOUT.homeYAutoOffset,
-        playDisplay:
-          this._homeDbgPlayDisplayW != null && this._homeDbgPlayDisplayH != null
-            ? `${Math.round(this._homeDbgPlayDisplayW)} x ${Math.round(this._homeDbgPlayDisplayH)}`
-            : '-',
-        subDisplay:
-          this._homeDbgSubDisplayW != null && this._homeDbgSubDisplayH != null
-            ? `${Math.round(this._homeDbgSubDisplayW)} x ${Math.round(this._homeDbgSubDisplayH)}`
-            : '-',
-      }));
+      this._debugHud = createDebugHUD(this, () => {
+        const _hn = (param) => {
+          const v = typeof window !== 'undefined' ? window[param] : undefined;
+          return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+        };
+        return {
+          scene:     'home',
+          homeReady: this._homeReady,
+          scan:      this._homeScanMask ? 'active' : 'done',
+          debris:    this._homeDebris ? this._homeDebris.alpha.toFixed(2) : '-',
+          playRefH:  this._homePlayRefNatH != null ? String(this._homePlayRefNatH) : '-',
+          homeYOffsetPx: HOME_LAYOUT.homeYOffsetPxParam,
+          homeYOffsetAppliedPx: HOME_LAYOUT.homeYOffsetPxApplied,
+          homeAutoOffset: HOME_LAYOUT.homeYAutoOffset,
+          playDisplay:
+            this._homeDbgPlayDisplayW != null && this._homeDbgPlayDisplayH != null
+              ? `${Math.round(this._homeDbgPlayDisplayW)} x ${Math.round(this._homeDbgPlayDisplayH)}`
+              : '-',
+          subDisplay:
+            this._homeDbgSubDisplayW != null && this._homeDbgSubDisplayH != null
+              ? `${Math.round(this._homeDbgSubDisplayW)} x ${Math.round(this._homeDbgSubDisplayH)}`
+              : '-',
+          playSubGapPx: HOME_LAYOUT.playSubGapPx,
+          playOffsetXY: `${_hn('HOME_PARAM_playOffsetX')},${_hn('HOME_PARAM_playOffsetY')}`,
+          playPanelOffsetXY: `${_hn('HOME_PARAM_playPanelOffsetX')},${_hn('HOME_PARAM_playPanelOffsetY')}`,
+          playTextOffsetXY: `${_hn('HOME_PARAM_playTextOffsetX')},${_hn('HOME_PARAM_playTextOffsetY')}`,
+          sub012PanelXY:
+            `${_hn('HOME_PARAM_sub0PanelOffsetX')},${_hn('HOME_PARAM_sub0PanelOffsetY')} | ${_hn('HOME_PARAM_sub1PanelOffsetX')},${_hn('HOME_PARAM_sub1PanelOffsetY')} | ${_hn('HOME_PARAM_sub2PanelOffsetX')},${_hn('HOME_PARAM_sub2PanelOffsetY')}`,
+          sub012TextXY:
+            `${_hn('HOME_PARAM_sub0TextOffsetX')},${_hn('HOME_PARAM_sub0TextOffsetY')} | ${_hn('HOME_PARAM_sub1TextOffsetX')},${_hn('HOME_PARAM_sub1TextOffsetY')} | ${_hn('HOME_PARAM_sub2TextOffsetX')},${_hn('HOME_PARAM_sub2TextOffsetY')}`,
+        };
+      });
 
       this._homeCropDebug = createHomeOverlapCropDebugOverlay(this);
 

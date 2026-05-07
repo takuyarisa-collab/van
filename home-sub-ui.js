@@ -36,6 +36,42 @@ function _subNOffsetXY(i) {
   };
 }
 
+function _subNPanelOffsetXY(i) {
+  if (typeof window === 'undefined') return { ox: 0, oy: 0 };
+  const ox = [
+    window.HOME_PARAM_sub0PanelOffsetX,
+    window.HOME_PARAM_sub1PanelOffsetX,
+    window.HOME_PARAM_sub2PanelOffsetX,
+  ][i];
+  const oy = [
+    window.HOME_PARAM_sub0PanelOffsetY,
+    window.HOME_PARAM_sub1PanelOffsetY,
+    window.HOME_PARAM_sub2PanelOffsetY,
+  ][i];
+  return {
+    ox: typeof ox === 'number' && Number.isFinite(ox) ? ox : 0,
+    oy: typeof oy === 'number' && Number.isFinite(oy) ? oy : 0,
+  };
+}
+
+function _subNTextOffsetXY(i) {
+  if (typeof window === 'undefined') return { ox: 0, oy: 0 };
+  const ox = [
+    window.HOME_PARAM_sub0TextOffsetX,
+    window.HOME_PARAM_sub1TextOffsetX,
+    window.HOME_PARAM_sub2TextOffsetX,
+  ][i];
+  const oy = [
+    window.HOME_PARAM_sub0TextOffsetY,
+    window.HOME_PARAM_sub1TextOffsetY,
+    window.HOME_PARAM_sub2TextOffsetY,
+  ][i];
+  return {
+    ox: typeof ox === 'number' && Number.isFinite(ox) ? ox : 0,
+    oy: typeof oy === 'number' && Number.isFinite(oy) ? oy : 0,
+  };
+}
+
 /**
  * @param {Phaser.Scene} scene
  * @param {object} L HOME_LAYOUT
@@ -67,10 +103,15 @@ export function redrawHomeSubUI(scene, L, urlBgDisp) {
     const seed = 0x493000 + i * 997;
 
     const { ox: subNOffsetX, oy: subNOffsetY } = _subNOffsetXY(i);
+    const { ox: subNPanelOx, oy: subNPanelOy } = _subNPanelOffsetXY(i);
+    const { ox: subNTextOx, oy: subNTextOy } = _subNTextOffsetXY(i);
 
-    const rowCenterY = baseRowCenterY + subSpacing * i + subNOffsetY;
-    const rowCenterX = baseSubCenterX + sub.offsetX + subNOffsetX;
-    const panelCenterY = rowCenterY;
+    const rowBaseX = baseSubCenterX + sub.offsetX + subNOffsetX;
+    const rowBaseY = baseRowCenterY + subSpacing * i + subNOffsetY;
+    const rowTextX = rowBaseX + subNTextOx;
+    const rowTextY = rowBaseY + subNTextOy;
+    const rowPanelX = rowBaseX + subNPanelOx;
+    const rowPanelY = rowBaseY + subNPanelOy;
 
     const subRowAlpha = sub.alpha * _homeUiRandRange(seed + 4, 0.85, 1.0);
 
@@ -81,21 +122,21 @@ export function redrawHomeSubUI(scene, L, urlBgDisp) {
     const tailW = row.tail.width;
     const tailH = row.tail.height;
     const totalW = headW + gap + tailW;
-    const leftX = rowCenterX - totalW * 0.5;
+    const leftX = rowTextX - totalW * 0.5;
     const headCenterX = leftX + headW * 0.5;
     const tailLeftX = leftX + headW + gap;
-    row.head.setPosition(headCenterX, panelCenterY);
+    row.head.setPosition(headCenterX, rowTextY);
     row.head.setRotation(0);
     row.head.setAlpha(subRowAlpha);
 
-    row.tail.setPosition(tailLeftX, panelCenterY);
+    row.tail.setPosition(tailLeftX, rowTextY);
     row.tail.setAlpha(sub.alpha * _homeUiRandRange(seed + 7, 0.85, 1.0));
 
     const headH = row.head.displayHeight;
     const rowMinX = leftX;
     const rowMaxX = tailLeftX + tailW;
-    const rowMinY = panelCenterY - Math.max(headH, tailH) * 0.5;
-    const rowMaxY = panelCenterY + Math.max(headH, tailH) * 0.5;
+    const rowMinY = rowTextY - Math.max(headH, tailH) * 0.5;
+    const rowMaxY = rowTextY + Math.max(headH, tailH) * 0.5;
     const padXSub = _homeUiRandRange(seed + 50, 52, 72);
     const padYSub = _homeUiRandRange(seed + 51, 32, 46);
     const boxL = rowMinX - padXSub;
@@ -110,16 +151,16 @@ export function redrawHomeSubUI(scene, L, urlBgDisp) {
     row.zone.setPosition(zx + zw * 0.5, zy + zh * 0.5);
     row.zone.setSize(zw, zh);
 
-    const panelL = rowCenterX - subBgDispW * 0.5;
-    const panelT = panelCenterY - subBgDispH * 0.5;
+    const panelL = rowPanelX - subBgDispW * 0.5;
+    const panelT = rowPanelY - subBgDispH * 0.5;
 
     layoutHomeBgNormalCropPanel(scene, row.bgPanelImg, panelL, panelT, subBgDispW, subBgDispH, {
       alpha: subRowAlpha,
       panelCrop: SUB_PANEL_CROPS[i],
       displayW: subBgDispW,
       displayH: subBgDispH,
-      imgCenterX: rowCenterX,
-      imgCenterY: panelCenterY,
+      imgCenterX: rowPanelX,
+      imgCenterY: rowPanelY,
       debugLogKind: 'SUB',
       debugRowIndex: i,
     });
@@ -127,15 +168,20 @@ export function redrawHomeSubUI(scene, L, urlBgDisp) {
     if (homeUrlDebugEnabled()) {
       console.log('[SUB_Y_CHECK]', {
         row: i,
-        rowCenterY,
-        panelCenterY,
-        rowCenterX,
+        rowBaseX,
+        rowBaseY,
+        rowTextY,
+        rowPanelY,
         headY: row.head.y,
         tailY: row.tail.y,
         subDisplayH: subBgDispH,
         subSpacing,
         subNOffsetX,
         subNOffsetY,
+        subNPanelOx,
+        subNPanelOy,
+        subNTextOx,
+        subNTextOy,
       });
     }
   });
