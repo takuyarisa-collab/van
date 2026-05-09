@@ -34,8 +34,9 @@ function _homePlayUrlOffsets() {
  * @param {Phaser.Scene} scene
  * @param {object} L HOME_LAYOUT
  * @param {{ playW: number|null, playH: number|null }} urlBgDisp
+ * @param {number} [linkReveal=1] Boot→Home 再接続後の PLAY 行点灯（0〜1）
  */
-export function redrawHomePlayUI(scene, L, urlBgDisp) {
+export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
   const sf = scene._delta.startFrame;
   const playCenterX = L.playCenterX + sf.offsetX;
   const playCenterY = L.playCenterY + sf.offsetY;
@@ -55,6 +56,7 @@ export function redrawHomePlayUI(scene, L, urlBgDisp) {
   const panelImgCx = baseCx + ppX;
   const panelImgCy = baseCy + ppY;
   const flashMul = scene._startPressFlash ? 1.15 : 1.0;
+  const lr = Phaser.Math.Clamp(linkReveal, 0, 1);
 
   const Cr = HOMEOVERLAP_CROPS;
   const P = Cr.P;
@@ -103,7 +105,7 @@ export function redrawHomePlayUI(scene, L, urlBgDisp) {
   const gx = (s) => _homeUiRandInt(s, -2, 2);
   const alphaPlay = Math.min(
     1,
-    flashMul * sf.alpha * _homeUiRandRange(0x492100, 0.85, 1.0),
+    lr * flashMul * sf.alpha * _homeUiRandRange(0x492100, 0.85, 1.0),
   );
 
   layoutHomeBgNormalCropPanel(scene, scene._playBgPanelImg, panelL, panelT, panelW, panelH, {

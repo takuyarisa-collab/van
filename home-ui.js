@@ -125,7 +125,10 @@ export function destroyBootBgPanelForHome(bootScene) {
 export function redrawHomeUI(scene, HOME_LAYOUT) {
   const L = HOME_LAYOUT;
   const urlBgDisp = getHomeUrlBgDisplayOverrides();
-  redrawHomePlayUI(scene, L, urlBgDisp);
-  redrawHomeSubUI(scene, L, urlBgDisp);
+  const link = scene._homeLinkReveal;
+  const playReveal = link?.play ?? 1;
+  const subReveal = link?.sub;
+  redrawHomePlayUI(scene, L, urlBgDisp, playReveal);
+  redrawHomeSubUI(scene, L, urlBgDisp, subReveal);
   logHomeUrlLayoutDebugOnce(scene);
 }

@@ -76,11 +76,12 @@ function _subNTextOffsetXY(i) {
  * @param {Phaser.Scene} scene
  * @param {object} L HOME_LAYOUT
  * @param {{ subW: number|null, subH: number|null }} urlBgDisp
+ * @param {number[]|null} [subReveal] 行ごとの点灯 0〜1（長さ3・省略時は全非表示扱いにならず 1）
  *
  * t56q44: rowCenterY = baseRowCenterY + subSpacing * rowIndex + subNOffsetY
  * 9ebtba: rowCenterX = baseSubCenterX + sub.offsetX + subNOffsetX
  */
-export function redrawHomeSubUI(scene, L, urlBgDisp) {
+export function redrawHomeSubUI(scene, L, urlBgDisp, subReveal = null) {
   const sf = scene._delta.startFrame;
   const bootTitleScale = getBootOverlapTitleScale(scene);
   const gS = bootTitleScale * sf.scaleX;
@@ -101,6 +102,10 @@ export function redrawHomeSubUI(scene, L, urlBgDisp) {
     const row = scene._subRows[i];
     if (!row?.bgPanelImg) return;
     const seed = 0x493000 + i * 997;
+    const revealMul =
+      subReveal && subReveal.length === 3
+        ? Phaser.Math.Clamp(subReveal[i], 0, 1)
+        : 1;
 
     const { ox: subNOffsetX, oy: subNOffsetY } = _subNOffsetXY(i);
     const { ox: subNPanelOx, oy: subNPanelOy } = _subNPanelOffsetXY(i);
@@ -113,7 +118,7 @@ export function redrawHomeSubUI(scene, L, urlBgDisp) {
     const rowPanelX = rowBaseX + subNPanelOx;
     const rowPanelY = rowBaseY + subNPanelOy;
 
-    const subRowAlpha = sub.alpha * _homeUiRandRange(seed + 4, 0.85, 1.0);
+    const subRowAlpha = revealMul * sub.alpha * _homeUiRandRange(seed + 4, 0.85, 1.0);
 
     row.head.setScale(gS * sub.alpha, gSy * sub.alpha);
 
@@ -130,7 +135,7 @@ export function redrawHomeSubUI(scene, L, urlBgDisp) {
     row.head.setAlpha(subRowAlpha);
 
     row.tail.setPosition(tailLeftX, rowTextY);
-    row.tail.setAlpha(sub.alpha * _homeUiRandRange(seed + 7, 0.85, 1.0));
+    row.tail.setAlpha(revealMul * sub.alpha * _homeUiRandRange(seed + 7, 0.85, 1.0));
 
     const headH = row.head.displayHeight;
     const rowMinX = leftX;
