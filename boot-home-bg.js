@@ -719,7 +719,8 @@ export function mountBootCollapsedBackdrop(scene, opts = {}) {
  * @param {number}  [opts.rowIntervalScale=3.5] 行ごとの間隔倍率
  * @param {Phaser.GameObjects.Image} opts.targetImage  マスク適用先の画像
  * @param {number}  [opts.headDepth]  処理ヘッド Graphics の depth（省略時: targetImage.depth + 1）
- * @returns {{ destroy: () => void }}
+ * @param {boolean} [opts.deferScheduleScan=false] true のとき delayedCall 連鎖を開始しない（後から resumeScheduledScan を呼ぶ）
+ * @returns {{ destroy: () => void, resumeScheduledScan?: () => void }}
  */
 export function mountHomeScanMask(scene, opts = {}) {
   const W            = opts.width      ?? scene.scale.width;
@@ -729,6 +730,8 @@ export function mountHomeScanMask(scene, opts = {}) {
   const rowScale     = opts.rowIntervalScale ?? 3.5;
   const targetImage  = opts.targetImage ?? null;
   const stopY        = opts.stopY ?? Math.round(scene.scale.height * 0.40);
+  const deferScheduleScan = opts.deferScheduleScan === true;
+  let scanScheduleStarted = !deferScheduleScan;
 
   const rowHeight    = gridStep / 2;                   // 行高さ: gridStep の半分
   const colsPerRow   = Math.ceil(W / subStep);         // subStep 単位の列数
@@ -856,7 +859,15 @@ export function mountHomeScanMask(scene, opts = {}) {
 
   // 初期状態: マスクは空（画像は非表示）
   _redrawMask();
-  _scheduleNext();
+  if (scanScheduleStarted) {
+    _scheduleNext();
+  }
+
+  function resumeScheduledScan() {
+    if (finished || scanScheduleStarted) return;
+    scanScheduleStarted = true;
+    _scheduleNext();
+  }
 
   return {
     destroy() {
@@ -871,6 +882,7 @@ export function mountHomeScanMask(scene, opts = {}) {
       maskG.destroy();
       headGfx.destroy();
     },
+    resumeScheduledScan: deferScheduleScan ? resumeScheduledScan : undefined,
   };
 }
 

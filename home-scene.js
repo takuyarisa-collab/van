@@ -46,14 +46,14 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
 
       const _registry = this.game.registry;
       this._homeWaitBootCollapse = Boolean(_registry.get(REG_BOOT_HOME_WAIT_COLLAPSE));
-      if (this._homeWaitBootCollapse) {
-        this.cameras.main.setTransparent(true);
-      }
 
       this._homeBackdrop = mountHomeGridOnly(this, {
         width: WORLD_W,
         height: WORLD_H,
       });
+      if (this._homeWaitBootCollapse) {
+        this._homeBackdrop.layers?.forEach((layer) => layer.setAlpha(0));
+      }
 
       const _depthRebuildPanel = -48;
       const _rebuildTexKey = 'home-bg-normal';
@@ -78,6 +78,7 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         row0IntervalMs:   91,
         rowIntervalScale: 3.5,
         targetImage:      this._homeRebuildPanel,
+        deferScheduleScan: this._homeWaitBootCollapse,
       });
 
       {
@@ -229,8 +230,14 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
             `${_hn('HOME_PARAM_sub0TextOffsetX')},${_hn('HOME_PARAM_sub0TextOffsetY')} | ${_hn('HOME_PARAM_sub1TextOffsetX')},${_hn('HOME_PARAM_sub1TextOffsetY')} | ${_hn('HOME_PARAM_sub2TextOffsetX')},${_hn('HOME_PARAM_sub2TextOffsetY')}`,
         };
       });
+      if (this._homeWaitBootCollapse) {
+        this._debugHud?.setVisible?.(false);
+      }
 
       this._homeCropDebug = createHomeOverlapCropDebugOverlay(this);
+      if (this._homeWaitBootCollapse) {
+        this._homeCropDebug?.setVisible?.(false);
+      }
 
       const cleanupHome = () => {
         this._cancelOverlapRebuild?.();
@@ -310,7 +317,10 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this._bootCollapseBackdropApplied = true;
         this._homeWaitBootCollapse = false;
         this.game.registry.remove(REG_BOOT_COLLAPSE_DONE_FOR_HOME);
-        this.cameras.main.setTransparent(false);
+        this._homeBackdrop?.layers?.forEach((layer) => layer.setAlpha(1));
+        this._homeScanMask?.resumeScheduledScan?.();
+        this._debugHud?.setVisible?.(true);
+        this._homeCropDebug?.setVisible?.(true);
         if (this._homeRebuildPanel && !this._homeRebuildPanel.destroyed) {
           this._homeRebuildPanel.setAlpha(1);
         }

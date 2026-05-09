@@ -175,7 +175,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-09 21:05 UTC';
+      const BUILD_TIMESTAMP = '2026-05-09 22:48 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -577,7 +577,11 @@
           _text.destroy();
         }
 
-        return { tick, destroy };
+        function setVisible(visible) {
+          _text.setVisible(Boolean(visible));
+        }
+
+        return { tick, destroy, setVisible };
       }
 
       const HomeScene = createHomeScene(WORLD_W, WORLD_H, createDebugHUD);
