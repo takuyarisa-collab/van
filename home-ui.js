@@ -64,6 +64,11 @@ export function createHomeOverlapCropDebugOverlay(scene) {
     labels.push(t);
   });
   return {
+    setVisible(visible) {
+      const v = Boolean(visible);
+      g.setVisible(v);
+      labels.forEach((t) => t.setVisible(v));
+    },
     destroy() {
       g.destroy();
       labels.forEach((t) => t.destroy());
