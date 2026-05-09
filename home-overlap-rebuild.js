@@ -1,6 +1,7 @@
 /**
  * Boot の OVERLAP タイトル PNG から Home の PLAY / SUB へ「破断 → 飛散 → 回収 → 固定」で再接続する演出。
- * 破断ショック（崩壊開始同期）→ 外側 easeOutCubic 飛散 → 単一制御点の二次ベジェで Home へ収束 → 短いオーバーシュート後に最終座標へ固定。
+ * 破断ショック（崩壊開始同期）→ 外側 easeOutCubic 飛散（同期）→ 二次ベジェで Home へ収束 → オーバーシュートで固定。
+ * 収束開始・スナップ開始は断片ごとにずらし、PLAY の「y」は ▷ 着地後に短いフェードで点灯する。
  */
 import { HOMEOVERLAP_CROPS } from './home-overlap-crops.js';
 import { HOMEOVERLAP_TEX_KEY } from './home-overlap-constants.js';
@@ -80,6 +81,11 @@ function randPhase(seed) {
   return x - Math.floor(x);
 }
 
+/** 決定的な [lo, hi) に近い範囲（終端扱いは呼び出し側で round） */
+function seededRange(lo, hi, seed) {
+  return lo + randPhase(seed) * (hi - lo);
+}
+
 function easeOutCubic(t) {
   const u = 1 - t;
   return 1 - u * u * u;
@@ -126,6 +132,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
       : performance.now();
 
   scene._homeLinkReveal = { play: 0, sub: [0, 0, 0] };
+  scene._overlapGlyphReveal = { P: 0, L: 0, A: 0, V: 0, y: 0 };
   scene._redrawHomeUI();
 
   const targetByKey = {
@@ -148,6 +155,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
   hideRealGlyphs();
 
   const fallbackImmediate = () => {
+    scene._overlapGlyphReveal = null;
     scene._homeLinkReveal = { play: 1, sub: [1, 1, 1] };
     scene._delta.startFrame.offsetX = 0;
     scene._delta.startFrame.offsetY = 0;
@@ -277,19 +285,92 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
       scalePeak,
       alphaDip,
       handoffAlpha,
+      landed: false,
+      lagConvMs: 0,
+      postSnapDelayMs: 0,
+      totalDur: 0,
     });
   });
 
-  let maxTEnd = 0;
+  let dP = seededRange(0, 26, 7101);
+  let dL = dP + seededRange(40, 118, 7102);
+  let dA = dL + seededRange(38, 115, 7103);
+  if (randPhase(7104) < 0.26) {
+    const bumpL = seededRange(-22, 38, 7105);
+    const bumpA = seededRange(-18, 28, 7106);
+    dL = Math.max(dP + 32, dL + bumpL);
+    dA = Math.max(dL + 36, dA + bumpA);
+  }
+  const dV = Math.max(dP, dL, dA) + seededRange(50, 118, 7107);
+
+  const playMaxStart = Math.max(dP, dL, dA, dV);
+  let dO = playMaxStart + seededRange(40, 108, 7111);
+  let dE = dO + seededRange(78, 172, 7112);
+  let dR = dE + seededRange(82, 178, 7113);
+
+  const lagMap = {
+    P: dP,
+    L: dL,
+    A: dA,
+    V: dV,
+    O: dO,
+    E: dE,
+    R: dR,
+  };
+
   parts.forEach((p) => {
-    const tDone = p.shockMs + p.sd + p.cd + p.snapMs;
-    if (tDone > maxTEnd) maxTEnd = tDone;
+    p.lagConvMs = Math.round(lagMap[p.key] ?? 0);
+    p.postSnapDelayMs = Math.round(seededRange(30, 90, p.seed + 7400));
+    p.totalDur =
+      p.shockMs + p.sd + p.lagConvMs + p.cd + p.postSnapDelayMs + p.snapMs;
   });
 
   if (!scene._bootToHomeFlying) scene._bootToHomeFlying = [];
   scene._bootToHomeFlying.push(...parts.map((p) => p.sprite));
 
+  const cancelOverlapRevealSideEffects = () => {
+    if (scene._overlapYRevealTimer) {
+      scene.time.removeEvent(scene._overlapYRevealTimer);
+      scene._overlapYRevealTimer = null;
+    }
+    if (scene._overlapYRevealTweenObj) {
+      scene.tweens.killTweensOf(scene._overlapYRevealTweenObj);
+      scene._overlapYRevealTweenObj = null;
+    }
+    scene._overlapYRevealTween = null;
+  };
+
+  const scheduleYReveal = () => {
+    cancelOverlapRevealSideEffects();
+    const delayMs = Math.round(seededRange(28, 82, 7921));
+    scene._overlapYRevealTimer = scene.time.delayedCall(delayMs, () => {
+      scene._overlapYRevealTimer = null;
+      scene._overlapYRevealTweenObj = { v: 0 };
+      scene._overlapYRevealTween = scene.tweens.add({
+        targets: scene._overlapYRevealTweenObj,
+        v: 1,
+        duration: Math.round(seededRange(88, 148, 7922)),
+        ease: 'Sine.easeOut',
+        onUpdate: () => {
+          if (scene._overlapGlyphReveal) {
+            scene._overlapGlyphReveal.y = scene._overlapYRevealTweenObj.v;
+          }
+          scene._redrawHomeUI();
+        },
+        onComplete: () => {
+          if (scene._overlapGlyphReveal) {
+            scene._overlapGlyphReveal.y = 1;
+          }
+          scene._overlapYRevealTweenObj = null;
+          scene._overlapYRevealTween = null;
+          scene._redrawHomeUI();
+        },
+      });
+    });
+  };
+
   const stopRebuild = () => {
+    cancelOverlapRevealSideEffects();
     if (scene._overlapRebuildStep) {
       scene.events.off('update', scene._overlapRebuildStep);
       scene._overlapRebuildStep = null;
@@ -297,9 +378,33 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
   };
   scene._cancelOverlapRebuild = stopRebuild;
 
+  const scatterEndState = (p) => {
+    const { s0, kick, sx0, sy0, rotScatter, handoffAlpha } = p;
+    return {
+      x: s0.x + kick.x,
+      y: s0.y + kick.y,
+      scaleX: sx0,
+      scaleY: sy0,
+      rotation: rotScatter,
+      alpha: Math.min(1, handoffAlpha * 1.06),
+    };
+  };
+
+  const convergeEndState = (p) => {
+    const { over, txs, tys, rotT } = p;
+    return {
+      x: over.x,
+      y: over.y,
+      scaleX: txs,
+      scaleY: tys,
+      rotation: rotT,
+      alpha: 1,
+    };
+  };
+
   /**
    * @param {typeof parts[0]} p
-   * @param {number} u ms since rebuild start（全断片同期の破断ショック用に delay なし）
+   * @param {number} u ms since rebuild start — 破断〜飛散は全断片同期、収束〜スナップのみ lag でずらす
    */
   const samplePart = (p, u) => {
     const {
@@ -324,6 +429,8 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
       scalePeak,
       alphaDip,
       handoffAlpha,
+      lagConvMs,
+      postSnapDelayMs,
     } = p;
 
     if (u <= 0) {
@@ -381,9 +488,14 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
       };
     }
 
-    const u2 = u1 - sd;
-    if (u2 <= cd) {
-      const sn = Phaser.Math.Clamp(u2 / cd, 0, 1);
+    const uRel = u1 - sd;
+    if (uRel < lagConvMs) {
+      return scatterEndState(p);
+    }
+
+    const uConv = uRel - lagConvMs;
+    if (uConv <= cd) {
+      const sn = Phaser.Math.Clamp(uConv / cd, 0, 1);
       const s = easeConvergeT(sn);
       const pt = quadBezier(sc, cp, over, s);
       return {
@@ -396,12 +508,28 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
       };
     }
 
-    const u3 = u2 - cd;
-    const wn = Phaser.Math.Clamp(u3 / snapMs, 0, 1);
-    const w = easeOutCubic(wn);
+    const uAfterConv = uConv - cd;
+    if (uAfterConv < postSnapDelayMs) {
+      return convergeEndState(p);
+    }
+
+    const uSnap = uAfterConv - postSnapDelayMs;
+    if (uSnap <= snapMs) {
+      const wn = Phaser.Math.Clamp(uSnap / snapMs, 0, 1);
+      const w = easeOutCubic(wn);
+      return {
+        x: Phaser.Math.Linear(over.x, tEnd.x, w),
+        y: Phaser.Math.Linear(over.y, tEnd.y, w),
+        scaleX: txs,
+        scaleY: tys,
+        rotation: rotT,
+        alpha: 1,
+      };
+    }
+
     return {
-      x: Phaser.Math.Linear(over.x, tEnd.x, w),
-      y: Phaser.Math.Linear(over.y, tEnd.y, w),
+      x: tEnd.x,
+      y: tEnd.y,
       scaleX: txs,
       scaleY: tys,
       rotation: rotT,
@@ -409,36 +537,71 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     };
   };
 
+  const landOnePart = (p) => {
+    if (p.landed) return;
+    p.landed = true;
+    if (p.sprite && !p.sprite.destroyed) {
+      p.sprite.destroy();
+    }
+    if (!scene._overlapGlyphReveal) {
+      scene._overlapGlyphReveal = { P: 0, L: 0, A: 0, V: 0, y: 0 };
+    }
+    const gr = scene._overlapGlyphReveal;
+    if (p.key === 'P') gr.P = 1;
+    if (p.key === 'L') gr.L = 1;
+    if (p.key === 'A') gr.A = 1;
+    if (p.key === 'V') {
+      gr.V = 1;
+      scheduleYReveal();
+    }
+    if (p.key === 'O') scene._homeLinkReveal.sub[0] = 1;
+    if (p.key === 'E') scene._homeLinkReveal.sub[1] = 1;
+    if (p.key === 'R') scene._homeLinkReveal.sub[2] = 1;
+    scene._redrawHomeUI();
+  };
+
+  const isOverlapRebuildSettled = () => {
+    if (!parts.every((p) => p.landed)) return false;
+    const gr = scene._overlapGlyphReveal;
+    if (gr && (gr.y ?? 0) < 1) return false;
+    return true;
+  };
+
   const step = () => {
     const now = performance.now();
     const T = now - epochMs;
 
     parts.forEach((p) => {
-      const u = T;
-      const st = samplePart(p, u);
-      p.sprite.setPosition(st.x, st.y);
-      p.sprite.setScale(st.scaleX, st.scaleY);
-      p.sprite.setRotation(st.rotation);
-      p.sprite.setAlpha(Phaser.Math.Clamp(st.alpha, 0.08, 1));
+      if (p.landed) return;
+      if (T >= p.totalDur) {
+        landOnePart(p);
+      } else {
+        const st = samplePart(p, T);
+        p.sprite.setPosition(st.x, st.y);
+        p.sprite.setScale(st.scaleX, st.scaleY);
+        p.sprite.setRotation(st.rotation);
+        p.sprite.setAlpha(Phaser.Math.Clamp(st.alpha, 0.08, 1));
+      }
     });
 
-    if (T < maxTEnd) return;
+    if (!isOverlapRebuildSettled()) return;
 
     stopRebuild();
 
     parts.forEach((f) => {
-      f.sprite.setPosition(f.tEnd.x, f.tEnd.y);
-      f.sprite.setScale(f.txs, f.tys);
-      f.sprite.setRotation(f.rotT);
-      f.sprite.setAlpha(1);
-    });
-
-    parts.forEach((f) => {
-      f.sprite.destroy();
+      if (f.sprite && !f.sprite.destroyed) {
+        f.sprite.setPosition(f.tEnd.x, f.tEnd.y);
+        f.sprite.setScale(f.txs, f.tys);
+        f.sprite.setRotation(f.rotT);
+        f.sprite.setAlpha(1);
+        f.sprite.destroy();
+      }
     });
     if (scene._bootToHomeFlying?.length) {
       scene._bootToHomeFlying = scene._bootToHomeFlying.filter((s) => !s.destroyed);
     }
+
+    scene._overlapGlyphReveal = null;
 
     scene._delta.startFrame.offsetX = Phaser.Math.FloatBetween(-3.5, 3.5);
     scene._delta.startFrame.offsetY = Phaser.Math.FloatBetween(-2.8, 2.8);

@@ -57,6 +57,19 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
   const panelImgCy = baseCy + ppY;
   const flashMul = scene._startPressFlash ? 1.15 : 1.0;
   const lr = Phaser.Math.Clamp(linkReveal, 0, 1);
+  /** Boot→Home 再接続中のみ: 断片ごとの点灯（未設定時は lr のみ） */
+  const gr = scene._overlapGlyphReveal;
+  const effGlyph = (k) => Math.max(lr, gr?.[k] ?? 0);
+  const glyphBoost = gr
+    ? Math.max(
+        gr.P ?? 0,
+        gr.L ?? 0,
+        gr.A ?? 0,
+        gr.V ?? 0,
+        gr.y ?? 0,
+      )
+    : 0;
+  const lrPanel = Math.max(lr, glyphBoost);
 
   const Cr = HOMEOVERLAP_CROPS;
   const P = Cr.P;
@@ -103,10 +116,16 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
   scene._homeDbgPlayDisplayH = playBgDispH;
 
   const gx = (s) => _homeUiRandInt(s, -2, 2);
+  const rBase = _homeUiRandRange(0x492100, 0.85, 1.0);
   const alphaPlay = Math.min(
     1,
-    lr * flashMul * sf.alpha * _homeUiRandRange(0x492100, 0.85, 1.0),
+    lrPanel * flashMul * sf.alpha * rBase,
   );
+  const alphaP = Math.min(1, effGlyph('P') * flashMul * sf.alpha * rBase);
+  const alphaL = Math.min(1, effGlyph('L') * flashMul * sf.alpha * rBase);
+  const alphaA = Math.min(1, effGlyph('A') * flashMul * sf.alpha * rBase);
+  const alphaV = Math.min(1, effGlyph('V') * flashMul * sf.alpha * rBase);
+  const alphaY = Math.min(1, effGlyph('y') * flashMul * sf.alpha * rBase);
 
   layoutHomeBgNormalCropPanel(scene, scene._playBgPanelImg, panelL, panelT, panelW, panelH, {
     alpha: alphaPlay,
@@ -134,21 +153,21 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
 
   let xCursor = textCx - totalW * 0.5;
   const cP = xCursor + wP * 0.5;
-  placeGlyph(scene._startP, cP, playCy, gS, gSy, 0, 0x492050, alphaPlay, false);
+  placeGlyph(scene._startP, cP, playCy, gS, gSy, 0, 0x492050, alphaP, false);
   xCursor += wP + gapPL;
   const cL = xCursor + wL * 0.5;
-  placeGlyph(scene._startL, cL, playCy, gS, gSy, 0, 0x492060, alphaPlay);
+  placeGlyph(scene._startL, cL, playCy, gS, gSy, 0, 0x492060, alphaL);
   xCursor += wL + gapLA;
   const cA = xCursor + wA * 0.5;
-  placeGlyph(scene._startA, cA, playCy, gS, gSy, 0, 0x492030, alphaPlay);
+  placeGlyph(scene._startA, cA, playCy, gS, gSy, 0, 0x492030, alphaA);
   xCursor += wA + gapAY;
   scene._startY.setPosition(
     xCursor + wY * 0.5 + gx(0x492070),
     playCy + (scene._startYBaselineOffset ?? 0),
   );
-  scene._startY.setAlpha(alphaPlay * (scene._startYGlyphAlpha ?? 1));
+  scene._startY.setAlpha(alphaY * (scene._startYGlyphAlpha ?? 1));
 
-  placeGlyph(scene._startV, triCx, triCy, gS, gSy, -90, 0x492210, alphaPlay, false);
+  placeGlyph(scene._startV, triCx, triCy, gS, gSy, -90, 0x492210, alphaV, false);
 
   scene._startHitZone.setPosition(baseCx, baseCy);
   scene._startHitZone.setSize(panelW + 8, panelH + 8);
