@@ -1,12 +1,31 @@
 /**
  * Boot の OVERLAP タイトル PNG から Home の PLAY / SUB へ「破片を回収・再接続」する演出。
- * 一直線 tween は使わず、二次ベジェ＋漂い＋短い欠けで収束させる。
+ * Boot 崩壊開始と同期して散開→二次ベジェで収束→到着時の軽い安定化。一直線・強_glitch・RGBズレは使わない。
  */
 import { HOMEOVERLAP_CROPS } from './home-overlap-crops.js';
 import { HOMEOVERLAP_TEX_KEY } from './home-overlap-constants.js';
 import { addOverlapCropImage } from './home-ui.js';
 
 export const BOOT_OVERLAP_HANDOFF_KEY = 'bootOverlapTitleHandoff';
+
+/** Boot 崩壊開始時点のタイトルスナップショット（断片の初期位置用） */
+export const BOOT_OVERLAP_COLLAPSE_START_KEY = 'bootOverlapCollapseStartHandoff';
+
+/** performance.now() 基準の崩壊／演出開始時刻 */
+export const OVERLAP_REBUILD_T0_KEY = 'overlapRebuildT0Ms';
+
+/** Home が Boot 崩壊完了まで背景オーバーレイを遅らせる */
+export const REG_BOOT_HOME_WAIT_COLLAPSE = 'bootHomeWaitCollapseOverlay';
+
+/** Boot が崩壊処理とクリーンアップを終えた（Home が不透過化してよい） */
+export const REG_BOOT_COLLAPSE_DONE_FOR_HOME = 'bootCollapseDoneForHome';
+
+export const REG = {
+  collapseStartHandoff: BOOT_OVERLAP_COLLAPSE_START_KEY,
+  rebuildT0: OVERLAP_REBUILD_T0_KEY,
+  homeWaitCollapse: REG_BOOT_HOME_WAIT_COLLAPSE,
+  collapseDoneForHome: REG_BOOT_COLLAPSE_DONE_FOR_HOME,
+};
 
 /**
  * @param {Phaser.GameObjects.Image|null} img
@@ -30,6 +49,17 @@ export function captureBootOverlapTitleHandoff(img, registry) {
   });
 }
 
+/**
+ * Boot 崩壊開始と同じフレームで呼ぶ。タイトル画像はこの後 visible false でもよい。
+ * @param {Phaser.GameObjects.Image|null} img
+ * @param {Phaser.Data.DataManager} registry
+ */
+export function captureBootOverlapCollapseStartHandoff(img, registry) {
+  captureBootOverlapTitleHandoff(img, registry);
+  const h = registry.get(BOOT_OVERLAP_HANDOFF_KEY);
+  registry.set(BOOT_OVERLAP_COLLAPSE_START_KEY, h);
+}
+
 function worldPosFromHandoff(h, cropKey) {
   const c = HOMEOVERLAP_CROPS[cropKey];
   const lx = (c.x + c.w * 0.5 - h.natW * 0.5) * h.scaleX;
@@ -47,14 +77,33 @@ function randPhase(seed) {
   return x - Math.floor(x);
 }
 
+function easeOutCubic(t) {
+  const u = 1 - t;
+  return 1 - u * u * u;
+}
+
+function easeInOutQuad(t) {
+  return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+}
+
 /**
  * @param {Phaser.Scene} scene
- * @param {object} HOME_LAYOUT
+ * @param {object} _HOME_LAYOUT
  * @param {function(): void} [onComplete]
  */
 export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
-  const handoff = scene.registry.get(BOOT_OVERLAP_HANDOFF_KEY);
-  scene.registry.remove(BOOT_OVERLAP_HANDOFF_KEY);
+  const reg = scene.game.registry;
+  const handoff =
+    reg.get(BOOT_OVERLAP_COLLAPSE_START_KEY) ?? reg.get(BOOT_OVERLAP_HANDOFF_KEY);
+  reg.remove(BOOT_OVERLAP_COLLAPSE_START_KEY);
+  reg.remove(BOOT_OVERLAP_HANDOFF_KEY);
+
+  const t0Raw = reg.get(OVERLAP_REBUILD_T0_KEY);
+  reg.remove(OVERLAP_REBUILD_T0_KEY);
+  const epochMs =
+    typeof t0Raw === 'number' && Number.isFinite(t0Raw)
+      ? t0Raw
+      : performance.now();
 
   scene._homeLinkReveal = { play: 0, sub: [0, 0, 0] };
   scene._redrawHomeUI();
@@ -92,11 +141,43 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     return;
   }
 
+  scene._redrawHomeUI();
+
+  const W = scene.scale.width;
+  const H = scene.scale.height;
+  const margin = 28;
+
   const texKey = HOMEOVERLAP_TEX_KEY;
-  const depth = 14;
+  const depth = 18;
   const keys = ['P', 'L', 'A', 'V', 'O', 'E', 'R'];
 
-  /** @type {{ sprite: Phaser.GameObjects.Image, key: string, start: {x:number,y:number}, sx0: number, sy0: number, rot0: number, tx: number, ty: number, txs: number, tys: number, rotT: number, startFrac: number, seed: number }[]} */
+  let scatterDur = Phaser.Math.FloatBetween(150, 220);
+  let convergeDur = Phaser.Math.FloatBetween(650, 950);
+  const stabilizeDur = Phaser.Math.FloatBetween(120, 200);
+
+  /** @type {Record<string, number>} */
+  const startDelay = {};
+  let acc = 0;
+  keys.forEach((key, i) => {
+    startDelay[key] = acc;
+    if (i === keys.length - 1) return;
+    acc += Math.round(Phaser.Math.FloatBetween(30, 80));
+    if (i === 3) acc += Math.round(Phaser.Math.FloatBetween(40, 70));
+  });
+
+  let maxEnd = 0;
+  keys.forEach((key) => {
+    const end = startDelay[key] + scatterDur + convergeDur + stabilizeDur;
+    if (end > maxEnd) maxEnd = end;
+  });
+  const budget = Phaser.Math.FloatBetween(1080, 1280);
+  if (maxEnd > budget) {
+    const s = budget / maxEnd;
+    scatterDur *= s;
+    convergeDur *= s;
+  }
+
+  /** @type {{ sprite: Phaser.GameObjects.Image, key: string, seed: number, sx0: number, sy0: number, rot0: number, txs: number, tys: number, rotT: number, s0: {x:number,y:number}, sc: {x:number,y:number}, sm: {x:number,y:number}, st: {x:number,y:number}, tEnd: {x:number,y:number}, delay: number, sd: number, cd: number, std: number, wobbleK: number }[]} */
   const parts = [];
 
   keys.forEach((key, idx) => {
@@ -119,130 +200,230 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     const tys = g.scaleY;
     const rotT = g.rotation;
 
+    const seed = 200 + idx * 31;
+    const towardX = tx - start.x;
+    const towardY = ty - start.y;
+    let sx = Phaser.Math.FloatBetween(40, 120) * (randPhase(seed) < 0.5 ? -1 : 1);
+    let sy = Phaser.Math.FloatBetween(-80, 80);
+    if (sx * towardX + sy * towardY > 0) sx *= -1;
+
+    let scx = start.x + sx;
+    let scy = start.y + sy;
+    scx = Phaser.Math.Clamp(scx, margin, W - margin);
+    scy = Phaser.Math.Clamp(scy, margin, H - margin);
+
+    const drot =
+      Phaser.Math.DegToRad(Phaser.Math.FloatBetween(8, 18)) *
+      (randPhase(seed + 1) < 0.5 ? -1 : 1);
+    const rotScatter = handoff.rotation + drot;
+
+    const dx = tx - scx;
+    const dy = ty - scy;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const bend =
+      (randPhase(seed + 4) - 0.5) * 72 + Math.sin(seed * 0.11) * 16;
+    const smx = (scx + tx) * 0.5 + nx * bend;
+    const smy = (scy + ty) * 0.5 + ny * bend;
+
+    const dlen = Math.hypot(towardX, towardY) || 1;
+    const ux = towardX / dlen;
+    const uy = towardY / dlen;
+    const overshootPx = Phaser.Math.FloatBetween(2.2, 4.8);
+    const stx = tx + ux * overshootPx;
+    const sty = ty + uy * overshootPx;
+
+    const delay = startDelay[key];
+    const sd = scatterDur;
+    const cd = convergeDur;
+    const std = stabilizeDur;
+    const wobbleK = 5 + randPhase(seed + 5) * 7;
+
     parts.push({
       sprite: spr,
       key,
-      start,
+      seed,
       sx0,
       sy0,
       rot0: handoff.rotation,
-      tx,
-      ty,
       txs,
       tys,
       rotT,
-      startFrac: idx * 0.055 + randPhase(idx * 13.7) * 0.04,
-      seed: 200 + idx * 31,
+      s0: { x: start.x, y: start.y },
+      sc: { x: scx, y: scy },
+      sm: { x: smx, y: smy },
+      st: { x: stx, y: sty },
+      tEnd: { x: tx, y: ty },
+      delay,
+      sd,
+      cd,
+      std,
+      wobbleK,
+      rotScatter,
+      handoffAlpha: Phaser.Math.Clamp((handoff.alpha || 0.25) * 2.8, 0.42, 0.92),
     });
+  });
+
+  let maxTEnd = 0;
+  parts.forEach((p) => {
+    const tDone = p.delay + p.sd + p.cd + p.std;
+    if (tDone > maxTEnd) maxTEnd = tDone;
   });
 
   if (!scene._bootToHomeFlying) scene._bootToHomeFlying = [];
   scene._bootToHomeFlying.push(...parts.map((p) => p.sprite));
 
-  const D = Phaser.Math.FloatBetween(760, 1180);
+  const stopRebuild = () => {
+    if (scene._overlapRebuildStep) {
+      scene.events.off('update', scene._overlapRebuildStep);
+      scene._overlapRebuildStep = null;
+    }
+  };
+  scene._cancelOverlapRebuild = stopRebuild;
 
-  const mx = (i) => {
-    const p = parts[i];
-    const dx = p.tx - p.start.x;
-    const dy = p.ty - p.start.y;
-    const midx = (p.start.x + p.tx) * 0.5 + Math.sin(p.seed * 0.7) * 36 + (randPhase(p.seed) - 0.5) * 24;
-    const midy = (p.start.y + p.ty) * 0.5 + Math.cos(p.seed * 0.55) * -30 + (randPhase(p.seed + 3) - 0.5) * 20;
-    return { midx, midy, dx, dy };
+  /**
+   * @param {typeof parts[0]} p
+   * @param {number} u local ms from part.delay
+   */
+  const samplePart = (p, u) => {
+    const { s0, sc, sm, st, tEnd } = p;
+    const { sd, cd, std, rot0, rotScatter, rotT, sx0, sy0, txs, tys, wobbleK } = p;
+
+    if (u <= 0) {
+      return {
+        x: s0.x,
+        y: s0.y,
+        scaleX: sx0,
+        scaleY: sy0,
+        rotation: rot0,
+        alpha: p.handoffAlpha,
+      };
+    }
+
+    if (u <= sd) {
+      const t = easeOutCubic(u / sd);
+      const bx = Phaser.Math.Linear(s0.x, sc.x, t);
+      const by = Phaser.Math.Linear(s0.y, sc.y, t);
+      const rx = Phaser.Math.Linear(rot0, rotScatter, t);
+      return {
+        x: bx,
+        y: by,
+        scaleX: sx0,
+        scaleY: sy0,
+        rotation: rx,
+        alpha: Phaser.Math.Linear(p.handoffAlpha, Math.min(1, p.handoffAlpha * 1.05), t),
+      };
+    }
+
+    const u2 = u - sd;
+    if (u2 <= cd) {
+      const s = easeOutCubic(u2 / cd);
+      const omt = 1 - s;
+      let bx =
+        omt * omt * sc.x + 2 * omt * s * sm.x + s * s * tEnd.x;
+      let by =
+        omt * omt * sc.y + 2 * omt * s * sm.y + s * s * tEnd.y;
+      const dx = tEnd.x - sc.x;
+      const dy = tEnd.y - sc.y;
+      const plen = Math.hypot(dx, dy) || 1;
+      const pnx = -dy / plen;
+      const pny = dx / plen;
+      const wob =
+        Math.sin(s * Math.PI * wobbleK + p.seed * 0.3) * (1 - s) * 6.5;
+      bx += pnx * wob;
+      by += pny * wob;
+      return {
+        x: bx,
+        y: by,
+        scaleX: Phaser.Math.Linear(sx0, txs, s),
+        scaleY: Phaser.Math.Linear(sy0, tys, s),
+        rotation: Phaser.Math.Linear(rotScatter, rotT, s),
+        alpha: Phaser.Math.Linear(Math.min(1, p.handoffAlpha * 1.05), 1, s),
+      };
+    }
+
+    const u3 = u2 - cd;
+    const stNorm = Phaser.Math.Clamp(u3 / std, 0, 1);
+    const split = 0.42;
+    let px;
+    let py;
+    if (stNorm < split) {
+      const w = easeOutCubic(stNorm / split);
+      px = Phaser.Math.Linear(tEnd.x, st.x, w);
+      py = Phaser.Math.Linear(tEnd.y, st.y, w);
+    } else {
+      const w = easeInOutQuad((stNorm - split) / (1 - split));
+      px = Phaser.Math.Linear(st.x, tEnd.x, w);
+      py = Phaser.Math.Linear(st.y, tEnd.y, w);
+    }
+    const pulse = 1 + 0.1 * Math.sin(stNorm * Math.PI);
+    const rotSettle = rotT + (1 - stNorm) * 0.04 * Math.sin(stNorm * Math.PI * 2 + p.seed * 0.1);
+    return {
+      x: px,
+      y: py,
+      scaleX: txs,
+      scaleY: tys,
+      rotation: rotSettle,
+      alpha: Phaser.Math.Clamp(pulse, 0.85, 1),
+    };
   };
 
-  const mids = parts.map((_, i) => mx(i));
+  const step = () => {
+    const now = performance.now();
+    const T = now - epochMs;
 
-  const state = { p: 0 };
+    parts.forEach((p) => {
+      const u = T - p.delay;
+      const st = samplePart(p, u);
+      p.sprite.setPosition(st.x, st.y);
+      p.sprite.setScale(st.scaleX, st.scaleY);
+      p.sprite.setRotation(st.rotation);
+      p.sprite.setAlpha(Phaser.Math.Clamp(st.alpha, 0.08, 1));
+    });
 
-  scene.tweens.add({
-    targets: state,
-    p: 1,
-    duration: D,
-    ease: 'Linear',
-    onUpdate: () => {
-      const gProg = state.p;
-      parts.forEach((f, i) => {
-        const mid = mids[i];
-        let lf = gProg <= f.startFrac ? 0 : (gProg - f.startFrac) / (1 - f.startFrac);
-        lf = Phaser.Math.Clamp(lf, 0, 1);
-        const e = Phaser.Math.Easing.Cubic.Out(lf);
+    if (T < maxTEnd) return;
 
-        const sx = f.start.x;
-        const sy = f.start.y;
-        const tx = f.tx;
-        const ty = f.ty;
-        const { midx, midy } = mid;
+    stopRebuild();
 
-        let bx =
-          (1 - e) * (1 - e) * sx + 2 * (1 - e) * e * midx + e * e * tx;
-        let by =
-          (1 - e) * (1 - e) * sy + 2 * (1 - e) * e * midy + e * e * ty;
+    parts.forEach((f) => {
+      f.sprite.setPosition(f.tEnd.x, f.tEnd.y);
+      f.sprite.setScale(f.txs, f.tys);
+      f.sprite.setRotation(f.rotT);
+      f.sprite.setAlpha(1);
+    });
 
-        const plen = Math.hypot(mid.dx, mid.dy) || 1;
-        const nx = -mid.dy / plen;
-        const ny = mid.dx / plen;
-        const wob =
-          Math.sin(lf * Math.PI * (6.2 + randPhase(f.seed + 1) * 2)) *
-          (1 - e) *
-          13;
-        const lag = Math.sin(lf * Math.PI * 9 + f.seed * 0.2) * (1 - e) * 5;
-        bx += nx * wob + nx * lag * 0.35;
-        by += ny * wob + ny * lag * 0.35;
+    parts.forEach((f) => {
+      f.sprite.destroy();
+    });
+    if (scene._bootToHomeFlying?.length) {
+      scene._bootToHomeFlying = scene._bootToHomeFlying.filter((s) => !s.destroyed);
+    }
 
-        const dipBand = lf > 0.38 && lf < 0.44;
-        let a = Phaser.Math.Linear(
-          Phaser.Math.Clamp((handoff.alpha || 0.25) * 2.8, 0.42, 0.92),
-          1,
-          e,
-        );
-        if (dipBand) a *= 0.28;
+    scene._delta.startFrame.offsetX = Phaser.Math.FloatBetween(-3.5, 3.5);
+    scene._delta.startFrame.offsetY = Phaser.Math.FloatBetween(-2.8, 2.8);
+    scene._delta.startFrame.alpha = 0.86;
 
-        f.sprite.setPosition(bx, by);
-        f.sprite.setScale(
-          Phaser.Math.Linear(f.sx0, f.txs, e),
-          Phaser.Math.Linear(f.sy0, f.tys, e),
-        );
-        f.sprite.setRotation(Phaser.Math.Linear(f.rot0, f.rotT, e));
-        f.sprite.setAlpha(Phaser.Math.Clamp(a, 0.08, 1));
-      });
-    },
-    onComplete: () => {
-      parts.forEach((f) => {
-        f.sprite.setPosition(f.tx, f.ty);
-        f.sprite.setScale(f.txs, f.tys);
-        f.sprite.setRotation(f.rotT);
-        f.sprite.setAlpha(1);
-      });
+    scene._homeLinkReveal = { play: 1, sub: [1, 1, 1] };
+    scene._redrawHomeUI();
 
-      parts.forEach((f) => {
-        f.sprite.destroy();
-      });
-      if (scene._bootToHomeFlying?.length) {
-        scene._bootToHomeFlying = scene._bootToHomeFlying.filter((s) => !s.destroyed);
-      }
+    scene.tweens.add({
+      targets: scene._delta.startFrame,
+      offsetX: 0,
+      offsetY: 0,
+      alpha: 1,
+      duration: Phaser.Math.FloatBetween(85, 130),
+      ease: 'Sine.easeOut',
+      onUpdate: () => {
+        scene._redrawHomeUI();
+      },
+      onComplete: () => {
+        scene._redrawHomeUI();
+        onComplete?.();
+      },
+    });
+  };
 
-      scene._delta.startFrame.offsetX = Phaser.Math.FloatBetween(-3.5, 3.5);
-      scene._delta.startFrame.offsetY = Phaser.Math.FloatBetween(-2.8, 2.8);
-      scene._delta.startFrame.alpha = 0.86;
-
-      scene._homeLinkReveal = { play: 1, sub: [1, 1, 1] };
-      scene._redrawHomeUI();
-
-      scene.tweens.add({
-        targets: scene._delta.startFrame,
-        offsetX: 0,
-        offsetY: 0,
-        alpha: 1,
-        duration: Phaser.Math.FloatBetween(85, 130),
-        ease: 'Sine.easeOut',
-        onUpdate: () => {
-          scene._redrawHomeUI();
-        },
-        onComplete: () => {
-          scene._redrawHomeUI();
-          onComplete?.();
-        },
-      });
-    },
-  });
+  scene._overlapRebuildStep = step;
+  scene.events.on('update', step);
 }
