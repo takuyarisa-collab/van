@@ -10,6 +10,7 @@ import {
   redrawHomeUI,
 } from './home-ui.js';
 import { HOMEOVERLAP_CROPS } from './home-overlap-crops.js';
+import { runBootToHomeOverlapRebuild } from './home-overlap-rebuild.js';
 
 /**
  * @param {number} WORLD_W
@@ -179,32 +180,12 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
 
       this._startPressFlash = 0;
 
-      this._homeLinkReveal = { play: 0, sub: [0, 0, 0] };
-      this._redrawHomeUI();
+      this._bootToHomeFlying = [];
+      this._homeReady = false;
 
-      const _staggerGap = () => Phaser.Math.FloatBetween(100, 200);
-      let _staggerAcc = _staggerGap();
-      this.time.delayedCall(_staggerAcc, () => {
-        this._homeLinkReveal.play = 1;
-        this._redrawHomeUI();
+      runBootToHomeOverlapRebuild(this, HOME_LAYOUT, () => {
+        this._homeReady = true;
       });
-      _staggerAcc += _staggerGap();
-      this.time.delayedCall(_staggerAcc, () => {
-        this._homeLinkReveal.sub[0] = 1;
-        this._redrawHomeUI();
-      });
-      _staggerAcc += _staggerGap();
-      this.time.delayedCall(_staggerAcc, () => {
-        this._homeLinkReveal.sub[1] = 1;
-        this._redrawHomeUI();
-      });
-      _staggerAcc += _staggerGap();
-      this.time.delayedCall(_staggerAcc, () => {
-        this._homeLinkReveal.sub[2] = 1;
-        this._redrawHomeUI();
-      });
-
-      this._homeReady = true;
       this._debugHud = createDebugHUD(this, () => {
         const _hn = (param) => {
           const v = typeof window !== 'undefined' ? window[param] : undefined;
@@ -241,6 +222,7 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
       this._homeCropDebug = createHomeOverlapCropDebugOverlay(this);
 
       const cleanupHome = () => {
+        this.tweens.killAll();
         this._debugHud?.destroy();
         this._debugHud = null;
         this._homeCropDebug?.destroy?.();
@@ -254,6 +236,8 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this._homeRebuildPanel = null;
         this._homeDebris?.destroy?.();
         this._homeDebris = null;
+        this._bootToHomeFlying?.forEach((s) => s?.destroy?.());
+        this._bootToHomeFlying = null;
         [
           this._startA, this._startP, this._startL, this._startV, this._startY,
         ].forEach((o) => o?.destroy?.());
