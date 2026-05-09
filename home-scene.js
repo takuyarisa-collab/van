@@ -4,13 +4,16 @@ import {
   addOverlapCropImage,
   createHomeDelta,
   createHomeOverlapCropDebugOverlay,
-  destroyBootBgPanelForHome,
   getHomeLayout,
   homeUrlDebugEnabled,
   redrawHomeUI,
 } from './home-ui.js';
 import { HOMEOVERLAP_CROPS } from './home-overlap-crops.js';
-import { runBootToHomeOverlapRebuild } from './home-overlap-rebuild.js';
+import {
+  REG_BOOT_COLLAPSE_DONE_FOR_HOME,
+  REG_BOOT_HOME_WAIT_COLLAPSE,
+  runBootToHomeOverlapRebuild,
+} from './home-overlap-rebuild.js';
 
 /**
  * @param {number} WORLD_W
@@ -41,7 +44,11 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
       /** PLAY 行の「y」— 赤系（サブ尾より明るめ） */
       const PLAY_Y_HEX = '#ff5a5a';
 
-      destroyBootBgPanelForHome(this.scene.get('boot'));
+      const _registry = this.game.registry;
+      this._homeWaitBootCollapse = Boolean(_registry.get(REG_BOOT_HOME_WAIT_COLLAPSE));
+      if (this._homeWaitBootCollapse) {
+        this.cameras.main.setTransparent(true);
+      }
 
       this._homeBackdrop = mountHomeGridOnly(this, {
         width: WORLD_W,
@@ -56,6 +63,9 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
       const _rsx = WORLD_W / this._homeRebuildPanel.width;
       const _rsy = WORLD_H / this._homeRebuildPanel.height;
       this._homeRebuildPanel.setScale(Math.max(_rsx, _rsy));
+      if (this._homeWaitBootCollapse) {
+        this._homeRebuildPanel.setAlpha(0);
+      }
 
       const _scanGridStep = 52;
       const _scanStopRow  = Math.ceil(
@@ -77,7 +87,7 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this._homeDebris = this.add.image(WORLD_W / 2, WORLD_H + 20, 'home-debris')
           .setOrigin(0.5, 1)
           .setScale(_debrisScale)
-          .setAlpha(0.82)
+          .setAlpha(this._homeWaitBootCollapse ? 0 : 0.82)
           .setRotation(_debrisRot)
           .setDepth(-54);
       }
@@ -182,6 +192,7 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
 
       this._bootToHomeFlying = [];
       this._homeReady = false;
+      this._bootCollapseBackdropApplied = false;
 
       runBootToHomeOverlapRebuild(this, HOME_LAYOUT, () => {
         this._homeReady = true;
@@ -222,6 +233,8 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
       this._homeCropDebug = createHomeOverlapCropDebugOverlay(this);
 
       const cleanupHome = () => {
+        this._cancelOverlapRebuild?.();
+        this._cancelOverlapRebuild = null;
         this.tweens.killAll();
         this._debugHud?.destroy();
         this._debugHud = null;
@@ -289,6 +302,22 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
     }
 
     update() {
+      if (
+        this._homeWaitBootCollapse &&
+        !this._bootCollapseBackdropApplied &&
+        this.game.registry.get(REG_BOOT_COLLAPSE_DONE_FOR_HOME)
+      ) {
+        this._bootCollapseBackdropApplied = true;
+        this._homeWaitBootCollapse = false;
+        this.game.registry.remove(REG_BOOT_COLLAPSE_DONE_FOR_HOME);
+        this.cameras.main.setTransparent(false);
+        if (this._homeRebuildPanel && !this._homeRebuildPanel.destroyed) {
+          this._homeRebuildPanel.setAlpha(1);
+        }
+        if (this._homeDebris && !this._homeDebris.destroyed) {
+          this._homeDebris.setAlpha(0.82);
+        }
+      }
       this._debugHud?.tick();
     }
 

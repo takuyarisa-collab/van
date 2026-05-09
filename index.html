@@ -69,12 +69,19 @@
     onload="console.log('[INIT] script loaded')"
     onerror="console.error('[INIT] script load FAILED')"></script>
   <script type="module">
+    import { HOMEOVERLAP_TEX_KEY } from './home-overlap-constants.js';
     import {
       mountBootCollapsedBackdrop,
       mountBootHomeBackdrop,
     } from './boot-home-bg.js';
     import { createHomeScene } from './home-scene.js';
-    import { captureBootOverlapTitleHandoff } from './home-overlap-rebuild.js';
+    import {
+      OVERLAP_REBUILD_T0_KEY,
+      REG_BOOT_COLLAPSE_DONE_FOR_HOME,
+      REG_BOOT_HOME_WAIT_COLLAPSE,
+      captureBootOverlapCollapseStartHandoff,
+    } from './home-overlap-rebuild.js';
+    import { destroyBootBgPanelForHome } from './home-ui.js';
     import {
       NEAR_ATTACK_FRONT_CONTACT_TUNING,
       NEAR_ATTACK_HIT_TUNING,
@@ -168,7 +175,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-09 18:42 UTC';
+      const BUILD_TIMESTAMP = '2026-05-09 21:05 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -610,6 +617,9 @@
           if (!this.textures.exists('home-bg-normal')) {
             this.load.image('home-bg-normal', 'assets/home-bg-normal.png');
           }
+          if (!this.textures.exists(HOMEOVERLAP_TEX_KEY)) {
+            this.load.image(HOMEOVERLAP_TEX_KEY, 'assets/overlap-title.png');
+          }
           // PNG タイトル: 構造体との重ね合わせ確認用
           if (!this.textures.exists('boot-title-png')) {
             this.load.image('boot-title-png', 'assets/overlap-title.png');
@@ -869,6 +879,16 @@
           const _structC = this._bootBackdrop?.containers?.[1];
           if (_structC) _structC.setAlpha(0);
           console.log('[BootScene] collapse phase start', this._collapseDur, 'ms');
+
+          captureBootOverlapCollapseStartHandoff(this._bootTitleImg, this.game.registry);
+          this.game.registry.set(OVERLAP_REBUILD_T0_KEY, performance.now());
+          this.game.registry.set(REG_BOOT_HOME_WAIT_COLLAPSE, true);
+          if (this._bootTitleImg && !this._bootTitleImg.destroyed) {
+            this._bootTitleImg.setVisible(false);
+          }
+          if (!this.scene.isActive('home')) {
+            this.scene.launch('home');
+          }
         }
 
         /** Collapse 完了直前: 残骸を静止化し depth を Home より下へ（destroy / visible 変更なし） */
@@ -932,9 +952,13 @@
           this._collapseTransitionDone = true;
           this._teardownReconnectUI();
           this._freezeBootWreckForHome();
-          captureBootOverlapTitleHandoff(this._bootTitleImg, this.game.registry);
+          destroyBootBgPanelForHome(this);
+          this.game.registry.set(REG_BOOT_COLLAPSE_DONE_FOR_HOME, true);
+          this.game.registry.remove(REG_BOOT_HOME_WAIT_COLLAPSE);
           console.log('[BootScene] overlap handoff → home (wreck retained)');
-          this.scene.launch('home');
+          if (!this.scene.isActive('home')) {
+            this.scene.launch('home');
+          }
         }
 
         update() {
