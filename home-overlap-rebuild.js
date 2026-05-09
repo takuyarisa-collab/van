@@ -1,6 +1,6 @@
 /**
- * Boot の OVERLAP タイトル PNG から Home の PLAY / SUB へ「破片を回収・再接続」する演出。
- * Boot 崩壊開始と同期して散開→二次ベジェで収束→到着時の軽い安定化。一直線・強_glitch・RGBズレは使わない。
+ * Boot の OVERLAP タイトル PNG から Home の PLAY / SUB へ「破断 → 飛散 → 回収 → 固定」で再接続する演出。
+ * 破断ショック（崩壊開始同期）→ 外側 easeOutCubic 飛散 → 単一制御点の二次ベジェで Home へ収束 → 短いオーバーシュート後に最終座標へ固定。
  */
 import { HOMEOVERLAP_CROPS } from './home-overlap-crops.js';
 import { HOMEOVERLAP_TEX_KEY } from './home-overlap-constants.js';
@@ -82,8 +82,25 @@ function easeOutCubic(t) {
   return 1 - u * u * u;
 }
 
-function easeInOutQuad(t) {
-  return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+}
+
+function easeOutExpo(t) {
+  return t >= 1 ? 1 : 1 - Math.pow(2, -10 * t);
+}
+
+/** easeInOutCubic と easeOutExpo の中間 — 回収が「吸い込まれる」寄りの減速 */
+function easeConvergeT(t) {
+  return Phaser.Math.Linear(easeInOutCubic(t), easeOutExpo(t), 0.42);
+}
+
+function quadBezier(p0, p1, p2, t) {
+  const om = 1 - t;
+  return {
+    x: om * om * p0.x + 2 * om * t * p1.x + t * t * p2.x,
+    y: om * om * p0.y + 2 * om * t * p1.y + t * t * p2.y,
+  };
 }
 
 /**
@@ -151,33 +168,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
   const depth = 18;
   const keys = ['P', 'L', 'A', 'V', 'O', 'E', 'R'];
 
-  let scatterDur = Phaser.Math.FloatBetween(150, 220);
-  let convergeDur = Phaser.Math.FloatBetween(650, 950);
-  const stabilizeDur = Phaser.Math.FloatBetween(120, 200);
-
-  /** @type {Record<string, number>} */
-  const startDelay = {};
-  let acc = 0;
-  keys.forEach((key, i) => {
-    startDelay[key] = acc;
-    if (i === keys.length - 1) return;
-    acc += Math.round(Phaser.Math.FloatBetween(30, 80));
-    if (i === 3) acc += Math.round(Phaser.Math.FloatBetween(40, 70));
-  });
-
-  let maxEnd = 0;
-  keys.forEach((key) => {
-    const end = startDelay[key] + scatterDur + convergeDur + stabilizeDur;
-    if (end > maxEnd) maxEnd = end;
-  });
-  const budget = Phaser.Math.FloatBetween(1080, 1280);
-  if (maxEnd > budget) {
-    const s = budget / maxEnd;
-    scatterDur *= s;
-    convergeDur *= s;
-  }
-
-  /** @type {{ sprite: Phaser.GameObjects.Image, key: string, seed: number, sx0: number, sy0: number, rot0: number, txs: number, tys: number, rotT: number, s0: {x:number,y:number}, sc: {x:number,y:number}, sm: {x:number,y:number}, st: {x:number,y:number}, tEnd: {x:number,y:number}, delay: number, sd: number, cd: number, std: number, wobbleK: number }[]} */
+  /** @type {{ sprite: Phaser.GameObjects.Image, key: string, seed: number, sx0: number, sy0: number, rot0: number, txs: number, tys: number, rotT: number, s0: {x:number,y:number}, kick: {x:number,y:number}, sc: {x:number,y:number}, cp: {x:number,y:number}, over: {x:number,y:number}, tEnd: {x:number,y:number}, shockMs: number, sd: number, cd: number, snapMs: number, rotSpike: number, rotScatter: number, scalePeak: number, alphaDip: number, handoffAlpha: number }[]} */
   const parts = [];
 
   keys.forEach((key, idx) => {
@@ -189,9 +180,8 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     spr.setPosition(start.x, start.y);
     spr.setScale(sx0, sy0);
     spr.setRotation(handoff.rotation);
-    spr.setAlpha(
-      Phaser.Math.Clamp((handoff.alpha || 0.25) * 2.8, 0.42, 0.92),
-    );
+    const handoffAlpha = Phaser.Math.Clamp((handoff.alpha || 0.25) * 2.8, 0.42, 0.92);
+    spr.setAlpha(handoffAlpha);
 
     const g = targetByKey[key];
     const tx = g.x;
@@ -201,44 +191,60 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     const rotT = g.rotation;
 
     const seed = 200 + idx * 31;
-    const towardX = tx - start.x;
-    const towardY = ty - start.y;
-    let sx = Phaser.Math.FloatBetween(40, 120) * (randPhase(seed) < 0.5 ? -1 : 1);
-    let sy = Phaser.Math.FloatBetween(-80, 80);
-    if (sx * towardX + sy * towardY > 0) sx *= -1;
+    const vtx = tx - start.x;
+    const vty = ty - start.y;
+    const vHomeLen = Math.hypot(vtx, vty) || 1;
+    const hnx = vtx / vHomeLen;
+    const hny = vty / vHomeLen;
+    const awayX = -hnx;
+    const awayY = -hny;
+    const perpX = -hny;
+    const perpY = hnx;
 
-    let scx = start.x + sx;
-    let scy = start.y + sy;
+    const ox =
+      awayX * Phaser.Math.FloatBetween(45, 115) +
+      perpX * Phaser.Math.FloatBetween(-115, 115);
+    const oy =
+      awayY * Phaser.Math.FloatBetween(35, 105) +
+      perpY * Phaser.Math.FloatBetween(-100, 100);
+
+    let scx = start.x + ox;
+    let scy = start.y + oy;
     scx = Phaser.Math.Clamp(scx, margin, W - margin);
     scy = Phaser.Math.Clamp(scy, margin, H - margin);
 
-    const drot =
-      Phaser.Math.DegToRad(Phaser.Math.FloatBetween(8, 18)) *
-      (randPhase(seed + 1) < 0.5 ? -1 : 1);
-    const rotScatter = handoff.rotation + drot;
+    const kickLen = Phaser.Math.FloatBetween(14, 32);
+    const kick = {
+      x: awayX * kickLen + perpX * Phaser.Math.FloatBetween(-6, 6),
+      y: awayY * kickLen + perpY * Phaser.Math.FloatBetween(-6, 6),
+    };
 
-    const dx = tx - scx;
-    const dy = ty - scy;
-    const len = Math.hypot(dx, dy) || 1;
-    const nx = -dy / len;
-    const ny = dx / len;
-    const bend =
-      (randPhase(seed + 4) - 0.5) * 72 + Math.sin(seed * 0.11) * 16;
-    const smx = (scx + tx) * 0.5 + nx * bend;
-    const smy = (scy + ty) * 0.5 + ny * bend;
+    const drotDeg = Phaser.Math.FloatBetween(18, 35);
+    const rotScatter =
+      handoff.rotation + Phaser.Math.DegToRad(drotDeg) * (randPhase(seed + 1) < 0.5 ? -1 : 1);
 
-    const dlen = Math.hypot(towardX, towardY) || 1;
-    const ux = towardX / dlen;
-    const uy = towardY / dlen;
-    const overshootPx = Phaser.Math.FloatBetween(2.2, 4.8);
-    const stx = tx + ux * overshootPx;
-    const sty = ty + uy * overshootPx;
+    const dirx = tx - scx;
+    const diry = ty - scy;
+    const dlen = Math.hypot(dirx, diry) || 1;
+    const ux = dirx / dlen;
+    const uy = diry / dlen;
+    const overN = Phaser.Math.FloatBetween(1.8, 3.6);
+    const over = { x: tx + ux * overN, y: ty + uy * overN };
 
-    const delay = startDelay[key];
-    const sd = scatterDur;
-    const cd = convergeDur;
-    const std = stabilizeDur;
-    const wobbleK = 5 + randPhase(seed + 5) * 7;
+    const cp = {
+      x: scx * 0.18 + tx * 0.82,
+      y: scy * 0.18 + ty * 0.82,
+    };
+
+    const shockMs = Math.round(Phaser.Math.FloatBetween(72, 112));
+    const sd = Math.round(Phaser.Math.FloatBetween(100, 160));
+    const cd = Math.round(Phaser.Math.FloatBetween(520, 720));
+    const snapMs = Math.round(Phaser.Math.FloatBetween(48, 72));
+
+    const rotSpike = Phaser.Math.DegToRad(Phaser.Math.FloatBetween(24, 44)) *
+      (randPhase(seed + 2) < 0.5 ? -1 : 1);
+    const scalePeak = Phaser.Math.FloatBetween(1.03, 1.08);
+    const alphaDip = Phaser.Math.FloatBetween(0.68, 0.78);
 
     parts.push({
       sprite: spr,
@@ -251,23 +257,26 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
       tys,
       rotT,
       s0: { x: start.x, y: start.y },
+      kick,
       sc: { x: scx, y: scy },
-      sm: { x: smx, y: smy },
-      st: { x: stx, y: sty },
+      cp,
+      over,
       tEnd: { x: tx, y: ty },
-      delay,
+      shockMs,
       sd,
       cd,
-      std,
-      wobbleK,
+      snapMs,
+      rotSpike,
       rotScatter,
-      handoffAlpha: Phaser.Math.Clamp((handoff.alpha || 0.25) * 2.8, 0.42, 0.92),
+      scalePeak,
+      alphaDip,
+      handoffAlpha,
     });
   });
 
   let maxTEnd = 0;
   parts.forEach((p) => {
-    const tDone = p.delay + p.sd + p.cd + p.std;
+    const tDone = p.shockMs + p.sd + p.cd + p.snapMs;
     if (tDone > maxTEnd) maxTEnd = tDone;
   });
 
@@ -284,11 +293,32 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
 
   /**
    * @param {typeof parts[0]} p
-   * @param {number} u local ms from part.delay
+   * @param {number} u ms since rebuild start（全断片同期の破断ショック用に delay なし）
    */
   const samplePart = (p, u) => {
-    const { s0, sc, sm, st, tEnd } = p;
-    const { sd, cd, std, rot0, rotScatter, rotT, sx0, sy0, txs, tys, wobbleK } = p;
+    const {
+      s0,
+      kick,
+      sc,
+      cp,
+      over,
+      tEnd,
+      shockMs,
+      sd,
+      cd,
+      snapMs,
+      rot0,
+      rotSpike,
+      rotScatter,
+      rotT,
+      sx0,
+      sy0,
+      txs,
+      tys,
+      scalePeak,
+      alphaDip,
+      handoffAlpha,
+    } = p;
 
     if (u <= 0) {
       return {
@@ -297,75 +327,79 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
         scaleX: sx0,
         scaleY: sy0,
         rotation: rot0,
-        alpha: p.handoffAlpha,
+        alpha: handoffAlpha,
       };
     }
 
-    if (u <= sd) {
-      const t = easeOutCubic(u / sd);
-      const bx = Phaser.Math.Linear(s0.x, sc.x, t);
-      const by = Phaser.Math.Linear(s0.y, sc.y, t);
-      const rx = Phaser.Math.Linear(rot0, rotScatter, t);
+    if (u <= shockMs) {
+      const t = Phaser.Math.Clamp(u / shockMs, 0, 1);
+      const env = easeOutCubic(t);
+      const x = s0.x + kick.x * env;
+      const y = s0.y + kick.y * env;
+      const bump = Math.sin(Math.PI * Math.pow(t, 0.92));
+      const scaleMul = 1 + (scalePeak - 1) * bump;
+      const dipT = Phaser.Math.Clamp(
+        Math.sin(Math.PI * Math.min(1, t * 2.4)),
+        0,
+        1,
+      );
+      const alpha = handoffAlpha * Phaser.Math.Linear(1, alphaDip, dipT);
       return {
-        x: bx,
-        y: by,
+        x,
+        y,
+        scaleX: sx0 * scaleMul,
+        scaleY: sy0 * scaleMul,
+        rotation: rot0 + rotSpike * bump * (1 - t * 0.2),
+        alpha,
+      };
+    }
+
+    const pShockX = s0.x + kick.x;
+    const pShockY = s0.y + kick.y;
+
+    const u1 = u - shockMs;
+    if (u1 <= sd) {
+      const tn = Phaser.Math.Clamp(u1 / sd, 0, 1);
+      const e = easeOutCubic(tn);
+      return {
+        x: Phaser.Math.Linear(pShockX, sc.x, e),
+        y: Phaser.Math.Linear(pShockY, sc.y, e),
         scaleX: sx0,
         scaleY: sy0,
-        rotation: rx,
-        alpha: Phaser.Math.Linear(p.handoffAlpha, Math.min(1, p.handoffAlpha * 1.05), t),
+        rotation: Phaser.Math.Linear(rot0, rotScatter, e),
+        alpha: Phaser.Math.Linear(
+          handoffAlpha,
+          Math.min(1, handoffAlpha * 1.06),
+          e,
+        ),
       };
     }
 
-    const u2 = u - sd;
+    const u2 = u1 - sd;
     if (u2 <= cd) {
-      const s = easeOutCubic(u2 / cd);
-      const omt = 1 - s;
-      let bx =
-        omt * omt * sc.x + 2 * omt * s * sm.x + s * s * tEnd.x;
-      let by =
-        omt * omt * sc.y + 2 * omt * s * sm.y + s * s * tEnd.y;
-      const dx = tEnd.x - sc.x;
-      const dy = tEnd.y - sc.y;
-      const plen = Math.hypot(dx, dy) || 1;
-      const pnx = -dy / plen;
-      const pny = dx / plen;
-      const wob =
-        Math.sin(s * Math.PI * wobbleK + p.seed * 0.3) * (1 - s) * 6.5;
-      bx += pnx * wob;
-      by += pny * wob;
+      const sn = Phaser.Math.Clamp(u2 / cd, 0, 1);
+      const s = easeConvergeT(sn);
+      const pt = quadBezier(sc, cp, over, s);
       return {
-        x: bx,
-        y: by,
+        x: pt.x,
+        y: pt.y,
         scaleX: Phaser.Math.Linear(sx0, txs, s),
         scaleY: Phaser.Math.Linear(sy0, tys, s),
         rotation: Phaser.Math.Linear(rotScatter, rotT, s),
-        alpha: Phaser.Math.Linear(Math.min(1, p.handoffAlpha * 1.05), 1, s),
+        alpha: Phaser.Math.Linear(Math.min(1, handoffAlpha * 1.06), 1, s),
       };
     }
 
     const u3 = u2 - cd;
-    const stNorm = Phaser.Math.Clamp(u3 / std, 0, 1);
-    const split = 0.42;
-    let px;
-    let py;
-    if (stNorm < split) {
-      const w = easeOutCubic(stNorm / split);
-      px = Phaser.Math.Linear(tEnd.x, st.x, w);
-      py = Phaser.Math.Linear(tEnd.y, st.y, w);
-    } else {
-      const w = easeInOutQuad((stNorm - split) / (1 - split));
-      px = Phaser.Math.Linear(st.x, tEnd.x, w);
-      py = Phaser.Math.Linear(st.y, tEnd.y, w);
-    }
-    const pulse = 1 + 0.1 * Math.sin(stNorm * Math.PI);
-    const rotSettle = rotT + (1 - stNorm) * 0.04 * Math.sin(stNorm * Math.PI * 2 + p.seed * 0.1);
+    const wn = Phaser.Math.Clamp(u3 / snapMs, 0, 1);
+    const w = easeOutCubic(wn);
     return {
-      x: px,
-      y: py,
+      x: Phaser.Math.Linear(over.x, tEnd.x, w),
+      y: Phaser.Math.Linear(over.y, tEnd.y, w),
       scaleX: txs,
       scaleY: tys,
-      rotation: rotSettle,
-      alpha: Phaser.Math.Clamp(pulse, 0.85, 1),
+      rotation: rotT,
+      alpha: 1,
     };
   };
 
@@ -374,7 +408,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     const T = now - epochMs;
 
     parts.forEach((p) => {
-      const u = T - p.delay;
+      const u = T;
       const st = samplePart(p, u);
       p.sprite.setPosition(st.x, st.y);
       p.sprite.setScale(st.scaleX, st.scaleY);
