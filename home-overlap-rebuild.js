@@ -20,8 +20,8 @@ export const REG_BOOT_HOME_WAIT_COLLAPSE = 'bootHomeWaitCollapseOverlay';
 /** Boot が崩壊処理とクリーンアップを終えた（Home が不透過化してよい） */
 export const REG_BOOT_COLLAPSE_DONE_FOR_HOME = 'bootCollapseDoneForHome';
 
-/** overlapRebuildT0 から Home 背景スキャン再開までの遅延（ms）— 断片飛散と並行しつつ唐突な完成表示を避ける */
-export const HOME_BG_REBUILD_DELAY_MS = 250;
+/** overlapRebuildT0 から Home 背景スキャン再開までの遅延（ms）— 黒帯（断層）が立った後にグリッド復旧が見えるよう少し遅らせる */
+export const HOME_BG_REBUILD_DELAY_MS = 330;
 
 export const REG = {
   collapseStartHandoff: BOOT_OVERLAP_COLLAPSE_START_KEY,
@@ -95,7 +95,7 @@ function easeOutExpo(t) {
 
 /** easeInOutCubic と easeOutExpo の中間 — 回収が「吸い込まれる」寄りの減速 */
 function easeConvergeT(t) {
-  return Phaser.Math.Linear(easeInOutCubic(t), easeOutExpo(t), 0.42);
+  return Phaser.Math.Linear(easeInOutCubic(t), easeOutExpo(t), 0.56);
 }
 
 function quadBezier(p0, p1, p2, t) {
@@ -228,21 +228,24 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
 
     const dirx = tx - scx;
     const diry = ty - scy;
-    const dlen = Math.hypot(dirx, diry) || 1;
-    const ux = dirx / dlen;
-    const uy = diry / dlen;
-    const overN = Phaser.Math.FloatBetween(1.8, 3.6);
+    const chord = Math.hypot(dirx, diry) || 1;
+    const ux = dirx / chord;
+    const uy = diry / chord;
+    const overN = Phaser.Math.FloatBetween(1.05, 2.25);
     const over = { x: tx + ux * overN, y: ty + uy * overN };
 
+    const pxB = -uy;
+    const pyB = ux;
+    const bend = Phaser.Math.FloatBetween(0.09, 0.19) * chord * (randPhase(seed + 3) < 0.5 ? -1 : 1);
     const cp = {
-      x: scx * 0.18 + tx * 0.82,
-      y: scy * 0.18 + ty * 0.82,
+      x: scx * 0.32 + tx * 0.68 + pxB * bend,
+      y: scy * 0.32 + ty * 0.68 + pyB * bend,
     };
 
-    const shockMs = Math.round(Phaser.Math.FloatBetween(90, 118));
-    const sd = Math.round(Phaser.Math.FloatBetween(108, 142));
-    const cd = Math.round(Phaser.Math.FloatBetween(488, 598));
-    const snapMs = Math.round(Phaser.Math.FloatBetween(52, 74));
+    const shockMs = Math.round(Phaser.Math.FloatBetween(76, 94));
+    const sd = Math.round(Phaser.Math.FloatBetween(122, 176));
+    const cd = Math.round(Phaser.Math.FloatBetween(880, 1080));
+    const snapMs = Math.round(Phaser.Math.FloatBetween(158, 212));
 
     const rotSpike = Phaser.Math.DegToRad(Phaser.Math.FloatBetween(24, 44)) *
       (randPhase(seed + 2) < 0.5 ? -1 : 1);
@@ -449,7 +452,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
       offsetX: 0,
       offsetY: 0,
       alpha: 1,
-      duration: Phaser.Math.FloatBetween(88, 118),
+      duration: Phaser.Math.FloatBetween(58, 82),
       ease: 'Sine.easeOut',
       onUpdate: () => {
         scene._redrawHomeUI();
