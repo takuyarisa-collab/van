@@ -20,6 +20,9 @@ export const REG_BOOT_HOME_WAIT_COLLAPSE = 'bootHomeWaitCollapseOverlay';
 /** Boot が崩壊処理とクリーンアップを終えた（Home が不透過化してよい） */
 export const REG_BOOT_COLLAPSE_DONE_FOR_HOME = 'bootCollapseDoneForHome';
 
+/** overlapRebuildT0 から Home 背景スキャン再開までの遅延（ms）— 断片飛散と並行しつつ唐突な完成表示を避ける */
+export const HOME_BG_REBUILD_DELAY_MS = 250;
+
 export const REG = {
   collapseStartHandoff: BOOT_OVERLAP_COLLAPSE_START_KEY,
   rebuildT0: OVERLAP_REBUILD_T0_KEY,
@@ -236,10 +239,10 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
       y: scy * 0.18 + ty * 0.82,
     };
 
-    const shockMs = Math.round(Phaser.Math.FloatBetween(72, 112));
-    const sd = Math.round(Phaser.Math.FloatBetween(100, 160));
-    const cd = Math.round(Phaser.Math.FloatBetween(520, 720));
-    const snapMs = Math.round(Phaser.Math.FloatBetween(48, 72));
+    const shockMs = Math.round(Phaser.Math.FloatBetween(90, 118));
+    const sd = Math.round(Phaser.Math.FloatBetween(108, 142));
+    const cd = Math.round(Phaser.Math.FloatBetween(488, 598));
+    const snapMs = Math.round(Phaser.Math.FloatBetween(52, 74));
 
     const rotSpike = Phaser.Math.DegToRad(Phaser.Math.FloatBetween(24, 44)) *
       (randPhase(seed + 2) < 0.5 ? -1 : 1);
@@ -446,7 +449,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
       offsetX: 0,
       offsetY: 0,
       alpha: 1,
-      duration: Phaser.Math.FloatBetween(85, 130),
+      duration: Phaser.Math.FloatBetween(88, 118),
       ease: 'Sine.easeOut',
       onUpdate: () => {
         scene._redrawHomeUI();

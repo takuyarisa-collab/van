@@ -10,6 +10,7 @@ import {
 } from './home-ui.js';
 import { HOMEOVERLAP_CROPS } from './home-overlap-crops.js';
 import {
+  HOME_BG_REBUILD_DELAY_MS,
   REG_BOOT_COLLAPSE_DONE_FOR_HOME,
   REG_BOOT_HOME_WAIT_COLLAPSE,
   runBootToHomeOverlapRebuild,
@@ -51,8 +52,15 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         width: WORLD_W,
         height: WORLD_H,
       });
+      this._homeDarkVeil = null;
+      this._homeBgRebuildStarted = false;
       if (this._homeWaitBootCollapse) {
-        this._homeBackdrop.layers?.forEach((layer) => layer.setAlpha(0));
+        this._homeDarkVeil = this.add
+          .rectangle(WORLD_W / 2, WORLD_H / 2, WORLD_W, WORLD_H, 0x030711, 0.93)
+          .setDepth(-65);
+        this._homeBackdrop.layers?.forEach((layer) => {
+          if (layer && !layer.destroyed) layer.setAlpha(0.24);
+        });
       }
 
       const _depthRebuildPanel = -48;
@@ -198,6 +206,22 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
       runBootToHomeOverlapRebuild(this, HOME_LAYOUT, () => {
         this._homeReady = true;
       });
+
+      if (this._homeWaitBootCollapse) {
+        this.time.delayedCall(HOME_BG_REBUILD_DELAY_MS, () => {
+          this._beginHomeBackdropRebuildFromBootCollapse();
+        });
+        this.time.delayedCall(400, () => {
+          if (this._homeDebris && !this._homeDebris.destroyed) {
+            this.tweens.add({
+              targets: this._homeDebris,
+              alpha: 0.82,
+              duration: 320,
+              ease: 'Sine.easeOut',
+            });
+          }
+        });
+      }
       this._debugHud = createDebugHUD(this, () => {
         const _hn = (param) => {
           const v = typeof window !== 'undefined' ? window[param] : undefined;
@@ -256,6 +280,11 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this._homeRebuildPanel = null;
         this._homeDebris?.destroy?.();
         this._homeDebris = null;
+        if (this._homeDarkVeil && !this._homeDarkVeil.destroyed) {
+          this.tweens.killTweensOf(this._homeDarkVeil);
+          this._homeDarkVeil.destroy();
+        }
+        this._homeDarkVeil = null;
         this._bootToHomeFlying?.forEach((s) => s?.destroy?.());
         this._bootToHomeFlying = null;
         [
@@ -317,18 +346,59 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this._bootCollapseBackdropApplied = true;
         this._homeWaitBootCollapse = false;
         this.game.registry.remove(REG_BOOT_COLLAPSE_DONE_FOR_HOME);
-        this._homeBackdrop?.layers?.forEach((layer) => layer.setAlpha(1));
-        this._homeScanMask?.resumeScheduledScan?.();
+        this._homeBackdrop?.layers?.forEach((layer) => {
+          if (layer && !layer.destroyed) layer.setAlpha(1);
+        });
+        if (!this._homeBgRebuildStarted) {
+          this._beginHomeBackdropRebuildFromBootCollapse();
+        }
+        if (this._homeDarkVeil && !this._homeDarkVeil.destroyed) {
+          this.tweens.killTweensOf(this._homeDarkVeil);
+          this._homeDarkVeil.destroy();
+          this._homeDarkVeil = null;
+        }
         this._debugHud?.setVisible?.(true);
         this._homeCropDebug?.setVisible?.(true);
         if (this._homeRebuildPanel && !this._homeRebuildPanel.destroyed) {
           this._homeRebuildPanel.setAlpha(1);
         }
-        if (this._homeDebris && !this._homeDebris.destroyed) {
+        if (this._homeDebris && !this._homeDebris.destroyed && this._homeDebris.alpha < 0.1) {
           this._homeDebris.setAlpha(0.82);
         }
       }
       this._debugHud?.tick();
+    }
+
+    _beginHomeBackdropRebuildFromBootCollapse() {
+      if (this._homeBgRebuildStarted || !this.tweens) return;
+      this._homeBgRebuildStarted = true;
+      if (this._homeRebuildPanel && !this._homeRebuildPanel.destroyed) {
+        this._homeRebuildPanel.setAlpha(1);
+      }
+      this._homeScanMask?.resumeScheduledScan?.();
+      this._homeBackdrop?.layers?.forEach((layer) => {
+        if (!layer || layer.destroyed) return;
+        this.tweens.add({
+          targets: layer,
+          alpha: 1,
+          duration: 560,
+          ease: 'Sine.easeOut',
+        });
+      });
+      if (this._homeDarkVeil && !this._homeDarkVeil.destroyed) {
+        this.tweens.add({
+          targets: this._homeDarkVeil,
+          alpha: 0,
+          duration: 620,
+          ease: 'Sine.easeOut',
+          onComplete: () => {
+            if (this._homeDarkVeil && !this._homeDarkVeil.destroyed) {
+              this._homeDarkVeil.destroy();
+            }
+            this._homeDarkVeil = null;
+          },
+        });
+      }
     }
 
     _redrawHomeUI() {

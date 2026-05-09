@@ -175,7 +175,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-09 23:18 UTC';
+      const BUILD_TIMESTAMP = '2026-05-09 00:15 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -466,6 +466,40 @@
         scene._logLastCategory = lastCat;
         scene._logLastText = lastText;
         scene._logTimer = 0;
+      }
+
+      /** 崩壊フェーズ: 左上ログの alpha 揺らぎ・欠落・終端フェード（追加入力後に毎フレーム呼ぶ） */
+      function applyBootCollapseLogVisuals(scene) {
+        const pool = scene._logPool;
+        const n = scene._logActiveCount | 0;
+        if (!pool || n <= 0) return;
+        const ct = scene._collapseT;
+        const dur = scene._collapseDur;
+        const tailStart = dur - 280;
+        const tailV =
+          ct > tailStart
+            ? Phaser.Math.Clamp((ct - tailStart) / Math.max(1, dur - tailStart), 0, 1)
+            : 0;
+        const tailMul = Phaser.Math.Linear(1, 0.08, tailV);
+        const chaos = ct > 55 && ct < 360;
+        for (let i = 0; i < n; i++) {
+          const t = pool[i];
+          const age = n - i;
+          let baseA = age === 0 ? 1 : Math.max(0.44, 1 - age * 0.036);
+          if (chaos) {
+            const wobble = Math.sin(ct * 0.051 + i * 1.61) * 0.21;
+            baseA = Phaser.Math.Clamp(
+              baseA * (0.56 + wobble + (Math.random() - 0.5) * 0.17),
+              0.05,
+              1,
+            );
+          }
+          if (scene._collapseLogGhostIdx?.has(i)) {
+            if (Math.sin(ct * 0.023 + i * 2.33) > 0.2) baseA *= 0.04;
+          }
+          baseA *= tailMul;
+          t.setAlpha(Phaser.Math.Clamp(baseA, 0.04, 1));
+        }
       }
 
       /** 警告2行＋フレームをタイトル下に一度だけ配置 */
@@ -849,6 +883,10 @@
           this._bootTitleImg?.destroy();
           this._bootTitleImg = null;
           this._bootBg = null;
+          this._collapseShockOverlay?.destroy();
+          this._collapseShockOverlay = null;
+          this._collapseBandGfx?.destroy();
+          this._collapseBandGfx = null;
           this._debugHud = null;
           this._progressState = null;
         }
@@ -860,7 +898,7 @@
           this._collapseScheduled = true;
           this._collapsePhase = true;
           this._collapseT = 0;
-          this._collapseDur = Phaser.Math.FloatBetween(800, 1200);
+          this._collapseDur = Phaser.Math.FloatBetween(1020, 1160);
           this._warnBlinkIrregular = Math.random() * Math.PI * 2;
           const cx = WORLD_W / 2;
           const cy = WORLD_H / 2;
@@ -879,7 +917,73 @@
           if (this._bootTitleImg) {
             this._bootTitleImg.clearMask(true);
           }
-          // 構造グリッドは崩壊直後は隠し、collapseNorm 0.3〜0.6 で立ち上げ（containers[1]=grid, depth -54 < bootBg -51）
+          this._collapseLogGhostIdx = new Set();
+          const na = this._logActiveCount | 0;
+          if (na >= 1) {
+            const a = Phaser.Math.Between(0, na - 1);
+            this._collapseLogGhostIdx.add(a);
+            if (na >= 2) {
+              let b = Phaser.Math.Between(0, na - 1);
+              let guard = 0;
+              while (b === a && guard++ < 10) b = Phaser.Math.Between(0, na - 1);
+              if (b !== a) this._collapseLogGhostIdx.add(b);
+            }
+          }
+          const pulseErrLog = () => {
+            if (!this._logPool) return;
+            const m = this._logActiveCount | 0;
+            for (let i = 0; i < m; i++) {
+              const t = this._logPool[i];
+              const tx = t.text || '';
+              if (tx.includes('[ERROR]')) {
+                t.setStyle({ color: '#ff2020' });
+                t.setAlpha(1);
+              }
+            }
+          };
+          const relaxErrLog = () => {
+            if (!this._logPool) return;
+            const m = this._logActiveCount | 0;
+            for (let i = 0; i < m; i++) {
+              const t = this._logPool[i];
+              if ((t.text || '').includes('[ERROR]')) {
+                t.setStyle({ color: '#ff6a6a' });
+              }
+            }
+          };
+          pulseErrLog();
+          this.time.delayedCall(68, relaxErrLog);
+          if (this._warnText1 && this._warnText2) {
+            this._warnText1.setAlpha(Math.max(this._warnText1.alpha, 0.94));
+            this._warnText2.setAlpha(Math.max(this._warnText2.alpha, 0.9));
+          }
+          this._collapseBandGfx?.destroy();
+          this._collapseBandGfx = this.add.graphics().setDepth(-50);
+          this._collapseShockOverlay?.destroy();
+          this._collapseShockOverlay = this.add
+            .rectangle(cx, cy, WORLD_W, WORLD_H, 0x020308, 0)
+            .setDepth(-33);
+          this.tweens.add({
+            targets: this._collapseShockOverlay,
+            alpha: 0.52,
+            duration: 46,
+            ease: 'Quad.easeOut',
+            onComplete: () => {
+              if (this._collapseShockOverlay && !this._collapseShockOverlay.destroyed) {
+                this.tweens.add({
+                  targets: this._collapseShockOverlay,
+                  alpha: 0,
+                  duration: 84,
+                  ease: 'Sine.easeIn',
+                  onComplete: () => {
+                    this._collapseShockOverlay?.destroy();
+                    this._collapseShockOverlay = null;
+                  },
+                });
+              }
+            },
+          });
+          // 構造グリッド: ショック中は欠損感のため低 alpha、0.3〜0.6 で本立ち上げ（containers[1]）
           const _structC = this._bootBackdrop?.containers?.[1];
           if (_structC) _structC.setAlpha(0);
           console.log('[BootScene] collapse phase start', this._collapseDur, 'ms');
@@ -998,30 +1102,95 @@
             const collapseNorm = Math.min(1, this._collapseT / this._collapseDur);
 
             const _structLayer = this._bootBackdrop?.containers?.[1];
+            const _baseLayer = this._bootBackdrop?.containers?.[0];
+            const ct = this._collapseT;
             if (_structLayer) {
               let gridLayerA = 0;
-              if (collapseNorm > 0.3) {
+              if (ct < 125) {
+                gridLayerA = 0.06 + Math.random() * 0.12;
+              } else if (collapseNorm > 0.3) {
                 const u = Phaser.Math.Clamp((collapseNorm - 0.3) / (0.6 - 0.3), 0, 1);
                 gridLayerA = u * 0.45;
               }
               _structLayer.setAlpha(gridLayerA);
             }
+            if (_baseLayer) {
+              if (ct < 110) {
+                _baseLayer.setAlpha(0.68 + Math.random() * 0.1);
+              } else if (ct < 220) {
+                const u = Phaser.Math.Clamp((ct - 110) / 110, 0, 1);
+                _baseLayer.setAlpha(Phaser.Math.Linear(0.74, 1, u));
+              } else {
+                _baseLayer.setAlpha(1);
+              }
+            }
+
+            if (this._collapseBandGfx && !this._collapseBandGfx.destroyed) {
+              if (ct < 155) {
+                const g = this._collapseBandGfx;
+                g.clear();
+                const nb = 2 + (Math.random() < 0.45 ? 1 : 0);
+                for (let bi = 0; bi < nb; bi++) {
+                  const bh = Phaser.Math.FloatBetween(10, 28);
+                  const by = Phaser.Math.FloatBetween(H * 0.18, H * 0.88);
+                  const bw = W * Phaser.Math.FloatBetween(0.72, 1);
+                  const bx = Phaser.Math.FloatBetween(0, Math.max(0, W - bw));
+                  g.fillStyle(0x050508, Phaser.Math.FloatBetween(0.42, 0.68));
+                  g.fillRect(bx, by, bw, bh);
+                }
+              } else {
+                this._collapseBandGfx.destroy();
+                this._collapseBandGfx = null;
+              }
+            }
+
+            if (!BOOT_DEBUG.noBootOverlay) {
+              if (ct < 128) {
+                this._scanGfx.clear();
+                const y0 = Math.round(H * Phaser.Math.FloatBetween(0.22, 0.62));
+                const h0 = Math.round(H * Phaser.Math.FloatBetween(0.06, 0.16));
+                this._scanGfx.fillStyle(0x070910, Phaser.Math.FloatBetween(0.82, 0.94));
+                this._scanGfx.fillRect(0, y0, W, h0);
+                if (Math.random() < 0.55) {
+                  const y1 = Math.round(H * Phaser.Math.FloatBetween(0.35, 0.92));
+                  this._scanGfx.fillStyle(0x0a0d14, Phaser.Math.FloatBetween(0.55, 0.78));
+                  this._scanGfx.fillRect(0, y1, W, Phaser.Math.FloatBetween(14, 40));
+                }
+                this._scanLineGfx.clear();
+                const jy = y0 + Math.round((Math.random() - 0.5) * 16);
+                this._scanLineGfx.lineStyle(1.2, 0x5ee8dc, Phaser.Math.FloatBetween(0.35, 0.72));
+                this._scanLineGfx.lineBetween(Phaser.Math.FloatBetween(-20, 40), jy, W - Phaser.Math.FloatBetween(0, 50), jy + Math.round((Math.random() - 0.5) * 12));
+                if (this._titleScanGfx) {
+                  this._titleScanGfx.clear();
+                  const vx = Phaser.Math.FloatBetween(W * 0.15, W * 0.92);
+                  this._titleScanGfx.fillStyle(0xffffff, Phaser.Math.FloatBetween(0.08, 0.22));
+                  this._titleScanGfx.fillRect(vx, 0, Phaser.Math.FloatBetween(2, 5), H);
+                }
+              } else if (ct < 140) {
+                this._scanGfx.clear();
+                this._scanLineGfx.clear();
+                this._titleScanGfx?.clear();
+              }
+            }
 
             if (this._bootBg) {
-              const bgA = Phaser.Math.Clamp(
+              let bgTarget = Phaser.Math.Clamp(
                 0.25 + 0.05 * Math.sin(this._collapseT * 0.0014) + (Math.random() - 0.5) * 0.05,
                 0.2,
-                0.3
+                0.3,
               );
-              this._bootBg.setAlpha(bgA);
+              if (ct < 115) {
+                bgTarget *= Phaser.Math.FloatBetween(0.45, 0.62);
+              }
+              this._bootBg.setAlpha(bgTarget);
               const bgShake = Phaser.Math.FloatBetween(2, 4);
               this._bootBg.setPosition(
                 this._bgBaseX + (Math.random() - 0.5) * 2 * bgShake,
-                this._bgBaseY + (Math.random() - 0.5) * 2 * bgShake
+                this._bgBaseY + (Math.random() - 0.5) * 2 * bgShake,
               );
             }
 
-            if (this._bootTitleImg) {
+            if (this._bootTitleImg && this._bootTitleImg.visible) {
               const titleShake = Phaser.Math.FloatBetween(3, 6);
               const ax = this._titleBaseX + (Math.random() - 0.5) * 2 * titleShake;
               const ay = this._titleBaseY + (Math.random() - 0.5) * 2 * titleShake;
@@ -1032,7 +1201,7 @@
               const titleA = Phaser.Math.Clamp(
                 0.25 + 0.06 * Math.sin(this._collapseT * 0.0021) + (Math.random() - 0.5) * 0.04,
                 0.15,
-                0.35
+                0.35,
               );
               this._bootTitleImg.setAlpha(titleA);
             }
@@ -1042,12 +1211,15 @@
               const b1 = Math.sin(this._warnBlinkIrregular) * 0.5 + 0.5;
               const b2 = Math.sin(this._warnBlinkIrregular * 1.73 + 1.31) * 0.5 + 0.5;
               const chaos = (Math.random() - 0.5) * 0.06;
-              this._warnText1.setAlpha(
-                Phaser.Math.Clamp(0.2 + b1 * 0.2 + chaos, 0.2, 0.4)
-              );
-              this._warnText2.setAlpha(
-                Phaser.Math.Clamp(0.2 + b2 * 0.2 - chaos, 0.2, 0.4)
-              );
+              let a1 = Phaser.Math.Clamp(0.2 + b1 * 0.2 + chaos, 0.2, 0.4);
+              let a2 = Phaser.Math.Clamp(0.2 + b2 * 0.2 - chaos, 0.2, 0.4);
+              if (ct < 95) {
+                const boost = 1 - ct / 95;
+                a1 = Phaser.Math.Clamp(a1 + 0.52 * boost, 0.2, 1);
+                a2 = Phaser.Math.Clamp(a2 + 0.48 * boost, 0.2, 1);
+              }
+              this._warnText1.setAlpha(a1);
+              this._warnText2.setAlpha(a2);
               if (this._warnFrame && this._warnLayout && Math.random() < Phaser.Math.FloatBetween(0.14, 0.36)) {
                 const L = this._warnLayout;
                 const gf = this._warnFrame;
@@ -1068,7 +1240,9 @@
                 }
                 gf.lineStyle(2, 0x7a3038, 0.2 + Math.random() * 0.35);
                 if (Math.random() > 0.4) gf.lineBetween(rx + corner, ry, rx + rw * 0.35, ry);
-                this._warnFrame.setAlpha(Phaser.Math.Clamp(0.45 + Math.random() * 0.3, 0.35, 0.75));
+                let fA = Phaser.Math.Clamp(0.45 + Math.random() * 0.3, 0.35, 0.75);
+                if (ct < 90) fA = Phaser.Math.Clamp(fA + 0.22, 0.35, 0.95);
+                this._warnFrame.setAlpha(fA);
               }
             }
 
@@ -1095,15 +1269,10 @@
                 t.setStyle({ color: '#ff6a6a' });
                 t.setText(entry.text);
                 t.setStyle({ letterSpacing: Phaser.Math.FloatBetween(-0.5, 0.5) });
-                const totalActive = this._logActiveCount;
-                for (let _li = 0; _li < totalActive; _li++) {
-                  const age = totalActive - _li;
-                  const baseA = age === 0 ? 1.0 : Math.max(0.6, 1.0 - age * 0.035);
-                  this._logPool[_li].setAlpha(baseA);
-                }
                 t.setAlpha(1.0);
                 this._logActiveCount++;
               }
+              applyBootCollapseLogVisuals(this);
             }
 
             if (this._collapseT >= this._collapseDur) {
