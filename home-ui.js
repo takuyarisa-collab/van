@@ -97,8 +97,8 @@ export function addOverlapCropImage(scene, texKey, crop, depth) {
 }
 
 /**
- * Home 表示時: Boot の背景パネル除去に加え、タイトル PNG・警告・ログを破棄する
- * （Home 上にエラー系・OVERLAP 残骸が残らないようにする）。
+ * Home 表示時: Boot の背景パネルを除去し、警告・ログを破棄する。
+ * タイトル PNG は直前に registry へ handoff 済みならここで破棄。
  */
 export function destroyBootBgPanelForHome(bootScene) {
   const bs = bootScene;

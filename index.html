@@ -74,6 +74,7 @@
       mountBootHomeBackdrop,
     } from './boot-home-bg.js';
     import { createHomeScene } from './home-scene.js';
+    import { captureBootOverlapTitleHandoff } from './home-overlap-rebuild.js';
     import {
       NEAR_ATTACK_FRONT_CONTACT_TUNING,
       NEAR_ATTACK_HIT_TUNING,
@@ -167,7 +168,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-09 12:00 UTC';
+      const BUILD_TIMESTAMP = '2026-05-09 18:42 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -632,13 +633,6 @@
           this._cleanedUp = false;
           this._collapseTransitionDone = false;
           this._bootFrozen = false;
-          this._reconnectPhase = false;
-          this._reconnectT = 0;
-          this._reconnectDur = 600;
-          this._reconnectTexts = null;
-          this._reconnectBlink = 0;
-          this._reconnectBaseY = 0;
-
           // ── 背景: 崩壊レイヤー（ドリフト付き, depth -55〜-52） ────────────
           this._bootBackdrop = mountBootCollapsedBackdrop(this, {
             width: WORLD_W,
@@ -783,9 +777,7 @@
           this._debugHud = createDebugHUD(this, () => {
             const _p = BOOT_DEBUG.progressOverride !== null ? BOOT_DEBUG.progressOverride : this._progress;
             let _phase;
-            if (this._reconnectPhase) {
-              _phase = 'reconnect';
-            } else if (this._collapsePhase) {
+            if (this._collapsePhase) {
               _phase = 'collapse';
             } else if (this._done || _p >= 1) {
               _phase = 'done';
@@ -843,52 +835,11 @@
           this._bootTitleImg?.destroy();
           this._bootTitleImg = null;
           this._bootBg = null;
-          this._reconnectTexts?.forEach((t) => t.destroy());
-          this._reconnectTexts = null;
           this._debugHud = null;
           this._progressState = null;
         }
 
-        /** OVERLAP 崩壊完了後〜Home 直前: 短い再接続演出（0.4〜0.8s） */
-        _startReconnectPhase() {
-          if (this._reconnectPhase || this._cleanedUp || this._collapseTransitionDone) return;
-          this._reconnectPhase = true;
-          this._reconnectT = 0;
-          this._reconnectDur = Phaser.Math.FloatBetween(400, 800);
-          this._reconnectBlink = Math.random() * Math.PI * 2;
-          const cx = WORLD_W / 2;
-          this._reconnectBaseY = WORLD_H * 0.56;
-          const lines = [
-            'RECONNECTING...',
-            'SIGNAL RESTORE...',
-            'LINK STABILIZING...',
-          ];
-          const colors = ['#f4f0f0', '#ecd6d6', '#e8cccc'];
-          this._reconnectTexts = [];
-          lines.forEach((txt, i) => {
-            const t = this.add
-              .text(cx, this._reconnectBaseY + i * 24, txt, {
-                fontFamily: '"Courier New", Courier, monospace',
-                fontSize: '15px',
-                color: colors[i],
-              })
-              .setOrigin(0.5, 0.5)
-              .setDepth(25)
-              .setAlpha(0.78);
-            this._reconnectTexts.push(t);
-          });
-          const _structLayer = this._bootBackdrop?.containers?.[1];
-          if (_structLayer) _structLayer.setAlpha(0.45);
-          console.log('[BootScene] reconnect phase', this._reconnectDur, 'ms');
-        }
-
-        _teardownReconnectUI() {
-          if (this._reconnectTexts) {
-            this._reconnectTexts.forEach((t) => t.destroy());
-            this._reconnectTexts = null;
-          }
-          this._reconnectPhase = false;
-        }
+        _teardownReconnectUI() {}
 
         _scheduleBootCollapse(fromTweenComplete) {
           if (this._collapseScheduled || this._cleanedUp) return;
@@ -981,7 +932,8 @@
           this._collapseTransitionDone = true;
           this._teardownReconnectUI();
           this._freezeBootWreckForHome();
-          console.log('[BootScene] reconnect done → home (wreck retained, no cleanup)');
+          captureBootOverlapTitleHandoff(this._bootTitleImg, this.game.registry);
+          console.log('[BootScene] overlap handoff → home (wreck retained)');
           this.scene.launch('home');
         }
 
@@ -1010,133 +962,9 @@
           const cx = W / 2;
           const cy = H / 2;
 
-          // ── 崩壊フェーズ → 再接続（0.4〜0.8s）→ Home launch（Boot は残骸のまま）
+          // ── 崩壊フェーズ完了 → handoff 後に Home 起動（実際の再接続は Home 側の破片収束）
           if (this._collapsePhase && !this._cleanedUp) {
             const dt = this.game.loop.delta;
-
-            if (this._reconnectPhase) {
-              this._reconnectT += dt;
-              const rt = this._reconnectT;
-              const _structLayerR = this._bootBackdrop?.containers?.[1];
-              if (_structLayerR) _structLayerR.setAlpha(0.45);
-
-              if (this._bootBg) {
-                const bgA = Phaser.Math.Clamp(
-                  0.25 + 0.04 * Math.sin(rt * 0.0012) + (Math.random() - 0.5) * 0.04,
-                  0.2,
-                  0.3,
-                );
-                this._bootBg.setAlpha(bgA);
-                const bgShake = Phaser.Math.FloatBetween(1.5, 3);
-                this._bootBg.setPosition(
-                  this._bgBaseX + (Math.random() - 0.5) * 2 * bgShake,
-                  this._bgBaseY + (Math.random() - 0.5) * 2 * bgShake,
-                );
-              }
-
-              if (this._bootTitleImg) {
-                const titleShake = Phaser.Math.FloatBetween(2, 4);
-                const ax = this._titleBaseX + (Math.random() - 0.5) * 2 * titleShake;
-                const ay = this._titleBaseY + (Math.random() - 0.5) * 2 * titleShake;
-                this._bootTitleImg.setPosition(ax, ay);
-                const sc = Phaser.Math.FloatBetween(0.985, 1.015);
-                this._bootTitleImg.setScale(this._titleBaseScaleX * sc, this._titleBaseScaleY * sc);
-                this._bootTitleImg.setRotation(Phaser.Math.FloatBetween(-0.015, 0.015));
-                const titleA = Phaser.Math.Clamp(
-                  0.24 + 0.05 * Math.sin(rt * 0.0018) + (Math.random() - 0.5) * 0.03,
-                  0.18,
-                  0.32,
-                );
-                this._bootTitleImg.setAlpha(titleA);
-              }
-
-              if (this._warnText1 && this._warnText2) {
-                this._warnBlinkIrregular += dt * Phaser.Math.FloatBetween(0.018, 0.045);
-                const b1 = Math.sin(this._warnBlinkIrregular) * 0.5 + 0.5;
-                const b2 = Math.sin(this._warnBlinkIrregular * 1.73 + 1.31) * 0.5 + 0.5;
-                const chaos = (Math.random() - 0.5) * 0.035;
-                this._warnText1.setAlpha(
-                  Phaser.Math.Clamp(0.2 + b1 * 0.15 + chaos, 0.18, 0.36),
-                );
-                this._warnText2.setAlpha(
-                  Phaser.Math.Clamp(0.2 + b2 * 0.15 - chaos, 0.18, 0.36),
-                );
-                if (this._warnFrame && this._warnLayout && Math.random() < Phaser.Math.FloatBetween(0.05, 0.12)) {
-                  const L = this._warnLayout;
-                  const gf = this._warnFrame;
-                  gf.clear();
-                  if (Math.random() > 0.35) {
-                    gf.fillStyle(0x6b2830, 0.05 + Math.random() * 0.06);
-                    gf.fillRect(L.rx, L.ry, L.rw, L.rh);
-                  }
-                  const seg = Math.random();
-                  gf.lineStyle(1, 0x8b3b42, 0.35 + Math.random() * 0.4);
-                  const { rx, ry, rw, rh, corner } = L;
-                  if (seg < 0.33) {
-                    gf.lineBetween(rx + corner, ry, rx + rw * 0.5, ry);
-                  } else if (seg < 0.66) {
-                    gf.lineBetween(rx + rw, ry + corner * 2, rx + rw, ry + rh * 0.5);
-                  } else {
-                    gf.lineBetween(rx + corner * 2.5, ry + rh, rx + rw * 0.48, ry + rh);
-                  }
-                  gf.lineStyle(2, 0x7a3038, 0.18 + Math.random() * 0.28);
-                  if (Math.random() > 0.45) gf.lineBetween(rx + corner, ry, rx + rw * 0.32, ry);
-                  this._warnFrame.setAlpha(Phaser.Math.Clamp(0.42 + Math.random() * 0.22, 0.34, 0.68));
-                }
-              }
-
-              if (this._reconnectTexts?.length) {
-                const rcx = W / 2;
-                this._reconnectBlink += dt * 0.0032;
-                this._reconnectTexts.forEach((t, i) => {
-                  const ph = this._reconnectBlink + i * 1.05;
-                  const flick = 0.58 + 0.32 * Math.sin(ph) + (Math.random() - 0.5) * 0.025;
-                  t.setAlpha(Phaser.Math.Clamp(flick, 0.48, 0.92));
-                  const jitter = Math.random() < 0.07 ? (Math.random() < 0.5 ? -1 : 1) : 0;
-                  t.setPosition(rcx + jitter, this._reconnectBaseY + i * 24);
-                });
-              }
-
-              if (this._logPool) {
-                const collapseMsgs = BOOT_LOG_MESSAGES_COLLAPSE.length ? BOOT_LOG_MESSAGES_COLLAPSE : BOOT_LOG_MESSAGES_C;
-                this._logTimer += dt;
-                const interval = 68 + Math.random() * 52;
-                if (this._logTimer >= interval && this._logActiveCount < this._logPool.length) {
-                  this._logTimer = 0;
-                  const t = this._logPool[this._logActiveCount];
-                  let tries = 0;
-                  let entry = collapseMsgs[this._logMsgIndex % collapseMsgs.length];
-                  while (
-                    tries < collapseMsgs.length &&
-                    entry.text === this._logLastText
-                  ) {
-                    this._logMsgIndex++;
-                    entry = collapseMsgs[this._logMsgIndex % collapseMsgs.length];
-                    tries++;
-                  }
-                  this._logLastCategory = entry.cat;
-                  this._logLastText = entry.text;
-                  this._logMsgIndex++;
-                  t.setStyle({ color: '#e89696' });
-                  t.setText(entry.text);
-                  t.setStyle({ letterSpacing: Phaser.Math.FloatBetween(-0.35, 0.35) });
-                  const totalActive = this._logActiveCount;
-                  for (let _li = 0; _li < totalActive; _li++) {
-                    const age = totalActive - _li;
-                    const baseA = age === 0 ? 1.0 : Math.max(0.6, 1.0 - age * 0.035);
-                    this._logPool[_li].setAlpha(baseA);
-                  }
-                  t.setAlpha(1.0);
-                  this._logActiveCount++;
-                }
-              }
-
-              if (this._reconnectT >= this._reconnectDur) {
-                this._finishBootAfterCollapse();
-              }
-              this._debugHud?.tick();
-              return;
-            }
 
             this._collapseT += dt;
             const collapseNorm = Math.min(1, this._collapseT / this._collapseDur);
@@ -1251,7 +1079,7 @@
             }
 
             if (this._collapseT >= this._collapseDur) {
-              this._startReconnectPhase();
+              this._finishBootAfterCollapse();
             }
             this._debugHud?.tick();
             return;
