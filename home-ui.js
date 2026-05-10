@@ -3,6 +3,7 @@ import { getHomeUrlBgDisplayOverrides } from './home-bg-panels.js';
 import { redrawHomePlayUI } from './home-play-ui.js';
 import { redrawHomeSubUI } from './home-sub-ui.js';
 import { logHomeUrlLayoutDebugOnce } from './home-url-debug.js';
+import { destroyBootBgCollapseFragments } from './boot-bg-collapse-fragments.js';
 
 export { HOMEOVERLAP_TEX_KEY } from './home-overlap-constants.js';
 export { homeUrlDebugEnabled } from './home-url-debug.js';
@@ -107,6 +108,7 @@ export function addOverlapCropImage(scene, texKey, crop, depth) {
  */
 export function destroyBootBgPanelForHome(bootScene) {
   const bs = bootScene;
+  destroyBootBgCollapseFragments(bs);
   const bg = bs?._bootBg;
   if (bg && !bg.destroyed) {
     bg.destroy();

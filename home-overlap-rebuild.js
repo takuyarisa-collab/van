@@ -138,8 +138,12 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     typeof t0Raw === 'number' && Number.isFinite(t0Raw)
       ? t0Raw
       : performance.now();
+  scene._overlapRebuildEpochMs = epochMs;
 
   scene._homeLinkReveal = { play: 0, sub: [0, 0, 0] };
+  scene._homeBgPanelReveal = scene._homeWaitBootCollapse
+    ? { play: 0, sub: [0, 0, 0] }
+    : { play: 1, sub: [1, 1, 1] };
   scene._overlapGlyphReveal = { P: 0, L: 0, A: 0, V: 0, y: 0 };
   scene._bootYRevealUsesLogFragments = Boolean(
     yLetterFragSpec?.items?.length,
@@ -169,6 +173,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     scene._bootYRevealUsesLogFragments = false;
     scene._overlapGlyphReveal = null;
     scene._homeLinkReveal = { play: 1, sub: [1, 1, 1] };
+    scene._homeBgPanelReveal = { play: 1, sub: [1, 1, 1] };
     scene._delta.startFrame.offsetX = 0;
     scene._delta.startFrame.offsetY = 0;
     scene._delta.startFrame.alpha = 1;
@@ -661,6 +666,14 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     const now = performance.now();
     const T = now - epochMs;
 
+    if (scene._homeWaitBootCollapse && T >= 850) {
+      const r = scene._homeBgPanelReveal;
+      if (r && r.play < 1) {
+        scene._homeBgPanelReveal = { play: 1, sub: [1, 1, 1] };
+        scene._redrawHomeUI();
+      }
+    }
+
     parts.forEach((p) => {
       if (p.landed) return;
       if (T >= p.totalDur) {
@@ -699,7 +712,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     scene._delta.startFrame.alpha = 0.86;
 
     scene._homeLinkReveal = { play: 1, sub: [1, 1, 1] };
-    scene._redrawHomeUI();
+    scene._homeBgPanelReveal = { play: 1, sub: [1, 1, 1] };
 
     scene.tweens.add({
       targets: scene._delta.startFrame,

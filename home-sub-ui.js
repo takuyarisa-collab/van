@@ -111,6 +111,7 @@ export function redrawHomeSubUI(scene, L, urlBgDisp, subReveal = null) {
       subReveal && subReveal.length === 3
         ? Phaser.Math.Clamp(subReveal[i], 0, 1)
         : 1;
+    const bgRow = scene._homeBgPanelReveal?.sub?.[i] ?? 1;
 
     const { ox: subNOffsetX, oy: subNOffsetY } = _subNOffsetXY(i);
     const { ox: subNPanelOx, oy: subNPanelOy } = _subNPanelOffsetXY(i);
@@ -123,7 +124,8 @@ export function redrawHomeSubUI(scene, L, urlBgDisp, subReveal = null) {
     const rowPanelX = rowBaseX + subNPanelOx;
     const rowPanelY = rowBaseY + subNPanelOy;
 
-    const subRowAlpha = revealMul * sub.alpha * _homeUiRandRange(seed + 4, 0.85, 1.0);
+    const subRowAlphaGlyphs = revealMul * sub.alpha * _homeUiRandRange(seed + 4, 0.85, 1.0);
+    const subPanelAlpha = subRowAlphaGlyphs * bgRow;
 
     row.head.setScale(gS * sub.alpha, gSy * sub.alpha);
 
@@ -137,7 +139,7 @@ export function redrawHomeSubUI(scene, L, urlBgDisp, subReveal = null) {
     const tailLeftX = leftX + headW + gap;
     row.head.setPosition(headCenterX, rowTextY);
     row.head.setRotation(0);
-    row.head.setAlpha(subRowAlpha);
+    row.head.setAlpha(subRowAlphaGlyphs);
 
     row.tail.setPosition(tailLeftX, rowTextY);
     row.tail.setAlpha(revealMul * sub.alpha * _homeUiRandRange(seed + 7, 0.85, 1.0));
@@ -165,7 +167,7 @@ export function redrawHomeSubUI(scene, L, urlBgDisp, subReveal = null) {
     const panelT = rowPanelY - subBgDispH * 0.5;
 
     layoutHomeBgNormalCropPanel(scene, row.bgPanelImg, panelL, panelT, subBgDispW, subBgDispH, {
-      alpha: subRowAlpha,
+      alpha: subPanelAlpha,
       panelCrop: SUB_PANEL_CROPS[i],
       displayW: subBgDispW,
       displayH: subBgDispH,
@@ -191,7 +193,7 @@ export function redrawHomeSubUI(scene, L, urlBgDisp, subReveal = null) {
         drawFragmentFaultOutline(edgeArr[i], subWorld, {
           kind: 'sub',
           rowIndex: i,
-          alphaScale: subRowAlpha,
+          alphaScale: subPanelAlpha,
         });
       }
     }
