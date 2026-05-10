@@ -75,6 +75,7 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
       )
     : 0;
   const lrPanel = Math.max(lr, glyphBoost);
+  const bgPr = scene._homeBgPanelReveal?.play ?? 1;
 
   const Cr = HOMEOVERLAP_CROPS;
   const P = Cr.P;
@@ -124,7 +125,7 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
   const rBase = _homeUiRandRange(0x492100, 0.85, 1.0);
   const alphaPlay = Math.min(
     1,
-    lrPanel * flashMul * sf.alpha * rBase,
+    lrPanel * flashMul * sf.alpha * rBase * bgPr,
   );
   const alphaP = Math.min(1, effGlyph('P') * flashMul * sf.alpha * rBase);
   const alphaL = Math.min(1, effGlyph('L') * flashMul * sf.alpha * rBase);

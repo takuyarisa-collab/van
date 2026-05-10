@@ -84,6 +84,10 @@
     } from './home-overlap-rebuild.js';
     import { destroyBootBgPanelForHome } from './home-ui.js';
     import {
+      spawnBootBgCollapseFragments,
+      updateBootBgCollapseFragments,
+    } from './boot-bg-collapse-fragments.js';
+    import {
       NEAR_ATTACK_FRONT_CONTACT_TUNING,
       NEAR_ATTACK_HIT_TUNING,
       isEnemyInNearForwardDefenseSector,
@@ -176,7 +180,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-10 18:50 UTC';
+      const BUILD_TIMESTAMP = '2026-05-10 20:15 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1339,10 +1343,32 @@
             this._warnText1.setAlpha(Math.max(this._warnText1.alpha, 0.94));
             this._warnText2.setAlpha(Math.max(this._warnText2.alpha, 0.9));
           }
+          const overlapT0 = performance.now();
+          captureBootOverlapCollapseStartHandoff(this._bootTitleImg, this.game.registry);
+          this.game.registry.set(OVERLAP_REBUILD_T0_KEY, overlapT0);
+          this.game.registry.set(REG_BOOT_HOME_WAIT_COLLAPSE, true);
           this._collapseBandGfx?.destroy();
           this._collapseBandGfx = this.add.graphics().setDepth(-50);
           this._initCollapseFaultBandSpec();
           this._drawCollapseFaultBand(0);
+          if (this._bootBg && !this._bootBg.destroyed) {
+            const natW = this._bootBg.width;
+            const natH = this._bootBg.height;
+            const bgScale = this._bootBg.scaleX;
+            this._bootBg.setVisible(false);
+            spawnBootBgCollapseFragments(
+              this,
+              WORLD_W,
+              WORLD_H,
+              this._bootBg.x,
+              this._bootBg.y,
+              bgScale,
+              natW,
+              natH,
+              this._faultBandSpec,
+              overlapT0,
+            );
+          }
           this._collapseShockOverlay?.destroy();
           this._collapseShockOverlay = this.add
             .rectangle(cx, cy, WORLD_W, WORLD_H, 0x020308, 0)
@@ -1372,9 +1398,6 @@
           if (_structC) _structC.setAlpha(0);
           console.log('[BootScene] collapse phase start', this._collapseDur, 'ms');
 
-          captureBootOverlapCollapseStartHandoff(this._bootTitleImg, this.game.registry);
-          this.game.registry.set(OVERLAP_REBUILD_T0_KEY, performance.now());
-          this.game.registry.set(REG_BOOT_HOME_WAIT_COLLAPSE, true);
           if (this._bootTitleImg && !this._bootTitleImg.destroyed) {
             this._bootTitleImg.setVisible(false);
           }
@@ -1516,6 +1539,8 @@
               this._drawCollapseFaultBand(ct);
             }
 
+            updateBootBgCollapseFragments(this, ct, dt, W, H);
+
             updateBootLogScatters(this, collapseNorm, dt);
 
             if (!BOOT_DEBUG.noBootOverlay) {
@@ -1523,11 +1548,11 @@
                 this._scanGfx.clear();
                 const y0 = Math.round(H * Phaser.Math.FloatBetween(0.22, 0.62));
                 const h0 = Math.round(H * Phaser.Math.FloatBetween(0.06, 0.16));
-                this._scanGfx.fillStyle(0x070910, Phaser.Math.FloatBetween(0.82, 0.94));
+                this._scanGfx.fillStyle(0x070910, Phaser.Math.FloatBetween(0.28, 0.42));
                 this._scanGfx.fillRect(0, y0, W, h0);
                 if (Math.random() < 0.55) {
                   const y1 = Math.round(H * Phaser.Math.FloatBetween(0.35, 0.92));
-                  this._scanGfx.fillStyle(0x0a0d14, Phaser.Math.FloatBetween(0.55, 0.78));
+                  this._scanGfx.fillStyle(0x0a0d14, Phaser.Math.FloatBetween(0.22, 0.38));
                   this._scanGfx.fillRect(0, y1, W, Phaser.Math.FloatBetween(14, 40));
                 }
                 this._scanLineGfx.clear();
@@ -1547,7 +1572,7 @@
               }
             }
 
-            if (this._bootBg) {
+            if (this._bootBg && this._bootBg.visible) {
               let bgTarget = Phaser.Math.Clamp(
                 0.25 + 0.05 * Math.sin(this._collapseT * 0.0014) + (Math.random() - 0.5) * 0.05,
                 0.2,
