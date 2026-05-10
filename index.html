@@ -79,6 +79,7 @@
       OVERLAP_REBUILD_T0_KEY,
       REG_BOOT_COLLAPSE_DONE_FOR_HOME,
       REG_BOOT_HOME_WAIT_COLLAPSE,
+      REG_BOOT_Y_LETTER_FRAGS,
       captureBootOverlapCollapseStartHandoff,
     } from './home-overlap-rebuild.js';
     import { destroyBootBgPanelForHome } from './home-ui.js';
@@ -175,7 +176,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-09 16:28 UTC';
+      const BUILD_TIMESTAMP = '2026-05-10 12:00 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -366,6 +367,24 @@
         // ?debug=1&subW=520&subH=420&subSpacing=120&sub0OffsetX=-10&sub1OffsetX=4&sub2OffsetX=12&sub0OffsetY=-6&sub1OffsetY=0&sub2OffsetY=8
       })();
 
+      /** ロゴ下エラー警告: この progress 未満は完全非表示 */
+      const BOOT_WARN_SHOW_PROGRESS = 0.72;
+      /** ここまでで不透明度ランプ完了（collapse 直前） */
+      const BOOT_WARN_RAMP_END_PROGRESS = 0.86;
+
+      const BOOT_FLOAT_LOG_SNIPS = [
+        '[WARN] IRQ STORM',
+        'BUS fault',
+        'CRC!=',
+        'PAGE 0xe',
+        'HEAP low',
+        'IRQ#9',
+        'IO wait',
+        'TASK kill',
+        'CHK fail',
+        'LAYER err',
+      ];
+
       const BOOT_DEBUG = {
         // Boot progress tween の duration (ms)
         bootDur:          window.BOOT_PARAM_getNum('bootDur',          1200),
@@ -468,11 +487,10 @@
         scene._logTimer = 0;
       }
 
-      /** 崩壊フェーズ: 左上ログの alpha 揺らぎ・欠落・終端フェード（追加入力後に毎フレーム呼ぶ） */
+      /** 崩壊フェーズ: 左上ログ＋浮遊ログの alpha 揺らぎ・欠落・終端フェード（追加入力後に毎フレーム呼ぶ） */
       function applyBootCollapseLogVisuals(scene) {
         const pool = scene._logPool;
         const n = scene._logActiveCount | 0;
-        if (!pool || n <= 0) return;
         const ct = scene._collapseT;
         const dur = scene._collapseDur;
         const tailStart = dur - 280;
@@ -482,9 +500,9 @@
             : 0;
         const tailMul = Phaser.Math.Linear(1, 0.08, tailV);
         const chaos = ct > 55 && ct < 360;
-        for (let i = 0; i < n; i++) {
-          const t = pool[i];
-          const age = n - i;
+        const applyOne = (t, i, total) => {
+          if (!t || t.destroyed) return;
+          const age = total - i;
           let baseA = age === 0 ? 1 : Math.max(0.44, 1 - age * 0.036);
           if (chaos) {
             const wobble = Math.sin(ct * 0.051 + i * 1.61) * 0.21;
@@ -499,18 +517,264 @@
           }
           baseA *= tailMul;
           t.setAlpha(Phaser.Math.Clamp(baseA, 0.04, 1));
+        };
+        if (pool && n > 0) {
+          for (let i = 0; i < n; i++) {
+            applyOne(pool[i], i, n);
+          }
+        }
+        const floats = scene._bootFloatLogActive;
+        if (floats?.length) {
+          for (let fi = 0; fi < floats.length; fi++) {
+            const row = floats[fi];
+            if (!row?.txt || row.txt.destroyed) continue;
+            const i = n + fi;
+            applyOne(row.txt, i, n + floats.length);
+          }
         }
       }
 
-      /** 警告2行＋フレームをタイトル下に一度だけ配置 */
+      function bootFloatLogActiveCount(scene) {
+        return scene._bootFloatLogActive?.filter((r) => r.txt && !r.txt.destroyed).length ?? 0;
+      }
+
+      function bootPickFloatAnchor(scene, p, W, H, cx, cy) {
+        const r = Math.random();
+        if (p < 0.52 || r < 0.45) {
+          return {
+            x: 10 + Math.random() * (W * 0.38),
+            y: 12 + Math.random() * (H * 0.28),
+          };
+        }
+        if (p < 0.68 || r < 0.72) {
+          return {
+            x: W * 0.5 + (Math.random() - 0.5) * W * 0.34,
+            y: H * (0.36 + Math.random() * 0.16),
+          };
+        }
+        if (r < 0.55) {
+          return {
+            x: W * 0.08 + Math.random() * (W * 0.22),
+            y: H * (0.72 + Math.random() * 0.22),
+          };
+        }
+        if (r < 0.82) {
+          return {
+            x: W * 0.72 + Math.random() * (W * 0.22),
+            y: H * (0.28 + Math.random() * 0.5),
+          };
+        }
+        const img = scene._bootTitleImg;
+        if (img && !img.destroyed) {
+          return {
+            x: img.x + (Math.random() - 0.5) * img.displayWidth * 0.85,
+            y: img.y + (Math.random() - 0.5) * img.displayHeight * 0.75,
+          };
+        }
+        return { x: cx + (Math.random() - 0.5) * 120, y: cy + (Math.random() - 0.5) * 80 };
+      }
+
+      function spawnBootFloatLogLine(scene, p, W, H, cx, cy) {
+        const pool = scene._bootFloatLogPool;
+        if (!pool?.length) return;
+        const active = scene._bootFloatLogActive ?? (scene._bootFloatLogActive = []);
+        let free = pool.find((t) => t && !t.destroyed && !t.getData('inUse'));
+        if (!free) {
+          const oldest = active.shift();
+          if (oldest?.txt && !oldest.txt.destroyed) {
+            oldest.txt.setData('inUse', false);
+            oldest.txt.setAlpha(0);
+            oldest.txt.setPosition(-800, -800);
+          }
+          free = pool.find((t) => t && !t.destroyed && !t.getData('inUse'));
+        }
+        if (!free) return;
+        free.setData('inUse', true);
+        const pos = bootPickFloatAnchor(scene, p, W, H, cx, cy);
+        const snip = BOOT_FLOAT_LOG_SNIPS[Phaser.Math.Between(0, BOOT_FLOAT_LOG_SNIPS.length - 1)];
+        const mega = p > 0.82 && Math.random() < 0.22;
+        free.setPosition(pos.x, pos.y);
+        free.setStyle({
+          fontFamily: '"Courier New", Courier, monospace',
+          fontSize: mega ? '17px' : '11px',
+          color: mega ? '#ff3d3d' : '#8a9aaa',
+        });
+        free.setText(snip);
+        free.setOrigin(0, 0);
+        free.setAlpha(0.94);
+        free.setDepth(11);
+        const ttl = mega
+          ? Phaser.Math.Between(420, 620)
+          : Phaser.Math.Between(280, 520);
+        active.push({ txt: free, until: scene.time.now + ttl });
+      }
+
+      function updateBootFloatLogs(scene, dt, p, W, H, cx, cy) {
+        if (!scene._bootFloatLogPool) return;
+        const active = scene._bootFloatLogActive ?? (scene._bootFloatLogActive = []);
+        const now = scene.time.now;
+        for (let i = active.length - 1; i >= 0; i--) {
+          const row = active[i];
+          if (!row.txt || row.txt.destroyed) {
+            active.splice(i, 1);
+            continue;
+          }
+          if (now >= row.until) {
+            row.txt.setData('inUse', false);
+            row.txt.setAlpha(0);
+            row.txt.setPosition(-800, -800);
+            active.splice(i, 1);
+          }
+        }
+        if (scene._collapsePhase) return;
+        let maxA = 2;
+        if (p >= 0.5) maxA = 4;
+        if (p >= 0.62) maxA = 5;
+        if (p >= 0.75) maxA = 7;
+        if (p >= 0.82) maxA = 8;
+        if (bootFloatLogActiveCount(scene) >= maxA) return;
+        scene._bootFloatSpawnAcc = (scene._bootFloatSpawnAcc || 0) + dt;
+        const interval = p < 0.52 ? 480 : p < 0.72 ? 320 : p < 0.88 ? 200 : 140;
+        if (scene._bootFloatSpawnAcc >= interval) {
+          scene._bootFloatSpawnAcc = 0;
+          spawnBootFloatLogLine(scene, p, W, H, cx, cy);
+        }
+      }
+
+      function bootSpawnCollapseLogScatters(scene) {
+        scene._bootLogScatterFrags = [];
+        const pool = scene._logPool;
+        const na = scene._logActiveCount | 0;
+        if (!pool || na <= 0) return;
+        let fragN = 0;
+        const max = 16;
+        for (let li = 0; li < na && fragN < max; li++) {
+          const poolT = pool[li];
+          const str = poolT.text || '';
+          if (str.length < 3) continue;
+          const picks = Phaser.Math.Between(1, 2);
+          for (let j = 0; j < picks && fragN < max; j++) {
+            const ci = Phaser.Math.Between(0, str.length - 1);
+            const ch = str[ci];
+            if (ch === ' ' || ch === '\t') continue;
+            const charW = Math.max(6, (poolT.width || 60) / str.length);
+            const sx = poolT.x + ci * charW * 0.72;
+            const sy = poolT.y + poolT.height * 0.45;
+            const col = poolT.style?.color ?? '#ff6a6a';
+            const tt = scene.add
+              .text(sx, sy, ch, {
+                fontFamily: '"Courier New", Courier, monospace',
+                fontSize: '12px',
+                color: col,
+              })
+              .setOrigin(0.5, 0.5)
+              .setDepth(13)
+              .setAlpha(0.92);
+            scene._bootLogScatterFrags.push({
+              txt: tt,
+              vx: Phaser.Math.FloatBetween(-118, 118),
+              vy: Phaser.Math.FloatBetween(-95, 95),
+              drag: 0.987,
+              life: 1,
+            });
+            fragN++;
+          }
+        }
+      }
+
+      function updateBootLogScatters(scene, collapseNorm, dt) {
+        const arr = scene._bootLogScatterFrags;
+        if (!arr?.length) return;
+        const spec = scene._faultBandSpec;
+        let bandTop = -1e9;
+        let bandBot = -1e8;
+        if (spec) {
+          bandTop = spec.mainCy - spec.mainH * 0.5;
+          bandBot = bandTop + spec.mainH;
+        }
+        const subSwallow = (my) => {
+          if (!spec?.sub) return false;
+          const st = spec.sub.cy - spec.sub.h * 0.5;
+          const sb = st + spec.sub.h;
+          return my >= st && my <= sb;
+        };
+        const dtf = dt / 16.67;
+        for (let i = arr.length - 1; i >= 0; i--) {
+          const o = arr[i];
+          if (!o.txt || o.txt.destroyed) {
+            arr.splice(i, 1);
+            continue;
+          }
+          o.vx *= o.drag;
+          o.vy = o.vy * o.drag + 28 * (dt / 1000);
+          o.txt.x += o.vx * 0.06 * dtf;
+          o.txt.y += o.vy * 0.06 * dtf;
+          let life = o.life;
+          const my = o.txt.y;
+          if (
+            spec &&
+            collapseNorm > 0.06 &&
+            ((my >= bandTop && my <= bandBot) || subSwallow(my))
+          ) {
+            life -= 0.11 * (dt / 1000);
+            o.vx *= 0.9;
+            o.vy *= 0.88;
+          }
+          life -= 0.0019 * dt;
+          o.life = life;
+          o.txt.setAlpha(Phaser.Math.Clamp(life, 0, 1) * 0.92);
+          o.txt.rotation += 0.0018 * dt * (Math.random() - 0.45);
+          if (life < 0.04) {
+            o.txt.destroy();
+            arr.splice(i, 1);
+          }
+        }
+      }
+
+      function registerBootYLetterFragments(scene) {
+        const items = [];
+        const charset = 'ERR!><:';
+        const hand = scene._bootTitleImg && !scene._bootTitleImg.destroyed
+          ? scene._bootTitleImg
+          : null;
+        const cx = WORLD_W / 2;
+        const cy = WORLD_H / 2;
+        for (let i = 0; i < 6; i++) {
+          let sx;
+          let sy;
+          if (i < 2 && scene._bootFloatLogActive?.length) {
+            const fl = scene._bootFloatLogActive[i];
+            if (fl?.txt && !fl.txt.destroyed) {
+              sx = fl.txt.x + fl.txt.width * 0.5;
+              sy = fl.txt.y + fl.txt.height * 0.5;
+            }
+          }
+          if (sx == null && scene._logPool && (scene._logActiveCount | 0) > 0) {
+            const t = scene._logPool[Phaser.Math.Between(0, (scene._logActiveCount | 0) - 1)];
+            sx = t.x + Math.min(t.width * 0.4, 80);
+            sy = t.y + 5;
+          }
+          if (sx == null) {
+            sx = Phaser.Math.FloatBetween(16, 120);
+            sy = Phaser.Math.FloatBetween(36, 220);
+          }
+          if (i >= 4 && hand) {
+            sx = hand.x + Phaser.Math.FloatBetween(-130, 130);
+            sy = hand.y + Phaser.Math.FloatBetween(-50, 90);
+          }
+          items.push({ x: sx, y: sy, ch: charset[i % charset.length] });
+        }
+        scene.game.registry.set(REG_BOOT_Y_LETTER_FRAGS, { items });
+      }
+
+      /** 警告2行＋フレームをタイトル下に配置（タイトル微振動時も追従） */
       function placeBootWarningBlock(scene, cx, cy) {
-        if (scene._warnTextPlaced || !scene._warnText1 || !scene._warnText2 || !scene._warnFrame || !scene._bootTitleImg) return;
+        if (!scene._warnText1 || !scene._warnText2 || !scene._warnFrame || !scene._bootTitleImg) return;
         const imgDH2 = scene._bootTitleImg.displayHeight;
         const warnY1 = scene._bootTitleImg.y + imgDH2 * BOOT_DEBUG.warnOffsetY;
         const lineGap = 8;
         scene._warnText1.setY(warnY1);
         scene._warnText2.setY(warnY1 + scene._warnText1.height + lineGap);
-        scene._warnTextPlaced = true;
 
         const tw = Math.max(scene._warnText1.width, scene._warnText2.width);
         const fy1 = warnY1;
@@ -524,15 +788,16 @@
         const rh = fy2 - fy1 + padY * 2;
         const corner = 6;
         const gf = scene._warnFrame;
+        const crit = Boolean(scene._warnFrameCritical);
         gf.clear();
-        gf.fillStyle(0x6b2830, 0.10);
+        gf.fillStyle(crit ? 0x3a0508 : 0x6b2830, crit ? 0.22 : 0.10);
         gf.fillRect(rx, ry, rw, rh);
-        gf.lineStyle(1, 0x8b3b42, 0.75);
+        gf.lineStyle(crit ? 2.4 : 1, crit ? 0xff2a3d : 0x8b3b42, crit ? 0.96 : 0.75);
         gf.lineBetween(rx + corner, ry, rx + rw - corner * 2.5, ry);
         gf.lineBetween(rx + rw, ry + corner * 2, rx + rw, ry + rh - corner);
         gf.lineBetween(rx + corner * 2.5, ry + rh, rx + rw - corner, ry + rh);
         gf.lineBetween(rx, ry + corner, rx, ry + rh - corner * 2);
-        gf.lineStyle(2, 0x7a3038, 0.45);
+        gf.lineStyle(crit ? 2.8 : 2, crit ? 0xff1a35 : 0x7a3038, crit ? 0.72 : 0.45);
         gf.lineBetween(rx + corner, ry, rx + rw * 0.4, ry);
         gf.lineBetween(rx, ry + corner, rx, ry + rh * 0.45);
         scene._warnLayout = { rx, ry, rw, rh, corner };
@@ -640,8 +905,8 @@
       // フェーズ2: 背景スキャン (上から下、オーバーレイ縮小)
       //            revealY / 背景 alpha 共通: bgStart→bgEnd で easeInCubic（序盤遅く後半速く）
       // フェーズ3: タイトル描画
-      //            Error  : 最初から errorAlpha で背面に常駐
       //            Overlap: p=titleStart〜 で左→右マスク展開、titleStop で停止
+      //            警告: progress が BOOT_WARN_SHOW_PROGRESS 以降のみ表示（collapse 直前に強調）
       // 微違和感  : Overlap を cx+1px 固定オフセット
       // ─────────────────────────────────────────────────────────────────────────
       class BootScene extends Phaser.Scene {
@@ -713,20 +978,19 @@
           // スキャン先端ライン (depth -39)
           this._scanLineGfx = this.add.graphics().setDepth(-39);
 
-          // ── 警告テキスト: 2行化 (p > 0.9 でタイトル直下に表示) ─────────
-          // 上段: CRITICAL ERROR / 下段: OVERLAP DETECTED (点滅あり)
-          // create 時点では displayHeight が未確定のため update() で初回配置
+          // ── 警告テキスト: 2行化（progress 0.72 以降のみ表示・collapse 直前にピーク） ──
+          // 上段: CRITICAL ERROR / 下段: OVERLAP DETECTED
+          // create 時点では displayHeight が未確定のため update() で配置
           this._warnText1 = this.add.text(cx, cy, 'CRITICAL ERROR', {
             fontFamily: '"Courier New", Courier, monospace',
             fontSize: '19px',
-            color: '#e05858',
+            color: '#ff1a1a',
           }).setOrigin(0.5, 0).setAlpha(0).setDepth(12);
           this._warnText2 = this.add.text(cx, cy, 'OVERLAP DETECTED', {
             fontFamily: '"Courier New", Courier, monospace',
             fontSize: '23px',
-            color: '#ff5a5a',
+            color: '#ff3d3d',
           }).setOrigin(0.5, 0).setAlpha(0).setDepth(12);
-          this._warnTextPlaced = false;
           this._warnBlink = 0;
 
           // ── 警告フレーム: 2行全体を囲う欠け矩形 (depth 12) ───────────────
@@ -768,6 +1032,21 @@
 
           seedBootLogLines(this);
 
+          this._bootFloatLogPool = [];
+          this._bootFloatLogActive = [];
+          this._bootFloatSpawnAcc = 0;
+          this._bootLogScatterFrags = null;
+          this._bootTitlePhase = 0;
+          for (let fi = 0; fi < 14; fi++) {
+            const ft = this.add.text(-900, -900, '', {
+              fontFamily: '"Courier New", Courier, monospace',
+              fontSize: '11px',
+              color: '#8a9aaa',
+            }).setOrigin(0, 0).setAlpha(0).setDepth(11);
+            ft.setData('inUse', false);
+            this._bootFloatLogPool.push(ft);
+          }
+
           // GeometryMask: 左→右へ展開する矩形で PNG タイトルを段階表示
           // noTitleMask=true の場合はマスクを使わず全体を表示
           this._overlapMaskGfx = this.make.graphics({ add: false });
@@ -789,6 +1068,7 @@
           const _imgNatH = this._bootTitleImg.height;
           const _imgScale = (WORLD_W * 0.82) / (imgNatW || 1);
           this._bootTitleImg.setScale(_imgScale);
+          this._bootTitleBaseScale = _imgScale;
 
           // _overlapMask を PNG タイトルにも共用: 同じ矩形で左→右スキャン表示
           if (!BOOT_DEBUG.noTitleMask && this._overlapMask) {
@@ -829,7 +1109,7 @@
               _phase = 'collapse';
             } else if (this._done || _p >= 1) {
               _phase = 'done';
-            } else if (_p >= 0.9) {
+            } else if (_p >= BOOT_WARN_SHOW_PROGRESS) {
               _phase = 'reveal';
             } else if (_p >= BOOT_DEBUG.titleStart) {
               _phase = 'title';
@@ -875,6 +1155,11 @@
           this._warnText1 = null;
           this._warnText2 = null;
           this._warnFrame = null;
+          this._bootFloatLogPool?.forEach((t) => t?.destroy?.());
+          this._bootFloatLogPool = null;
+          this._bootFloatLogActive = null;
+          this._bootLogScatterFrags?.forEach((o) => o.txt?.destroy?.());
+          this._bootLogScatterFrags = null;
           this._logPool?.forEach(t => t.destroy());
           this._logPool = null;
           this._overlapMaskGfx?.destroy();
@@ -1024,6 +1309,8 @@
               if (b !== a) this._collapseLogGhostIdx.add(b);
             }
           }
+          bootSpawnCollapseLogScatters(this);
+          registerBootYLetterFragments(this);
           const pulseErrLog = () => {
             if (!this._logPool) return;
             const m = this._logActiveCount | 0;
@@ -1199,6 +1486,8 @@
             this._collapseT += dt;
             const collapseNorm = Math.min(1, this._collapseT / this._collapseDur);
 
+            updateBootFloatLogs(this, dt, 1, W, H, cx, cy);
+
             const _structLayer = this._bootBackdrop?.containers?.[1];
             const _baseLayer = this._bootBackdrop?.containers?.[0];
             const ct = this._collapseT;
@@ -1226,6 +1515,8 @@
             if (this._collapseBandGfx && !this._collapseBandGfx.destroyed) {
               this._drawCollapseFaultBand(ct);
             }
+
+            updateBootLogScatters(this, collapseNorm, dt);
 
             if (!BOOT_DEBUG.noBootOverlay) {
               if (ct < 128) {
@@ -1290,43 +1581,26 @@
             }
 
             if (this._warnText1 && this._warnText2) {
+              this._warnFrameCritical = ct < 140;
+              placeBootWarningBlock(this, cx, cy);
               this._warnBlinkIrregular += dt * Phaser.Math.FloatBetween(0.028, 0.095);
               const b1 = Math.sin(this._warnBlinkIrregular) * 0.5 + 0.5;
               const b2 = Math.sin(this._warnBlinkIrregular * 1.73 + 1.31) * 0.5 + 0.5;
-              const chaos = (Math.random() - 0.5) * 0.06;
-              let a1 = Phaser.Math.Clamp(0.2 + b1 * 0.2 + chaos, 0.2, 0.4);
-              let a2 = Phaser.Math.Clamp(0.2 + b2 * 0.2 - chaos, 0.2, 0.4);
-              if (ct < 95) {
-                const boost = 1 - ct / 95;
-                a1 = Phaser.Math.Clamp(a1 + 0.52 * boost, 0.2, 1);
-                a2 = Phaser.Math.Clamp(a2 + 0.48 * boost, 0.2, 1);
+              const chaos = (Math.random() - 0.5) * 0.04;
+              let a1 = Phaser.Math.Clamp(0.58 + b1 * 0.32 + chaos, 0.52, 1);
+              let a2 = Phaser.Math.Clamp(0.54 + b2 * 0.34 - chaos, 0.5, 1);
+              if (ct < 105) {
+                const boost = 1 - ct / 105;
+                a1 = Phaser.Math.Clamp(a1 + 0.22 * boost, 0.55, 1);
+                a2 = Phaser.Math.Clamp(a2 + 0.2 * boost, 0.52, 1);
               }
               this._warnText1.setAlpha(a1);
               this._warnText2.setAlpha(a2);
-              if (this._warnFrame && this._warnLayout && Math.random() < Phaser.Math.FloatBetween(0.14, 0.36)) {
-                const L = this._warnLayout;
-                const gf = this._warnFrame;
-                gf.clear();
-                if (Math.random() > 0.25) {
-                  gf.fillStyle(0x6b2830, 0.06 + Math.random() * 0.08);
-                  gf.fillRect(L.rx, L.ry, L.rw, L.rh);
-                }
-                const seg = Math.random();
-                gf.lineStyle(1, 0x8b3b42, 0.4 + Math.random() * 0.5);
-                const { rx, ry, rw, rh, corner } = L;
-                if (seg < 0.33) {
-                  gf.lineBetween(rx + corner, ry, rx + rw * 0.55, ry);
-                } else if (seg < 0.66) {
-                  gf.lineBetween(rx + rw, ry + corner * 2, rx + rw, ry + rh * 0.55);
-                } else {
-                  gf.lineBetween(rx + corner * 2.5, ry + rh, rx + rw * 0.5, ry + rh);
-                }
-                gf.lineStyle(2, 0x7a3038, 0.2 + Math.random() * 0.35);
-                if (Math.random() > 0.4) gf.lineBetween(rx + corner, ry, rx + rw * 0.35, ry);
-                let fA = Phaser.Math.Clamp(0.45 + Math.random() * 0.3, 0.35, 0.75);
-                if (ct < 90) fA = Phaser.Math.Clamp(fA + 0.22, 0.35, 0.95);
-                this._warnFrame.setAlpha(fA);
-              }
+              this._warnFrame.setAlpha(
+                ct < 118
+                  ? Phaser.Math.Clamp(0.9 + Math.random() * 0.08, 0.88, 1)
+                  : Phaser.Math.Clamp(0.75 + b1 * 0.2, 0.68, 0.95),
+              );
             }
 
             if (this._logPool) {
@@ -1390,6 +1664,23 @@
             this._scanLineGfx.lineBetween(0, revealY, W, revealY);
           }
 
+          if (pTitle >= 0.5 && pTitle < 1 && this._bootTitleImg && !this._done) {
+            const k = Phaser.Math.Clamp((pTitle - 0.5) / 0.48, 0, 1);
+            const mag = k * k * 5.5;
+            this._bootTitlePhase += this.game.loop.delta * (0.0026 + k * 0.007);
+            const ox = Math.sin(this._bootTitlePhase * 1.63) * mag * 0.2;
+            const oy = Math.cos(this._bootTitlePhase * 1.21) * mag * 0.15;
+            const sc = 1 + k * 0.007 * Math.sin(this._bootTitlePhase * 0.88);
+            this._bootTitleImg.setPosition(cx + 1 + ox, cy + 27 + oy);
+            const bs = this._bootTitleBaseScale ?? (WORLD_W * 0.82) / (this._bootTitleImg.width || 1);
+            this._bootTitleImg.setScale(bs * sc, bs * sc);
+          } else if (this._bootTitleImg && pTitle < 0.5) {
+            const imgNatW = this._bootTitleImg.width;
+            const bs = (WORLD_W * 0.82) / (imgNatW || 1);
+            this._bootTitleImg.setPosition(cx + 1, cy + 27);
+            this._bootTitleImg.setScale(bs, bs);
+          }
+
           // ── フェーズ3: PNG タイトル（p=titleStart〜） ─────────────────
           const { titleStart, titleStop, noTitleMask } = BOOT_DEBUG;
           if (pTitle < titleStart) {
@@ -1429,30 +1720,39 @@
             }
           }
 
-          // ── 警告テキスト2行: p > 0.9 でタイトル直下に固定表示 ────────────
-          if (p > 0.9) {
-            placeBootWarningBlock(this, cx, cy);
-            // 上段: alpha 0.95固定
-            this._warnText1.setAlpha(0.95);
-            // 下段: ゆっくり点滅 alpha 1.0 ↔ 0.85
-            this._warnBlink = (this._warnBlink || 0) + this.game.loop.delta * 0.0018;
-            const blinkA = 0.925 + Math.sin(this._warnBlink) * 0.075;
-            this._warnText2.setAlpha(blinkA);
-            this._warnFrame.setAlpha(1);
-          } else {
+          // ── 警告テキスト2行: progress 0.72 以降のみ（collapse 直前に強いピーク） ──
+          if (p < BOOT_WARN_SHOW_PROGRESS) {
             this._warnText1.setAlpha(0);
             this._warnText2.setAlpha(0);
             this._warnFrame.setAlpha(0);
+          } else {
+            const ramp = Phaser.Math.Clamp(
+              (p - BOOT_WARN_SHOW_PROGRESS) /
+                Math.max(0.001, BOOT_WARN_RAMP_END_PROGRESS - BOOT_WARN_SHOW_PROGRESS),
+              0,
+              1,
+            );
+            const burst = p < BOOT_WARN_SHOW_PROGRESS + 0.042 ? 1 - (p - BOOT_WARN_SHOW_PROGRESS) / 0.042 : 0;
+            this._warnFrameCritical = burst > 0.15;
+            placeBootWarningBlock(this, cx, cy);
+            this._warnBlink = (this._warnBlink || 0) + this.game.loop.delta * 0.0024;
+            const blinkA = 0.9 + Math.sin(this._warnBlink) * 0.08;
+            const aBase = Phaser.Math.Linear(0.78, 0.98, ramp);
+            const a1 = Phaser.Math.Clamp(aBase + burst * 0.28, 0, 1);
+            const a2 = Phaser.Math.Clamp(aBase * blinkA + burst * 0.22, 0, 1);
+            this._warnText1.setAlpha(a1);
+            this._warnText2.setAlpha(a2);
+            this._warnFrame.setAlpha(Phaser.Math.Clamp(0.82 + ramp * 0.16 + burst * 0.12, 0, 1));
           }
 
           // ── 左上ログ流入: 開始は常時 ON、内容のみ progress で Phase 切替 ──
-          // Phase A (p < 0.75): SYS / INFO
-          // Phase B (0.75〜0.9): WARN 混在
-          // Phase C (p > 0.9): ERROR 増殖
+          // Phase A (p < 0.55): SYS / INFO
+          // Phase B (0.55〜0.82): WARN 混在
+          // Phase C (p > 0.82): ERROR 増殖
           let _activeMessages;
-          if (p < 0.75) {
+          if (p < 0.55) {
             _activeMessages = BOOT_LOG_MESSAGES_A;
-          } else if (p < 0.9) {
+          } else if (p < 0.82) {
             _activeMessages = BOOT_LOG_MESSAGES_B;
           } else {
             _activeMessages = BOOT_LOG_MESSAGES_C;
@@ -1463,12 +1763,12 @@
             this._logTimer += delta;
             // progress が進むほど追加間隔が短くなる（式は従来どおり）
             let interval;
-            if (p < 0.75) {
-              interval = Phaser.Math.Linear(300, 160, (p - 0.2) / 0.55);
-            } else if (p < 0.9) {
-              interval = Phaser.Math.Linear(180, 120, (p - 0.75) / 0.15);
+            if (p < 0.55) {
+              interval = Phaser.Math.Linear(300, 165, Math.max(0, (p - 0.2) / 0.35));
+            } else if (p < 0.82) {
+              interval = Phaser.Math.Linear(175, 95, (p - 0.55) / 0.27);
             } else {
-              interval = Phaser.Math.Linear(150, 60, (p - 0.9) / 0.1);
+              interval = Phaser.Math.Linear(115, 52, (p - 0.82) / 0.18);
             }
             if (this._logTimer >= interval && this._logActiveCount < this._logPool.length) {
               this._logTimer = 0;
@@ -1506,6 +1806,8 @@
               this._logActiveCount++;
             }
           }
+
+          updateBootFloatLogs(this, this.game.loop.delta, p, W, H, cx, cy);
 
           this._debugHud?.tick();
         }

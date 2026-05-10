@@ -21,14 +21,20 @@ export const REG_BOOT_HOME_WAIT_COLLAPSE = 'bootHomeWaitCollapseOverlay';
 /** Boot が崩壊処理とクリーンアップを終えた（Home が不透過化してよい） */
 export const REG_BOOT_COLLAPSE_DONE_FOR_HOME = 'bootCollapseDoneForHome';
 
+/**
+ * Boot 崩壊時に登録: { items: { x, y, ch }[] } — 赤系ログ断片が PLAY の「y」座標へ収束してから y を点灯する。
+ */
+export const REG_BOOT_Y_LETTER_FRAGS = 'bootYLetterFragments';
+
 /** overlapRebuildT0 から Home 背景スキャン再開までの遅延（ms）— 黒帯（断層）が立った後にグリッド復旧が見えるよう少し遅らせる */
-export const HOME_BG_REBUILD_DELAY_MS = 330;
+export const HOME_BG_REBUILD_DELAY_MS = 400;
 
 export const REG = {
   collapseStartHandoff: BOOT_OVERLAP_COLLAPSE_START_KEY,
   rebuildT0: OVERLAP_REBUILD_T0_KEY,
   homeWaitCollapse: REG_BOOT_HOME_WAIT_COLLAPSE,
   collapseDoneForHome: REG_BOOT_COLLAPSE_DONE_FOR_HOME,
+  yLetterFrags: REG_BOOT_Y_LETTER_FRAGS,
 };
 
 /**
@@ -126,6 +132,8 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
 
   const t0Raw = reg.get(OVERLAP_REBUILD_T0_KEY);
   reg.remove(OVERLAP_REBUILD_T0_KEY);
+  const yLetterFragSpec = reg.get(REG_BOOT_Y_LETTER_FRAGS);
+  reg.remove(REG_BOOT_Y_LETTER_FRAGS);
   const epochMs =
     typeof t0Raw === 'number' && Number.isFinite(t0Raw)
       ? t0Raw
@@ -133,6 +141,9 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
 
   scene._homeLinkReveal = { play: 0, sub: [0, 0, 0] };
   scene._overlapGlyphReveal = { P: 0, L: 0, A: 0, V: 0, y: 0 };
+  scene._bootYRevealUsesLogFragments = Boolean(
+    yLetterFragSpec?.items?.length,
+  );
   scene._redrawHomeUI();
 
   const targetByKey = {
@@ -155,6 +166,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
   hideRealGlyphs();
 
   const fallbackImmediate = () => {
+    scene._bootYRevealUsesLogFragments = false;
     scene._overlapGlyphReveal = null;
     scene._homeLinkReveal = { play: 1, sub: [1, 1, 1] };
     scene._delta.startFrame.offsetX = 0;
@@ -364,10 +376,86 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
           scene._overlapYRevealTweenObj = null;
           scene._overlapYRevealTween = null;
           scene._redrawHomeUI();
+          const baseGA =
+            typeof scene._startYGlyphAlpha === 'number'
+              ? scene._startYGlyphAlpha
+              : 0.82;
+          const settle = { g: Math.min(0.55, baseGA * 0.62) };
+          scene.tweens.add({
+            targets: settle,
+            g: baseGA,
+            duration: Math.round(seededRange(140, 220, 7923)),
+            ease: 'Sine.easeOut',
+            onUpdate: () => {
+              scene._startYGlyphAlpha = settle.g;
+              scene._redrawHomeUI();
+            },
+            onComplete: () => {
+              scene._startYGlyphAlpha = baseGA;
+              scene._redrawHomeUI();
+            },
+          });
         },
       });
     });
   };
+
+  const runBootYLetterFragmentConverge = (onAllDone) => {
+    const items = yLetterFragSpec?.items;
+    if (!items?.length) {
+      onAllDone?.();
+      return;
+    }
+    scene._redrawHomeUI();
+    const tx = scene._startY?.x ?? 0;
+    const ty = scene._startY?.y ?? 0;
+    const depth = 20;
+    let remaining = items.length;
+    const doneOne = () => {
+      remaining -= 1;
+      if (remaining <= 0) onAllDone?.();
+    };
+    items.forEach((it, i) => {
+      const ch = String(it.ch ?? '>').slice(0, 1);
+      const spr = scene.add
+        .text(it.x, it.y, ch, {
+          fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+          fontSize: '22px',
+          color: '#ff3a3a',
+          stroke: '#1a0505',
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5, 0.5)
+        .setDepth(depth)
+        .setAlpha(0.94);
+      if (!scene._bootToHomeFlying) scene._bootToHomeFlying = [];
+      scene._bootToHomeFlying.push(spr);
+      const dur = Math.round(seededRange(380, 520, 8500 + i * 17));
+      const delay = Math.round(seededRange(0, 95, 8600 + i * 13));
+      scene.tweens.add({
+        targets: spr,
+        x: tx,
+        y: ty,
+        scaleX: 0.42,
+        scaleY: 0.42,
+        alpha: 0.15,
+        angle: seededRange(-14, 14, 8700 + i),
+        duration: dur,
+        delay,
+        ease: 'Sine.easeIn',
+        onComplete: () => {
+          if (spr && !spr.destroyed) spr.destroy();
+          doneOne();
+        },
+      });
+    });
+  };
+
+  if (scene._bootYRevealUsesLogFragments) {
+    runBootYLetterFragmentConverge(() => {
+      scheduleYReveal();
+    });
+  }
 
   const stopRebuild = () => {
     cancelOverlapRevealSideEffects();
@@ -552,7 +640,9 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     if (p.key === 'A') gr.A = 1;
     if (p.key === 'V') {
       gr.V = 1;
-      scheduleYReveal();
+      if (!scene._bootYRevealUsesLogFragments) {
+        scheduleYReveal();
+      }
     }
     if (p.key === 'O') scene._homeLinkReveal.sub[0] = 1;
     if (p.key === 'E') scene._homeLinkReveal.sub[1] = 1;
@@ -587,6 +677,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     if (!isOverlapRebuildSettled()) return;
 
     stopRebuild();
+    scene._bootYRevealUsesLogFragments = false;
 
     parts.forEach((f) => {
       if (f.sprite && !f.sprite.destroyed) {
