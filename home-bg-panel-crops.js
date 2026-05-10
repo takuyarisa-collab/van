@@ -1,6 +1,6 @@
 /**
- * home-bg-normal.png（941×1672）専用のパネル切り出し矩形。
- * 文字用 HOMEOVERLAP_CROPS とは独立。画像上の低コントラスト帯を走査して選定。
+ * home-bg-normal.png（941×1672）から PLAY/SUB が参照する矩形クロップ。
+ * 実表示は GeometryMask で非長方形に切り出すが、素材はこの領域からサンプルして「同一背景が裂けた」連続性を保つ。
  */
 export const HOME_BG_PANEL_CROPS = Object.freeze({
   /** h 調整。y は面の中心維持（y = y旧 + h旧/2 - h新/2） */

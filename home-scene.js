@@ -124,6 +124,11 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         .setDepth(_depthPlayBaseMain)
         .setVisible(false);
 
+      const _depthPlayFrag = _depthPlayBaseMain + 0.5;
+      this._playBgMaskGfx = this.add.graphics().setVisible(false);
+      this._playBgPanelImg.setMask(this._playBgMaskGfx.createGeometryMask());
+      this._playBgFragEdgeGfx = this.add.graphics().setDepth(_depthPlayFrag);
+
       if (homeUrlDebugEnabled()) {
         const p = this._playBgPanelImg;
         console.log('[home-bg-panel-create]', {
@@ -175,6 +180,16 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
           .setVisible(false);
         const z = this.add.zone(0, 0, 88, 40).setDepth(_depthSubHit);
         return { head, tail: tailT, zone: z, bgPanelImg };
+      });
+
+      this._subBgMaskGfx = [];
+      this._subBgFragEdgeGfx = [];
+      const _depthSubFrag = _depthSubPanelMain + 0.5;
+      this._subRows.forEach((row) => {
+        const mg = this.add.graphics().setVisible(false);
+        row.bgPanelImg.setMask(mg.createGeometryMask());
+        this._subBgMaskGfx.push(mg);
+        this._subBgFragEdgeGfx.push(this.add.graphics().setDepth(_depthSubFrag));
       });
 
       if (homeUrlDebugEnabled()) {
@@ -293,6 +308,10 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this._startA = this._startP = this._startL = this._startV = this._startY = null;
         this._playBgPanelImg?.destroy?.();
         this._playBgPanelImg = null;
+        this._playBgMaskGfx?.destroy?.();
+        this._playBgMaskGfx = null;
+        this._playBgFragEdgeGfx?.destroy?.();
+        this._playBgFragEdgeGfx = null;
         this._startHitZone?.destroy?.();
         this._startHitZone = null;
         this._subRows?.forEach((r) => {
@@ -301,6 +320,10 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
           r.zone?.destroy?.();
           r.bgPanelImg?.destroy?.();
         });
+        this._subBgMaskGfx?.forEach((g) => g?.destroy?.());
+        this._subBgMaskGfx = null;
+        this._subBgFragEdgeGfx?.forEach((g) => g?.destroy?.());
+        this._subBgFragEdgeGfx = null;
         this._subRows = null;
       };
       this.events.once('shutdown', cleanupHome);
