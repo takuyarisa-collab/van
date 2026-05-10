@@ -7,6 +7,11 @@ import {
   layoutHomeBgNormalCropPanel,
 } from './home-bg-panels.js';
 import { _homeUiRandInt, _homeUiRandRange } from './home-rand.js';
+import {
+  buildPlayFragmentLocalPoints,
+  drawFragmentFaultOutline,
+  drawFragmentGeometryMask,
+} from './home-bg-fragment-shapes.js';
 
 function _homePlayUrlOffsets() {
   if (typeof window === 'undefined') {
@@ -136,6 +141,24 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
     imgCenterY: panelImgCy,
     debugLogKind: 'PLAY',
   });
+
+  if (!scene._playBgPanelImg.visible) {
+    scene._playBgMaskGfx?.clear?.();
+    scene._playBgFragEdgeGfx?.clear?.();
+  } else {
+    const playLocal = buildPlayFragmentLocalPoints(playBgDispW, playBgDispH);
+    const playWorld = playLocal.map((p) => ({
+      x: p.x + panelImgCx,
+      y: p.y + panelImgCy,
+    }));
+    if (scene._playBgMaskGfx) drawFragmentGeometryMask(scene._playBgMaskGfx, playWorld);
+    if (scene._playBgFragEdgeGfx) {
+      drawFragmentFaultOutline(scene._playBgFragEdgeGfx, playWorld, {
+        kind: 'play',
+        alphaScale: alphaPlay,
+      });
+    }
+  }
 
   /** ▷ + P/L/A/y の外接矩形の中心を text 基準に一致（パネル専用オフセットの影響を受けない） */
   const playBlockTop = textCy - playContentH * 0.5;

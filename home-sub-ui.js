@@ -7,6 +7,11 @@ import {
 import { homeUrlDebugEnabled } from './home-url-debug.js';
 import { getBootOverlapTitleScale } from './home-boot-title-scale.js';
 import { _homeUiRandInt, _homeUiRandRange } from './home-rand.js';
+import {
+  buildSubFragmentLocalPoints,
+  drawFragmentFaultOutline,
+  drawFragmentGeometryMask,
+} from './home-bg-fragment-shapes.js';
 
 const SUB_PANEL_CROPS = [
   HOME_BG_PANEL_CROPS.SUB_PANEL_0,
@@ -169,6 +174,27 @@ export function redrawHomeSubUI(scene, L, urlBgDisp, subReveal = null) {
       debugLogKind: 'SUB',
       debugRowIndex: i,
     });
+
+    const maskArr = scene._subBgMaskGfx;
+    const edgeArr = scene._subBgFragEdgeGfx;
+    if (!row.bgPanelImg.visible) {
+      maskArr?.[i]?.clear?.();
+      edgeArr?.[i]?.clear?.();
+    } else {
+      const subLocal = buildSubFragmentLocalPoints(subBgDispW, subBgDispH, i);
+      const subWorld = subLocal.map((p) => ({
+        x: p.x + rowPanelX,
+        y: p.y + rowPanelY,
+      }));
+      if (maskArr?.[i]) drawFragmentGeometryMask(maskArr[i], subWorld);
+      if (edgeArr?.[i]) {
+        drawFragmentFaultOutline(edgeArr[i], subWorld, {
+          kind: 'sub',
+          rowIndex: i,
+          alphaScale: subRowAlpha,
+        });
+      }
+    }
 
     if (homeUrlDebugEnabled()) {
       console.log('[SUB_Y_CHECK]', {
