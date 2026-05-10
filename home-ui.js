@@ -113,6 +113,11 @@ export function destroyBootBgPanelForHome(bootScene) {
     bs._bootBg = null;
   }
   if (!bs) return;
+  bs._bootFloatLogPool?.forEach((t) => t?.destroy?.());
+  bs._bootFloatLogPool = null;
+  bs._bootFloatLogActive = null;
+  bs._bootLogScatterFrags?.forEach((o) => o.txt?.destroy?.());
+  bs._bootLogScatterFrags = null;
   bs._bootTitleImg?.destroy?.();
   bs._bootTitleImg = null;
   bs._warnText1?.destroy?.();

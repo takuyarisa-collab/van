@@ -381,7 +381,7 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this.tweens.add({
           targets: layer,
           alpha: 1,
-          duration: 560,
+          duration: 640,
           ease: 'Sine.easeOut',
         });
       });
