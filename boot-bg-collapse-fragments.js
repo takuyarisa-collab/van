@@ -1,11 +1,12 @@
 /**
  * Boot 崩壊時: home-bg-normal を非矩形ポリゴン断片に分割し飛散・一部を Home PLAY/SUB 位置へ収束。
+ * 各断片は生成時のみ RenderTexture に焼き込み（静止セットアップで一時 GeometryMask）、移動中はマスクなし。
  * 演出終了後は必ず destroy。毎フレームの新規生成はしない。
  */
 
 import { getHomeLayout } from './home-layout.js';
 import { HOME_BG_PANEL_CROPS } from './home-bg-panel-crops.js';
-import { homeUrlBgFragNoMaskEnabled, homeUrlDebugEnabled } from './home-url-debug.js';
+import { homeUrlDebugEnabled } from './home-url-debug.js';
 
 /** Boot collapse 開始と同一時刻でセットし、Home の registry 削除後も残す */
 export const REG_BOOT_BG_FRAG_EPOCH_MS = 'bootBgFragEpochMs';
@@ -189,6 +190,66 @@ function easeInOutQuad(t) {
   return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
 }
 
+/**
+ * 静止コンテナ上で一時 GeometryMask を使い、crop 済み背景を非矩形に焼き込んだ RenderTexture を返す。
+ * 返却オブジェクトは移動中に setMask しない（マスク座標ズレ回避）。
+ *
+ * @param {Phaser.Scene} bootScene
+ * @param {number} cropL
+ * @param {number} cropT
+ * @param {number} cropW
+ * @param {number} cropH
+ * @param {number} dispW
+ * @param {number} dispH
+ * @param {{ x: number, y: number }[]} localPts
+ * @returns {Phaser.GameObjects.RenderTexture}
+ */
+function bakeBootBgFragmentToRenderTexture(
+  bootScene,
+  cropL,
+  cropT,
+  cropW,
+  cropH,
+  dispW,
+  dispH,
+  localPts,
+) {
+  const rtW = Math.max(1, Math.ceil(dispW));
+  const rtH = Math.max(1, Math.ceil(dispH));
+
+  const fragRt = bootScene.add
+    .renderTexture(0, 0, rtW, rtH)
+    .setOrigin(0.5, 0.5)
+    .setVisible(false);
+
+  fragRt.clear();
+
+  const srcImg = bootScene.add
+    .image(0, 0, 'home-bg-normal')
+    .setOrigin(0.5, 0.5);
+  srcImg.setCrop(cropL, cropT, cropW, cropH);
+  srcImg.setDisplaySize(dispW, dispH);
+
+  const maskGfx = bootScene.add.graphics();
+  maskGfx.fillStyle(0xffffff, 1);
+  maskGfx.fillPoints(localPts, true, true);
+  srcImg.setMask(maskGfx.createGeometryMask());
+
+  const bakeC = bootScene.add.container(0, 0, [srcImg, maskGfx]);
+
+  fragRt.draw(bakeC, rtW * 0.5, rtH * 0.5);
+
+  if (srcImg && !srcImg.destroyed) {
+    srcImg.clearMask(true);
+  }
+  if (bakeC && !bakeC.destroyed) {
+    bakeC.destroy(true);
+  }
+
+  fragRt.setDisplaySize(dispW, dispH);
+  return fragRt;
+}
+
 function pointInFaultBands(wx, wy, spec, W) {
   if (!spec) return false;
   const mainTop = spec.mainCy - spec.mainH * 0.5;
@@ -319,25 +380,23 @@ export function spawnBootBgCollapseFragments(
     const scatterX = startW.x + burstX;
     const scatterY = startW.y + burstY;
 
-    const img = bootScene.add
-      .image(0, 0, 'home-bg-normal')
-      .setOrigin(0.5, 0.5);
-    img.setCrop(cropL, cropT, cropW, cropH);
     const dispW = cropW * bgScale;
     const dispH = cropH * bgScale;
-    img.setDisplaySize(dispW, dispH);
-
-    const maskGfx = bootScene.add.graphics().setVisible(false);
     const localPts = ptsTex.map((p) => ({
       x: ((p.x - cropL) / cropW - 0.5) * dispW,
       y: ((p.y - cropT) / cropH - 0.5) * dispH,
     }));
-    maskGfx.fillStyle(0xffffff, 1);
-    maskGfx.fillPoints(localPts, true, true);
-    const maskEnabled = !homeUrlBgFragNoMaskEnabled();
-    if (maskEnabled) {
-      img.setMask(maskGfx.createGeometryMask());
-    }
+
+    const fragRt = bakeBootBgFragmentToRenderTexture(
+      bootScene,
+      cropL,
+      cropT,
+      cropW,
+      cropH,
+      dispW,
+      dispH,
+      localPts,
+    );
 
     let outlineGfx = null;
     if (homeUrlDebugEnabled()) {
@@ -354,8 +413,9 @@ export function spawnBootBgCollapseFragments(
       );
     }
 
-    const layerList = outlineGfx ? [img, maskGfx, outlineGfx] : [img, maskGfx];
+    const layerList = outlineGfx ? [fragRt, outlineGfx] : [fragRt];
     const c = bootScene.add.container(scatterX, scatterY, layerList);
+    fragRt.setVisible(true);
     c.setDepth(homeUrlDebugEnabled() ? 60 : -48);
 
     const ang0 = Phaser.Math.DegToRad((rnd() - 0.5) * 28);
@@ -372,8 +432,9 @@ export function spawnBootBgCollapseFragments(
         dispH,
         localPtsLen: localPts.length,
         containerDepth: c.depth,
-        imgAlpha: img.alpha,
-        maskEnabled,
+        bakedRt: true,
+        rtW: fragRt.width,
+        rtH: fragRt.height,
       });
     }
 
@@ -385,8 +446,7 @@ export function spawnBootBgCollapseFragments(
 
     items.push({
       container: c,
-      img,
-      maskGfx,
+      img: fragRt,
       outlineGfx,
       role: d.role,
       startX: startW.x,
@@ -398,7 +458,6 @@ export function spawnBootBgCollapseFragments(
       ang0,
       driftFree,
       panelHandoffDone: false,
-      maskEnabled,
     });
   }
 
@@ -440,13 +499,7 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
 
     if (it.role !== 'free' && wallT >= CONVERGE_END_MS && !it.panelHandoffDone) {
       it.panelHandoffDone = true;
-      if (it.img && !it.img.destroyed) {
-        it.img.clearMask(true);
-      }
-      it.maskGfx?.destroy?.();
-      it.outlineGfx?.destroy?.();
-      it.img?.destroy?.();
-      it.container?.destroy?.();
+      it.container?.destroy?.(true);
       continue;
     }
 
@@ -501,13 +554,7 @@ export function destroyBootBgCollapseFragments(bootScene) {
   if (items?.length) {
     for (const it of items) {
       try {
-        if (it.img && !it.img.destroyed) {
-          it.img.clearMask(true);
-        }
-        it.maskGfx?.destroy?.();
-        it.outlineGfx?.destroy?.();
-        it.img?.destroy?.();
-        it.container?.destroy?.();
+        it.container?.destroy?.(true);
       } catch (_) {
         /* ignore */
       }
