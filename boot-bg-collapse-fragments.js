@@ -5,6 +5,7 @@
 
 import { getHomeLayout } from './home-layout.js';
 import { HOME_BG_PANEL_CROPS } from './home-bg-panel-crops.js';
+import { homeUrlDebugEnabled } from './home-url-debug.js';
 
 /** Boot collapse 開始と同一時刻でセットし、Home の registry 削除後も残す */
 export const REG_BOOT_BG_FRAG_EPOCH_MS = 'bootBgFragEpochMs';
@@ -165,6 +166,20 @@ function bboxOfPoly(pts) {
   return { minX, minY, maxX, maxY };
 }
 
+/** ?debug=1 用: mask と同一ローカル座標の非矩形外縁（container の移動・回転に追従） */
+function drawBootBgCollapseFragOutline(gfx, localPts, lineWidth, color, alpha) {
+  if (!gfx || gfx.destroyed || !localPts?.length) return;
+  gfx.clear();
+  gfx.lineStyle(lineWidth, color, alpha);
+  gfx.beginPath();
+  gfx.moveTo(localPts[0].x, localPts[0].y);
+  for (let i = 1; i < localPts.length; i += 1) {
+    gfx.lineTo(localPts[i].x, localPts[i].y);
+  }
+  gfx.closePath();
+  gfx.strokePath();
+}
+
 function easeOutCubic(t) {
   const u = 1 - t;
   return 1 - u * u * u;
@@ -321,7 +336,23 @@ export function spawnBootBgCollapseFragments(
     maskGfx.fillPoints(localPts, true, true);
     img.setMask(maskGfx.createGeometryMask());
 
-    const c = bootScene.add.container(scatterX, scatterY, [img, maskGfx]);
+    let outlineGfx = null;
+    if (homeUrlDebugEnabled()) {
+      const DBG_COLORS = [0x00ffff, 0xff00ff, 0xffff00];
+      const lw = 1 + (di % 2);
+      const a = Phaser.Math.Clamp(0.8 + (di % 5) * 0.05, 0.8, 1);
+      outlineGfx = bootScene.add.graphics();
+      drawBootBgCollapseFragOutline(
+        outlineGfx,
+        localPts,
+        lw,
+        DBG_COLORS[di % DBG_COLORS.length],
+        a,
+      );
+    }
+
+    const layerList = outlineGfx ? [img, maskGfx, outlineGfx] : [img, maskGfx];
+    const c = bootScene.add.container(scatterX, scatterY, layerList);
     c.setDepth(-48);
 
     const ang0 = Phaser.Math.DegToRad((rnd() - 0.5) * 28);
@@ -337,6 +368,7 @@ export function spawnBootBgCollapseFragments(
       container: c,
       img,
       maskGfx,
+      outlineGfx,
       role: d.role,
       startX: startW.x,
       startY: startW.y,
@@ -392,6 +424,7 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
         it.img.clearMask(true);
       }
       it.maskGfx?.destroy?.();
+      it.outlineGfx?.destroy?.();
       it.img?.destroy?.();
       it.container?.destroy?.();
       continue;
@@ -444,6 +477,7 @@ export function destroyBootBgCollapseFragments(bootScene) {
           it.img.clearMask(true);
         }
         it.maskGfx?.destroy?.();
+        it.outlineGfx?.destroy?.();
         it.img?.destroy?.();
         it.container?.destroy?.();
       } catch (_) {
