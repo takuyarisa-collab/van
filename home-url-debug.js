@@ -3,6 +3,13 @@ export function homeUrlDebugEnabled() {
   return /[?&]debug=1(?:&|$)/.test(window.location.search || '');
 }
 
+/** ?debug=1&bgFragNoMask=1 のときのみ true（Boot 背景断片の GeometryMask 切り分け用） */
+export function homeUrlBgFragNoMaskEnabled() {
+  if (!homeUrlDebugEnabled()) return false;
+  if (typeof window === 'undefined' || !window.location) return false;
+  return /[?&]bgFragNoMask=1(?:&|$)/.test(window.location.search || '');
+}
+
 const _num = (v) =>
   typeof v === 'number' && Number.isFinite(v) ? v : 0;
 

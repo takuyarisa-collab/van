@@ -5,7 +5,7 @@
 
 import { getHomeLayout } from './home-layout.js';
 import { HOME_BG_PANEL_CROPS } from './home-bg-panel-crops.js';
-import { homeUrlDebugEnabled } from './home-url-debug.js';
+import { homeUrlBgFragNoMaskEnabled, homeUrlDebugEnabled } from './home-url-debug.js';
 
 /** Boot collapse 開始と同一時刻でセットし、Home の registry 削除後も残す */
 export const REG_BOOT_BG_FRAG_EPOCH_MS = 'bootBgFragEpochMs';
@@ -334,7 +334,10 @@ export function spawnBootBgCollapseFragments(
     }));
     maskGfx.fillStyle(0xffffff, 1);
     maskGfx.fillPoints(localPts, true, true);
-    img.setMask(maskGfx.createGeometryMask());
+    const maskEnabled = !homeUrlBgFragNoMaskEnabled();
+    if (maskEnabled) {
+      img.setMask(maskGfx.createGeometryMask());
+    }
 
     let outlineGfx = null;
     if (homeUrlDebugEnabled()) {
@@ -353,10 +356,26 @@ export function spawnBootBgCollapseFragments(
 
     const layerList = outlineGfx ? [img, maskGfx, outlineGfx] : [img, maskGfx];
     const c = bootScene.add.container(scatterX, scatterY, layerList);
-    c.setDepth(-48);
+    c.setDepth(homeUrlDebugEnabled() ? 60 : -48);
 
     const ang0 = Phaser.Math.DegToRad((rnd() - 0.5) * 28);
     c.setRotation(ang0);
+
+    if (homeUrlDebugEnabled()) {
+      console.log('[BOOT_BG_FRAG]', {
+        role: d.role,
+        cropL,
+        cropT,
+        cropW,
+        cropH,
+        dispW,
+        dispH,
+        localPtsLen: localPts.length,
+        containerDepth: c.depth,
+        imgAlpha: img.alpha,
+        maskEnabled,
+      });
+    }
 
     const driftFree = {
       vx: (rnd() - 0.5) * 1.1,
@@ -379,6 +398,7 @@ export function spawnBootBgCollapseFragments(
       ang0,
       driftFree,
       panelHandoffDone: false,
+      maskEnabled,
     });
   }
 
@@ -441,7 +461,11 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
       x = sx + it.driftFree.vx * extra * 22 + Math.sin(extra * 1.7) * 6;
       y = sy + it.driftFree.vy * extra * 28;
       rot = it.ang0 + it.driftFree.vr * collapseT * 18;
-      if (pointInFaultBands(x, y, spec, W)) {
+      if (homeUrlDebugEnabled()) {
+        it.img.setAlpha(
+          Phaser.Math.Clamp(0.78 + Math.sin(collapseT * 0.003) * 0.08, 0.85, 0.95),
+        );
+      } else if (pointInFaultBands(x, y, spec, W)) {
         const flick = 0.22 + 0.12 * Math.sin(collapseT * 0.019 + it.startX * 0.01);
         it.img.setAlpha(Phaser.Math.Clamp(flick, 0.12, 0.48));
       } else {
@@ -453,11 +477,15 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
       x = Phaser.Math.Linear(sx, it.targetX, eConv);
       y = Phaser.Math.Linear(sy, it.targetY, eConv);
       rot = Phaser.Math.Linear(it.ang0, 0, eConv);
-      let a = 0.88;
-      if (pointInFaultBands(x, y, spec, W)) {
-        a *= 0.42;
+      if (homeUrlDebugEnabled()) {
+        it.img.setAlpha(0.88);
+      } else {
+        let a = 0.88;
+        if (pointInFaultBands(x, y, spec, W)) {
+          a *= 0.42;
+        }
+        it.img.setAlpha(a);
       }
-      it.img.setAlpha(a);
     }
 
     it.container.setPosition(x, y);
