@@ -2,6 +2,8 @@
  * Boot 崩壊時: home-bg-normal を非矩形ポリゴン断片に分割し飛散・一部を Home PLAY/SUB 位置へ収束。
  * 各断片は生成時のみ RenderTexture に焼き込み（静止セットアップで一時 GeometryMask）、移動中はマスクなし。
  * 演出終了後は必ず destroy。毎フレームの新規生成はしない。
+ *
+ * 破片は「回収」（PLAY/SUB を構成）と「廃棄」（画面外・黒帯・フェード）に分離する。
  */
 
 import { getHomeLayout } from './home-layout.js';
@@ -11,8 +13,24 @@ import { homeUrlDebugEnabled } from './home-url-debug.js';
 /** Boot collapse 開始と同一時刻でセットし、Home の registry 削除後も残す */
 export const REG_BOOT_BG_FRAG_EPOCH_MS = 'bootBgFragEpochMs';
 
-const SCATTER_MS = 180;
-const CONVERGE_END_MS = 850;
+/** Home の PLAY/SUB 背景パネル（クロップ）を不透明にする wall-clock 閾値（overlap rebuild と同期） */
+export const BOOT_BG_HOME_PANEL_REVEAL_MS = 995;
+
+/** タイムライン（collapseT / wallT 基準） */
+export const BOOT_BG_FRAG_SCATTER_MS = 250;
+export const BOOT_BG_FRAG_CONVERGE_T0_MS = 250;
+export const BOOT_BG_FRAG_CONVERGE_END_MS = 1000;
+export const BOOT_BG_FRAG_STABILIZE_T0_MS = 900;
+export const BOOT_BG_FRAG_STABILIZE_END_MS = 1030;
+
+const SCATTER_MS = BOOT_BG_FRAG_SCATTER_MS;
+const CONVERGE_END_MS = BOOT_BG_FRAG_CONVERGE_END_MS;
+const STABILIZE_T0_MS = BOOT_BG_FRAG_STABILIZE_T0_MS;
+const STABILIZE_END_MS = BOOT_BG_FRAG_STABILIZE_END_MS;
+
+/** 廃棄破片のフェード開始・強制破棄（Boot collapse 内） */
+const WASTE_FADE_T0_MS = 680;
+const WASTE_DESTROY_MS = 1080;
 
 function mulberry32(seed) {
   return function rnd() {
@@ -102,12 +120,12 @@ export function computeHomeBgPanelCenters(W, H) {
 }
 
 /**
- * テクスチャ座標系の凸多角形（非矩形）。crop 矩形内の相対座標 0..1 を歪ませる。
+ * テクスチャ座標系の凸多角形（非矩形・非対称）。crop 矩形内の相対座標 0..1 を歪ませる。
  * @param {number} variant
  * @returns {{ x: number, y: number }[]}
  */
 function irregularPolyInUnitSquare(variant) {
-  const v = variant % 5;
+  const v = variant % 11;
   const raw = [
     [
       { x: 0.02, y: 0.22 },
@@ -149,8 +167,59 @@ function irregularPolyInUnitSquare(variant) {
       { x: 0.48, y: 0.94 },
       { x: 0.1, y: 0.78 },
     ],
+    [
+      { x: 0.04, y: 0.62 },
+      { x: 0.44, y: 0.18 },
+      { x: 0.91, y: 0.22 },
+      { x: 0.86, y: 0.71 },
+      { x: 0.36, y: 0.95 },
+    ],
+    [
+      { x: 0.14, y: 0.04 },
+      { x: 0.62, y: 0.12 },
+      { x: 0.96, y: 0.48 },
+      { x: 0.58, y: 0.91 },
+      { x: 0.08, y: 0.78 },
+    ],
+    [
+      { x: 0.22, y: 0.72 },
+      { x: 0.08, y: 0.32 },
+      { x: 0.48, y: 0.08 },
+      { x: 0.94, y: 0.26 },
+      { x: 0.88, y: 0.68 },
+      { x: 0.52, y: 0.94 },
+    ],
+    [
+      { x: 0.1, y: 0.48 },
+      { x: 0.35, y: 0.1 },
+      { x: 0.78, y: 0.06 },
+      { x: 0.95, y: 0.55 },
+      { x: 0.5, y: 0.9 },
+    ],
+    [
+      { x: 0.05, y: 0.18 },
+      { x: 0.52, y: 0.04 },
+      { x: 0.98, y: 0.38 },
+      { x: 0.72, y: 0.88 },
+      { x: 0.2, y: 0.82 },
+    ],
+    [
+      { x: 0.16, y: 0.88 },
+      { x: 0.06, y: 0.42 },
+      { x: 0.42, y: 0.08 },
+      { x: 0.9, y: 0.2 },
+      { x: 0.84, y: 0.76 },
+    ],
   ][v];
   return raw.map((p) => ({ x: p.x, y: p.y }));
+}
+
+function polyInTexRect(rect, variant) {
+  const polyRel = irregularPolyInUnitSquare(variant);
+  return polyRel.map((p) => ({
+    x: rect.x + p.x * rect.w,
+    y: rect.y + p.y * rect.h,
+  }));
 }
 
 function bboxOfPoly(pts) {
@@ -264,6 +333,39 @@ function pointInFaultBands(wx, wy, spec, W) {
   return false;
 }
 
+/** PLAY クロップ内の回収用サブ矩形（横長・台形分割風、重なりあり） */
+function playRecycleTexRects(crop, rnd) {
+  const { x, y, w, h } = crop;
+  const u0 = rnd() * 0.06;
+  const u1 = rnd() * 0.05;
+  return [
+    { x: x + u0 * w, y: y + 0.02 * h, w: w * (0.56 + rnd() * 0.06), h: h * (0.62 + rnd() * 0.08) },
+    { x: x + w * (0.48 + u1), y: y + 0.04 * h, w: w * (0.48 - u1), h: h * (0.4 + rnd() * 0.1) },
+    { x: x + w * (0.42 + rnd() * 0.04), y: y + h * (0.38 + rnd() * 0.06), w: w * (0.52 - rnd() * 0.04), h: h * (0.42 + rnd() * 0.08) },
+    { x: x + w * (0.05 + rnd() * 0.04), y: y + h * (0.58 + rnd() * 0.04), w: w * (0.52 + rnd() * 0.06), h: h * (0.38 + rnd() * 0.06) },
+  ];
+}
+
+/** SUB 行クロップを 2〜3 枚のサブ矩形へ */
+function subRecycleTexRects(crop, count, rnd) {
+  const { x, y, w, h } = crop;
+  if (count <= 2) {
+    const split = 0.46 + rnd() * 0.08;
+    return [
+      { x: x + rnd() * 3, y: y + rnd() * 2, w: w * split - 2, h: h - 3 },
+      { x: x + w * split + 1, y: y + rnd() * 2, w: w * (1 - split) - 3, h: h - 2 },
+    ];
+  }
+  const a = 0.34 + rnd() * 0.08;
+  const b = 0.34 + rnd() * 0.08;
+  const c = Math.max(0.1, 1 - a - b);
+  return [
+    { x: x + 1, y: y + 1, w: w * a - 2, h: h - 2 },
+    { x: x + w * a + 1, y: y + rnd() * 2, w: w * b - 2, h: h - 3 },
+    { x: x + w * (a + b) + 1, y: y + 1, w: Math.max(24, w * c - 2), h: h - 2 },
+  ];
+}
+
 /**
  * @param {Phaser.Scene} bootScene
  * @param {number} W
@@ -289,7 +391,6 @@ export function spawnBootBgCollapseFragments(
 ) {
   destroyBootBgCollapseFragments(bootScene);
   const rnd = mulberry32(((epochMs | 0) ^ (W << 8) ^ (H << 2)) >>> 0);
-  const nTotal = 8 + Math.floor(rnd() * 7);
   const { playCx, playCy, subCenters } = computeHomeBgPanelCenters(W, H);
 
   const playCrop = HOME_BG_PANEL_CROPS.PLAY_PANEL;
@@ -302,37 +403,95 @@ export function spawnBootBgCollapseFragments(
   /** @type {object[]} */
   const defs = [];
 
-  const addPanelFrag = (role, crop) => {
-    const polyRel = irregularPolyInUnitSquare(defs.length + role.length * 3);
-    const ptsTex = polyRel.map((p) => ({
-      x: crop.x + p.x * crop.w,
-      y: crop.y + p.y * crop.h,
-    }));
-    const subIdx = role.startsWith('sub') ? Number(role.slice(3)) : -1;
+  const pushRecycle = (role, ptsTex, panelCx, panelCy, offX, offY, endRot) => {
     defs.push({
+      kind: 'recycle',
       role,
       ptsTex,
-      targetX: role === 'play' ? playCx : subCenters[subIdx]?.x ?? playCx,
-      targetY: role === 'play' ? playCy : subCenters[subIdx]?.y ?? playCy,
+      panelCx,
+      panelCy,
+      offX,
+      offY,
+      endRot,
     });
   };
 
-  addPanelFrag('play', playCrop);
-  addPanelFrag('sub0', subCrops[0]);
-  addPanelFrag('sub1', subCrops[1]);
-  addPanelFrag('sub2', subCrops[2]);
+  const playRects = playRecycleTexRects(playCrop, rnd);
+  const playOffsets = [
+    { ox: -10, oy: -6, er: -0.05 },
+    { ox: 22, oy: -14, er: 0.055 },
+    { ox: 18, oy: 8, er: -0.04 },
+    { ox: -16, oy: 18, er: 0.045 },
+  ];
+  playRects.forEach((rect, i) => {
+    const po = playOffsets[i % playOffsets.length];
+    pushRecycle(
+      `play_${i}`,
+      polyInTexRect(rect, 100 + i * 17),
+      playCx,
+      playCy,
+      po.ox + (rnd() - 0.5) * 8,
+      po.oy + (rnd() - 0.5) * 8,
+      po.er + (rnd() - 0.5) * 0.02,
+    );
+  });
 
-  const freeCount = Math.max(0, nTotal - 4);
+  for (let si = 0; si < 3; si += 1) {
+    const nSub = 2 + (rnd() < 0.55 ? 1 : 0);
+    const rects = subRecycleTexRects(subCrops[si], nSub, rnd);
+    const cx = subCenters[si]?.x ?? playCx;
+    const cy = subCenters[si]?.y ?? playCy;
+    const spread = 26 + rnd() * 10;
+    const offs =
+      nSub === 2
+        ? [
+            { ox: -spread * 0.45, oy: (rnd() - 0.5) * 8, er: 0.04 },
+            { ox: spread * 0.48, oy: (rnd() - 0.5) * 10, er: -0.035 },
+          ]
+        : [
+            { ox: -spread * 0.52, oy: -5 + rnd() * 4, er: 0.032 },
+            { ox: (rnd() - 0.5) * 6, oy: 6 + rnd() * 5, er: -0.028 },
+            { ox: spread * 0.5, oy: -4 + rnd() * 8, er: 0.038 },
+          ];
+    rects.forEach((rect, j) => {
+      const o = offs[j] ?? offs[0];
+      pushRecycle(
+        `sub${si}_${j}`,
+        polyInTexRect(rect, 200 + si * 40 + j * 19),
+        cx,
+        cy,
+        o.ox + (rnd() - 0.5) * 6,
+        o.oy + (rnd() - 0.5) * 6,
+        o.er + (rnd() - 0.5) * 0.018,
+      );
+    });
+  }
+
+  const nRecycled = defs.length;
+  const minWaste = 12;
+  let nTotal = 20 + Math.floor(rnd() * 41);
+  if (nTotal < nRecycled + minWaste) nTotal = nRecycled + minWaste;
+  if (nTotal > 60) nTotal = 60;
+
+  const freeCount = nTotal - nRecycled;
   for (let i = 0; i < freeCount; i += 1) {
-    const cx = natW * (0.12 + rnd() * 0.76);
-    const cy = natH * (0.1 + rnd() * 0.72);
-    const span = 90 + rnd() * 140;
-    const polyRel = irregularPolyInUnitSquare(i + 17);
+    const cx = natW * (0.08 + rnd() * 0.84);
+    const cy = natH * (0.06 + rnd() * 0.82);
+    const span = 72 + rnd() * 118;
+    const polyRel = irregularPolyInUnitSquare(i + 311);
     const ptsTex = polyRel.map((p) => ({
       x: cx + (p.x - 0.5) * span,
-      y: cy + (p.y - 0.5) * span * (0.75 + rnd() * 0.35),
+      y: cy + (p.y - 0.5) * span * (0.72 + rnd() * 0.38),
     }));
-    defs.push({ role: 'free', ptsTex, targetX: null, targetY: null });
+    const bandBias = rnd();
+    defs.push({
+      kind: 'waste',
+      role: 'waste',
+      ptsTex,
+      bandBias,
+      suckBand: rnd() < 0.42,
+      fadeEarly: rnd() < 0.35,
+    });
   }
 
   const texToWorld = (tx, ty) => ({
@@ -371,11 +530,12 @@ export function spawnBootBgCollapseFragments(
       : H * 0.3;
     const bandMid = mainTop + (faultBandSpec?.mainH ?? H * 0.08) * 0.5;
     const emergeSign = rnd() < 0.5 ? -1 : 1;
-    const jitterAng = (rnd() - 0.5) * 0.9;
-    const dist = 40 + rnd() * 120;
-    const burstX = Math.cos(jitterAng) * dist * (0.4 + rnd() * 0.6);
+    const jitterAng = (rnd() - 0.5) * 1.15;
+    const isWaste = d.kind === 'waste';
+    const dist = (isWaste ? 95 : 42) + rnd() * (isWaste ? 220 : 130);
+    const burstX = Math.cos(jitterAng) * dist * (0.45 + rnd() * 0.65);
     const burstY =
-      emergeSign * (18 + rnd() * 55) + (startW.y < bandMid ? -rnd() * 40 : rnd() * 40);
+      emergeSign * (22 + rnd() * 72) + (startW.y < bandMid ? -rnd() * 55 : rnd() * 55);
 
     const scatterX = startW.x + burstX;
     const scatterY = startW.y + burstY;
@@ -418,11 +578,12 @@ export function spawnBootBgCollapseFragments(
     fragRt.setVisible(true);
     c.setDepth(homeUrlDebugEnabled() ? 60 : -48);
 
-    const ang0 = Phaser.Math.DegToRad((rnd() - 0.5) * 28);
+    const ang0 = Phaser.Math.DegToRad((rnd() - 0.5) * (isWaste ? 48 : 32));
     c.setRotation(ang0);
 
     if (homeUrlDebugEnabled()) {
       console.log('[BOOT_BG_FRAG]', {
+        kind: d.kind,
         role: d.role,
         cropL,
         cropT,
@@ -439,25 +600,45 @@ export function spawnBootBgCollapseFragments(
     }
 
     const driftFree = {
-      vx: (rnd() - 0.5) * 1.1,
-      vy: 0.35 + rnd() * 0.85,
-      vr: (rnd() - 0.5) * 0.0022,
+      vx: (rnd() - 0.5) * (isWaste ? 2.4 : 1.1),
+      vy: (isWaste ? 0.55 : 0.35) + rnd() * (isWaste ? 1.2 : 0.85),
+      vr: (rnd() - 0.5) * (isWaste ? 0.0045 : 0.0022),
     };
+
+    const wasteExtra = isWaste
+      ? {
+          suckBand: d.suckBand,
+          fadeEarly: d.fadeEarly,
+          bandBias: d.bandBias,
+        }
+      : null;
+
+    const recycleExtra =
+      !isWaste && d.panelCx != null
+        ? {
+            panelCx: d.panelCx,
+            panelCy: d.panelCy,
+            offX: d.offX,
+            offY: d.offY,
+            endRot: d.endRot,
+          }
+        : null;
 
     items.push({
       container: c,
       img: fragRt,
       outlineGfx,
+      kind: d.kind,
       role: d.role,
       startX: startW.x,
       startY: startW.y,
       scatterX,
       scatterY,
-      targetX: d.targetX,
-      targetY: d.targetY,
       ang0,
       driftFree,
-      panelHandoffDone: false,
+      wasteExtra,
+      recycleExtra,
+      destroyedEarly: false,
     });
   }
 
@@ -488,18 +669,31 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
   const spec = bootScene._bootBgCollapseFaultSpec;
   const uScatter = Phaser.Math.Clamp(collapseT / SCATTER_MS, 0, 1);
   const eSc = easeOutCubic(uScatter);
-  const uConv =
-    collapseT <= SCATTER_MS
-      ? 0
-      : Phaser.Math.Clamp((collapseT - SCATTER_MS) / (CONVERGE_END_MS - SCATTER_MS), 0, 1);
+
+  const uConv = Phaser.Math.Clamp((collapseT - SCATTER_MS) / (CONVERGE_END_MS - SCATTER_MS), 0, 1);
   const eConv = easeInOutQuad(uConv);
 
-  for (const it of items) {
-    if (!it.container || it.container.destroyed) continue;
+  const uStab =
+    collapseT <= STABILIZE_T0_MS
+      ? 0
+      : Phaser.Math.Clamp((collapseT - STABILIZE_T0_MS) / (STABILIZE_END_MS - STABILIZE_T0_MS), 0, 1);
+  const eStab = easeOutCubic(uStab);
 
-    if (it.role !== 'free' && wallT >= CONVERGE_END_MS && !it.panelHandoffDone) {
-      it.panelHandoffDone = true;
-      it.container?.destroy?.(true);
+  const mainTop = spec ? spec.mainCy - spec.mainH * 0.5 : H * 0.3;
+  const bandMid = mainTop + (spec?.mainH ?? H * 0.08) * 0.5;
+  const bandPullX = W * 0.5;
+  const bandPullY = bandMid;
+
+  for (const it of items) {
+    if (!it.container || it.container.destroyed || it.destroyedEarly) continue;
+
+    if (it.kind === 'waste' && wallT >= WASTE_DESTROY_MS) {
+      it.destroyedEarly = true;
+      try {
+        it.container.destroy(true);
+      } catch (_) {
+        /* ignore */
+      }
       continue;
     }
 
@@ -507,38 +701,70 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
     let y;
     let rot = it.ang0;
 
-    if (it.role === 'free') {
+    if (it.kind === 'waste') {
       const sx = Phaser.Math.Linear(it.startX, it.scatterX, eSc);
       const sy = Phaser.Math.Linear(it.startY, it.scatterY, eSc);
-      const extra = Math.max(0, collapseT - SCATTER_MS) * 0.001;
-      x = sx + it.driftFree.vx * extra * 22 + Math.sin(extra * 1.7) * 6;
-      y = sy + it.driftFree.vy * extra * 28;
-      rot = it.ang0 + it.driftFree.vr * collapseT * 18;
-      if (homeUrlDebugEnabled()) {
-        it.img.setAlpha(
-          Phaser.Math.Clamp(0.78 + Math.sin(collapseT * 0.003) * 0.08, 0.85, 0.95),
-        );
-      } else if (pointInFaultBands(x, y, spec, W)) {
-        const flick = 0.22 + 0.12 * Math.sin(collapseT * 0.019 + it.startX * 0.01);
-        it.img.setAlpha(Phaser.Math.Clamp(flick, 0.12, 0.48));
-      } else {
-        it.img.setAlpha(Phaser.Math.Clamp(0.78 + Math.sin(collapseT * 0.003) * 0.08, 0.55, 0.95));
+      const post = Math.max(0, collapseT - SCATTER_MS);
+      const postW = post * 0.0011;
+      let driftX = it.driftFree.vx * postW * 38 + Math.sin(postW * 1.9 + it.startX * 0.02) * 14;
+      let driftY = it.driftFree.vy * postW * 44;
+
+      if (it.wasteExtra?.suckBand && post > 120) {
+        const tug = Phaser.Math.Clamp((post - 120) / 520, 0, 1) * 0.55;
+        driftX += (bandPullX - sx - driftX) * tug * (0.35 + it.wasteExtra.bandBias * 0.4);
+        driftY += (bandPullY - sy - driftY) * tug * (0.42 + it.wasteExtra.bandBias * 0.35);
       }
-    } else {
+
+      x = sx + driftX;
+      y = sy + driftY;
+      rot = it.ang0 + it.driftFree.vr * collapseT * 22;
+
+      let baseA = 0.82;
+      if (pointInFaultBands(x, y, spec, W)) {
+        const flick = 0.18 + 0.14 * Math.sin(collapseT * 0.021 + it.startX * 0.01);
+        baseA = Phaser.Math.Clamp(flick, 0.1, 0.42);
+      }
+
+      const fade0 = it.wasteExtra?.fadeEarly ? WASTE_FADE_T0_MS - 120 : WASTE_FADE_T0_MS;
+      if (wallT > fade0) {
+        const uFade = Phaser.Math.Clamp((wallT - fade0) / (WASTE_DESTROY_MS - fade0 - 40), 0, 1);
+        baseA *= 1 - easeInOutQuad(uFade);
+      }
+      if (homeUrlDebugEnabled()) {
+        it.img.setAlpha(Phaser.Math.Clamp(0.78 + Math.sin(collapseT * 0.003) * 0.08, 0.85, 0.95));
+      } else {
+        it.img.setAlpha(Phaser.Math.Clamp(baseA, 0, 1));
+      }
+    } else if (it.kind === 'recycle' && it.recycleExtra) {
+      const { panelCx, panelCy, offX, offY, endRot } = it.recycleExtra;
       const sx = Phaser.Math.Linear(it.startX, it.scatterX, eSc);
       const sy = Phaser.Math.Linear(it.startY, it.scatterY, eSc);
-      x = Phaser.Math.Linear(sx, it.targetX, eConv);
-      y = Phaser.Math.Linear(sy, it.targetY, eConv);
-      rot = Phaser.Math.Linear(it.ang0, 0, eConv);
+
+      const midX = panelCx + offX * 1.38;
+      const midY = panelCy + offY * 1.38;
+      const finX = panelCx + offX;
+      const finY = panelCy + offY;
+
+      const x1 = Phaser.Math.Linear(sx, midX, eConv);
+      const y1 = Phaser.Math.Linear(sy, midY, eConv);
+      x = Phaser.Math.Linear(x1, finX, eStab);
+      y = Phaser.Math.Linear(y1, finY, eStab);
+
+      const rot1 = Phaser.Math.Linear(it.ang0, endRot * 2.2, eConv);
+      rot = Phaser.Math.Linear(rot1, endRot, eStab);
+
       if (homeUrlDebugEnabled()) {
         it.img.setAlpha(0.88);
       } else {
         let a = 0.88;
         if (pointInFaultBands(x, y, spec, W)) {
-          a *= 0.42;
+          a *= 0.48;
         }
         it.img.setAlpha(a);
       }
+    } else {
+      x = it.scatterX;
+      y = it.scatterY;
     }
 
     it.container.setPosition(x, y);
