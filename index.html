@@ -183,7 +183,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-12 20:12 UTC';
+      const BUILD_TIMESTAMP = '2026-05-12 13:53 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -301,6 +301,7 @@
       // ─────────────────────────────────────────────────────────────────────────
       // Boot デバッグ用 URLパラメータ
       // 例: ?bootDur=2000&noTitleMask=1&warnOffsetY=0.22
+      // collapse 暗転切り分け（?debug=1 必須）: noShock=1 noFaultBand=1 noCollapseScan=1 shardStartAlpha=1
       // 未指定時は各デフォルト値（現在の挙動）を使用する
       // ─────────────────────────────────────────────────────────────────────────
       (() => {
@@ -315,6 +316,13 @@
           const v = _qp.get(key);
           if (v === null) return def;
           return v === '1' || v === 'true';
+        };
+        /** キー欠落時は null（?shardStartAlpha= のように「未指定」と区別） */
+        window.BOOT_PARAM_getOptionalNum = (key) => {
+          const v = _qp.get(key);
+          if (v === null || v === '') return null;
+          const n = parseFloat(v);
+          return isFinite(n) ? n : null;
         };
         // ?debug=1 のときだけデバッグHUDを表示する
         window.DEBUG_HUD_ENABLED = window.BOOT_PARAM_getBool('debug', false);
@@ -414,6 +422,18 @@
         debug:            window.BOOT_PARAM_getBool('debug',            false),
         // 警告ブロックの Y: タイトル中心 + displayHeight * この係数（?warnOffsetY= で上書き可）
         warnOffsetY:      window.BOOT_PARAM_getNum('warnOffsetY',        0.15),
+        // ── ?debug=1 時のみ有効（collapse 暗転原因の切り分け） ──
+        noCollapseShock:  window.BOOT_PARAM_getBool('debug', false) && window.BOOT_PARAM_getBool('noShock', false),
+        noCollapseFaultBand:
+          window.BOOT_PARAM_getBool('debug', false) && window.BOOT_PARAM_getBool('noFaultBand', false),
+        noCollapseScan:   window.BOOT_PARAM_getBool('debug', false) && window.BOOT_PARAM_getBool('noCollapseScan', false),
+        /** collapse 開始時 shard root のランプ開始係数（既定 1.0）。?debug=1&shardStartAlpha=N のみ上書き */
+        collapseShardStartAlpha: (() => {
+          if (!window.BOOT_PARAM_getBool('debug', false)) return 1;
+          const o = window.BOOT_PARAM_getOptionalNum('shardStartAlpha');
+          if (o === null) return 1;
+          return Math.min(Math.max(o, 0), 1.5);
+        })(),
       };
 
       // Boot 左上ログ: メッセージプール（Phase A/B/C）
@@ -1202,7 +1222,7 @@
           const H = WORLD_H;
           const mainH = Phaser.Math.FloatBetween(H * 0.06, H * 0.14);
           const mainCy = Phaser.Math.FloatBetween(H * 0.24, H * 0.47);
-          const mainAlpha = Phaser.Math.FloatBetween(0.34, 0.52);
+          const mainAlpha = Phaser.Math.FloatBetween(0.14, 0.24);
           let sub = null;
           if (Math.random() < 0.48) {
             const gapMin = mainH * 0.5 + 22;
@@ -1214,7 +1234,7 @@
             sub = {
               cy: subCy,
               h: Phaser.Math.FloatBetween(H * 0.045, H * 0.11),
-              alpha: Phaser.Math.FloatBetween(0.24, 0.42),
+              alpha: Phaser.Math.FloatBetween(0.08, 0.14),
             };
           }
           this._faultBandSpec = { mainH, mainCy, mainAlpha, sub };
@@ -1229,6 +1249,10 @@
           const spec = this._faultBandSpec;
           const g = this._collapseBandGfx;
           if (!spec || !g || g.destroyed) return;
+          if (BOOT_DEBUG.debug && BOOT_DEBUG.noCollapseFaultBand && !linesOnly) {
+            g.clear();
+            return;
+          }
 
           /** 亀裂・黒帯は 0〜BOOT_BG_COLLAPSE_CRACK_MS で 0→立ち上げ（開始フレームでは非表示） */
           const CRACK_RAMP_MS = BOOT_BG_COLLAPSE_CRACK_MS;
@@ -1244,18 +1268,18 @@
 
           const mainFillA = (() => {
             if (linesOnly) return 0;
-            if (ct < CRACK_RAMP_MS) return spec.mainAlpha * crackPop;
-            if (ct < holdEnd) return spec.mainAlpha;
+            if (ct < CRACK_RAMP_MS) return spec.mainAlpha * crackPop * 0.72;
+            if (ct < holdEnd) return spec.mainAlpha * 0.92;
             const fadeU = Phaser.Math.Clamp((ct - holdEnd) / Math.max(260, dur - holdEnd - 60), 0, 1);
-            return spec.mainAlpha * (1 - ease3(fadeU) * 0.82);
+            return spec.mainAlpha * 0.92 * (1 - ease3(fadeU) * 0.82);
           })();
 
           const subFillA = (() => {
             if (linesOnly || !spec.sub) return 0;
-            if (ct < CRACK_RAMP_MS) return spec.sub.alpha * crackPop;
-            if (ct < holdEnd) return spec.sub.alpha;
+            if (ct < CRACK_RAMP_MS) return spec.sub.alpha * crackPop * 0.72;
+            if (ct < holdEnd) return spec.sub.alpha * 0.92;
             const fadeU = Phaser.Math.Clamp((ct - holdEnd) / Math.max(260, dur - holdEnd - 60), 0, 1);
-            return spec.sub.alpha * (1 - ease3(fadeU) * 0.78);
+            return spec.sub.alpha * 0.92 * (1 - ease3(fadeU) * 0.78);
           })();
 
           const lineRamp = linesOnly
@@ -1373,13 +1397,18 @@
           this._collapseBandGfx?.destroy();
           this._collapseBandGfx = this.add.graphics().setDepth(-50);
           this._initCollapseFaultBandSpec();
-          this._drawCollapseFaultBand(0);
+          if (!(BOOT_DEBUG.debug && BOOT_DEBUG.noCollapseFaultBand)) {
+            this._drawCollapseFaultBand(0);
+          } else if (this._collapseBandGfx && !this._collapseBandGfx.destroyed) {
+            this._collapseBandGfx.clear();
+          }
+          const aStartCfg = Phaser.Math.Clamp(BOOT_DEBUG.collapseShardStartAlpha ?? 1, 0, 1.5);
+          this._bootBgShardRootRampStartA = aStartCfg;
           if (this._bootBg && !this._bootBg.destroyed) {
             this._bootBg.setVisible(true);
             this.tweens.killTweensOf(this._bootBg);
             this._bootBgFlatFadeMs = 200;
             this._bootBgShardRootRampMs = 124;
-            this._bootBgShardRootRampStartA = 0.22;
             activateBootBgCollapseShardPhysics(this, this._faultBandSpec, overlapT0);
             syncBootBgShardSheetAlpha(
               this,
@@ -1387,29 +1416,47 @@
             );
           }
           this._collapseShockOverlay?.destroy();
-          this._collapseShockOverlay = this.add
-            .rectangle(cx, cy, WORLD_W, WORLD_H, 0x020308, 0)
-            .setDepth(-33);
-          this.tweens.add({
-            targets: this._collapseShockOverlay,
-            alpha: 0.14,
-            duration: 54,
-            ease: 'Quad.easeOut',
-            onComplete: () => {
-              if (this._collapseShockOverlay && !this._collapseShockOverlay.destroyed) {
-                this.tweens.add({
-                  targets: this._collapseShockOverlay,
-                  alpha: 0,
-                  duration: 102,
-                  ease: 'Sine.easeIn',
-                  onComplete: () => {
-                    this._collapseShockOverlay?.destroy();
-                    this._collapseShockOverlay = null;
-                  },
-                });
-              }
-            },
-          });
+          this._collapseShockOverlay = null;
+          const shockPeak = 0.035;
+          if (!BOOT_DEBUG.noCollapseShock) {
+            this._collapseShockOverlay = this.add
+              .rectangle(cx, cy, WORLD_W, WORLD_H, 0x020308, 0)
+              .setDepth(-33);
+            this.tweens.add({
+              targets: this._collapseShockOverlay,
+              alpha: shockPeak,
+              duration: 54,
+              ease: 'Quad.easeOut',
+              onComplete: () => {
+                if (this._collapseShockOverlay && !this._collapseShockOverlay.destroyed) {
+                  this.tweens.add({
+                    targets: this._collapseShockOverlay,
+                    alpha: 0,
+                    duration: 102,
+                    ease: 'Sine.easeIn',
+                    onComplete: () => {
+                      this._collapseShockOverlay?.destroy();
+                      this._collapseShockOverlay = null;
+                    },
+                  });
+                }
+              },
+            });
+          }
+          const bg0 = Phaser.Math.Clamp(this._bgBaseAlpha ?? 1, 0, 1);
+          const aStart = Phaser.Math.Clamp(this._bootBgShardRootRampStartA ?? 1, 0, 1.5);
+          if (BOOT_DEBUG.debug) {
+            const faultPeak = BOOT_DEBUG.noCollapseFaultBand ? 0 : (this._faultBandSpec?.mainAlpha ?? 0);
+            const scanPeak = BOOT_DEBUG.noCollapseScan ? 0 : 0.052;
+            console.log('[BOOT_COLLAPSE_DEBUG_START]', {
+              flatAlpha: this._bootBg && !this._bootBg.destroyed ? this._bootBg.alpha : bg0,
+              shardStartAlpha: bg0 * Math.min(aStart, 1),
+              shockAlpha: BOOT_DEBUG.noCollapseShock ? 0 : shockPeak,
+              faultBandAlpha: faultPeak,
+              scanFillAlpha: scanPeak,
+              collapseT: 0,
+            });
+          }
           // 構造グリッド: ショック中は欠損感のため低 alpha、0.3〜0.6 で本立ち上げ（containers[1]）
           const _structC = this._bootBackdrop?.containers?.[1];
           if (_structC) _structC.setAlpha(0);
@@ -1543,7 +1590,7 @@
               }
             }
             const rampMs = this._bootBgShardRootRampMs ?? 124;
-            const aStart = this._bootBgShardRootRampStartA ?? 0.22;
+            const aStart = this._bootBgShardRootRampStartA ?? 1;
             const uShard = Phaser.Math.Clamp(ct / rampMs, 0, 1);
             const shardEase = 1 - (1 - uShard) ** 3;
             syncBootBgShardSheetAlpha(this, bg0 * Phaser.Math.Linear(aStart, 1, shardEase));
@@ -1570,7 +1617,11 @@
             }
 
             if (this._collapseBandGfx && !this._collapseBandGfx.destroyed) {
-              this._drawCollapseFaultBand(ct);
+              if (!(BOOT_DEBUG.debug && BOOT_DEBUG.noCollapseFaultBand)) {
+                this._drawCollapseFaultBand(ct);
+              } else {
+                this._collapseBandGfx.clear();
+              }
             }
 
             updateBootBgCollapseFragments(this, ct, dt, W, H);
@@ -1578,16 +1629,22 @@
             updateBootLogScatters(this, collapseNorm, dt);
 
             if (!BOOT_DEBUG.noBootOverlay) {
-              if (ct < 128) {
+              if (BOOT_DEBUG.noCollapseScan) {
+                if (ct < 140) {
+                  this._scanGfx.clear();
+                  this._scanLineGfx.clear();
+                  this._titleScanGfx?.clear();
+                }
+              } else if (ct < 128) {
                 this._scanGfx.clear();
-                const y0 = Math.round(H * Phaser.Math.FloatBetween(0.22, 0.62));
-                const h0 = Math.round(H * Phaser.Math.FloatBetween(0.06, 0.16));
-                this._scanGfx.fillStyle(0x070910, Phaser.Math.FloatBetween(0.12, 0.2));
+                const y0 = Math.round(H * Phaser.Math.FloatBetween(0.28, 0.58));
+                const h0 = Math.round(H * Phaser.Math.FloatBetween(0.028, 0.078));
+                this._scanGfx.fillStyle(0x070910, Phaser.Math.FloatBetween(0.028, 0.052));
                 this._scanGfx.fillRect(0, y0, W, h0);
-                if (Math.random() < 0.55) {
-                  const y1 = Math.round(H * Phaser.Math.FloatBetween(0.35, 0.92));
-                  this._scanGfx.fillStyle(0x0a0d14, Phaser.Math.FloatBetween(0.1, 0.18));
-                  this._scanGfx.fillRect(0, y1, W, Phaser.Math.FloatBetween(14, 40));
+                if (Math.random() < 0.45) {
+                  const y1 = Math.round(H * Phaser.Math.FloatBetween(0.42, 0.88));
+                  this._scanGfx.fillStyle(0x0a0d14, Phaser.Math.FloatBetween(0.022, 0.042));
+                  this._scanGfx.fillRect(0, y1, W, Phaser.Math.FloatBetween(8, 22));
                 }
                 this._scanLineGfx.clear();
                 const jy = y0 + Math.round((Math.random() - 0.5) * 16);
