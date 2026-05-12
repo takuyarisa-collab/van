@@ -3,6 +3,7 @@
  * 破断ショック（崩壊開始同期）→ 外側 easeOutCubic 飛散（同期）→ 二次ベジェで Home へ収束 → オーバーシュートで固定。
  * 収束開始・スナップ開始は断片ごとにずらし、PLAY の「y」は ▷ 着地後に短いフェードで点灯する。
  */
+import { BOOT_BG_HOME_PANEL_REVEAL_MS } from './boot-bg-collapse-fragments.js';
 import { HOMEOVERLAP_CROPS } from './home-overlap-crops.js';
 import { HOMEOVERLAP_TEX_KEY } from './home-overlap-constants.js';
 import { addOverlapCropImage } from './home-ui.js';
@@ -666,7 +667,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     const now = performance.now();
     const T = now - epochMs;
 
-    if (scene._homeWaitBootCollapse && T >= 850) {
+    if (scene._homeWaitBootCollapse && T >= BOOT_BG_HOME_PANEL_REVEAL_MS) {
       const r = scene._homeBgPanelReveal;
       if (r && r.play < 1) {
         scene._homeBgPanelReveal = { play: 1, sub: [1, 1, 1] };
