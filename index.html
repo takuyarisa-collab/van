@@ -84,7 +84,9 @@
     } from './home-overlap-rebuild.js';
     import { destroyBootBgPanelForHome } from './home-ui.js';
     import {
-      spawnBootBgCollapseFragments,
+      mountBootBgCollapseShardSheet,
+      activateBootBgCollapseShardPhysics,
+      syncBootBgShardSheetAlpha,
       updateBootBgCollapseFragments,
     } from './boot-bg-collapse-fragments.js';
     import {
@@ -180,7 +182,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-12 14:05 UTC';
+      const BUILD_TIMESTAMP = '2026-05-12 16:20 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -974,6 +976,17 @@
             this.scale.height / this._bootBg.height
           );
           this._bootBg.setScale(bgScale);
+          mountBootBgCollapseShardSheet(
+            this,
+            WORLD_W,
+            WORLD_H,
+            cx,
+            cy,
+            bgScale,
+            this._bootBg.width,
+            this._bootBg.height,
+          );
+          this._bootBg.setVisible(false);
 
           // ── スキャンオーバーレイ: 未表示エリアを覆う暗幕 (depth -40) ─────
           // 背景レイヤー(-52)より前、タイトル(10+)より後ろ
@@ -1352,22 +1365,7 @@
           this._initCollapseFaultBandSpec();
           this._drawCollapseFaultBand(0);
           if (this._bootBg && !this._bootBg.destroyed) {
-            const natW = this._bootBg.width;
-            const natH = this._bootBg.height;
-            const bgScale = this._bootBg.scaleX;
-            this._bootBg.setVisible(false);
-            spawnBootBgCollapseFragments(
-              this,
-              WORLD_W,
-              WORLD_H,
-              this._bootBg.x,
-              this._bootBg.y,
-              bgScale,
-              natW,
-              natH,
-              this._faultBandSpec,
-              overlapT0,
-            );
+            activateBootBgCollapseShardPhysics(this, this._faultBandSpec, overlapT0);
           }
           this._collapseShockOverlay?.destroy();
           this._collapseShockOverlay = this.add
@@ -1671,6 +1669,7 @@
           const bgT = Phaser.Math.Clamp((p - bgStart) / (bgEnd - bgStart), 0, 1);
           const bgEase = bgT * bgT * bgT;
           if (this._bootBg) this._bootBg.setAlpha(bgEase);
+          syncBootBgShardSheetAlpha(this, bgEase);
           const revealY = Math.round(H * bgEase);
 
           // 未表示エリアの暗幕 (?noBootOverlay=1 で無効化)
