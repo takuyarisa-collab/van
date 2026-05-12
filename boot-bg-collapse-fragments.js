@@ -12,8 +12,8 @@ export const REG_BOOT_BG_FRAG_EPOCH_MS = 'bootBgFragEpochMs';
 /** Home の PLAY/SUB 背景パネル（クロップ）を不透明にする wall-clock 閾値（overlap rebuild と同期） */
 export const BOOT_BG_HOME_PANEL_REVEAL_MS = 995;
 
-const CRACK_MS = 138;
-const BASE_SHARD_ALPHA = 0.96;
+const CRACK_MS = 120;
+const BASE_SHARD_ALPHA = 1;
 const BAND_ALPHA_MULT = 0.82;
 
 function mulberry32(seed) {
@@ -282,7 +282,7 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
       y: Phaser.Math.Clamp(p.y, 0.5, natH - 0.5),
     }));
     const bb = bboxOfPoly(ptsTex0);
-    const padPx = 1;
+    const padPx = 2;
     let cropL = Math.floor(bb.minX - padPx);
     let cropT = Math.floor(bb.minY - padPx);
     let cropR = Math.ceil(bb.maxX + padPx);
@@ -338,7 +338,8 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
     const bandBias = rnd();
 
     const img = bootScene.add.image(0, 0, baked.texKey).setOrigin(0.5, 0.5);
-    img.setDisplaySize(baked.dispW, baked.dispH);
+    const bleedPx = 2;
+    img.setDisplaySize(baked.dispW + bleedPx, baked.dispH + bleedPx);
 
     let outlineGfx = null;
     if (homeUrlDebugEnabled()) {
@@ -496,7 +497,7 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
     it.container.setRotation(rot);
 
     let baseA = BASE_SHARD_ALPHA;
-    if (pointInFaultBands(x, y, spec, W)) {
+    if (uCrack > 0.1 && pointInFaultBands(x, y, spec, W)) {
       baseA *= BAND_ALPHA_MULT;
     }
     if (it.fadeEarly && wallT > 520) {
