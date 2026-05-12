@@ -183,7 +183,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-12 13:53 UTC';
+      const BUILD_TIMESTAMP = '2026-05-12 23:31 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1217,7 +1217,7 @@
 
         _teardownReconnectUI() {}
 
-        /** 崩壊断層（黒帯）— メイン1本必須、サブは確率で追加（幾何はシード固定で毎フレーム同じ） */
+        /** 崩壊断層（境界線中心・塗りで背景を隠さない）— メイン1本必須、サブは確率で追加 */
         _initCollapseFaultBandSpec() {
           const H = WORLD_H;
           const mainH = Phaser.Math.FloatBetween(H * 0.06, H * 0.14);
@@ -1254,10 +1254,9 @@
             return;
           }
 
-          /** 亀裂・黒帯は 0〜BOOT_BG_COLLAPSE_CRACK_MS で 0→立ち上げ（開始フレームでは非表示） */
+          /** 亀裂境界は 0〜BOOT_BG_COLLAPSE_CRACK_MS で 0→立ち上げ（開始フレームでは非表示） */
           const CRACK_RAMP_MS = BOOT_BG_COLLAPSE_CRACK_MS;
           const holdEnd = 280;
-          const dur = this._collapseDur || 1100;
           const ease3 = (t) => {
             const u = 1 - Phaser.Math.Clamp(t, 0, 1);
             return 1 - u * u * u;
@@ -1266,27 +1265,11 @@
           const crackU = linesOnly ? 1 : Phaser.Math.Clamp(ct / CRACK_RAMP_MS, 0, 1);
           const crackPop = ease3(crackU);
 
-          const mainFillA = (() => {
-            if (linesOnly) return 0;
-            if (ct < CRACK_RAMP_MS) return spec.mainAlpha * crackPop * 0.72;
-            if (ct < holdEnd) return spec.mainAlpha * 0.92;
-            const fadeU = Phaser.Math.Clamp((ct - holdEnd) / Math.max(260, dur - holdEnd - 60), 0, 1);
-            return spec.mainAlpha * 0.92 * (1 - ease3(fadeU) * 0.82);
-          })();
-
-          const subFillA = (() => {
-            if (linesOnly || !spec.sub) return 0;
-            if (ct < CRACK_RAMP_MS) return spec.sub.alpha * crackPop * 0.72;
-            if (ct < holdEnd) return spec.sub.alpha * 0.92;
-            const fadeU = Phaser.Math.Clamp((ct - holdEnd) / Math.max(260, dur - holdEnd - 60), 0, 1);
-            return spec.sub.alpha * 0.92 * (1 - ease3(fadeU) * 0.78);
-          })();
-
           const lineRamp = linesOnly
             ? 0.55
             : (() => {
                 if (ct < holdEnd) {
-                  const base = 0.22 + 0.16 * crackPop;
+                  const base = 0.28 + 0.18 * crackPop;
                   return base * (ct < CRACK_RAMP_MS ? crackPop : 1);
                 }
                 return Phaser.Math.Linear(0.36, 0.7, Phaser.Math.Clamp((ct - holdEnd) / 400, 0, 1));
@@ -1298,16 +1281,8 @@
 
           const mainTop = spec.mainCy - spec.mainH * 0.5;
           g.clear();
-          if (mainFillA > 0.018) {
-            g.fillStyle(0x050508, Math.min(1, Math.max(0, mainFillA)));
-            g.fillRect(0, mainTop, W, spec.mainH);
-          }
           if (spec.sub) {
             const subTop = spec.sub.cy - spec.sub.h * 0.5;
-            if (subFillA > 0.018) {
-              g.fillStyle(0x06060a, Math.min(1, Math.max(0, subFillA)));
-              g.fillRect(0, subTop, W, spec.sub.h);
-            }
             const subLineA = lineRamp * (linesOnly ? 0.36 : 0.4);
             g.lineStyle(lineWSub, strokeCol, subLineA);
             g.lineBetween(0, subTop, W, subTop);
@@ -1447,13 +1422,12 @@
           const aStart = Phaser.Math.Clamp(this._bootBgShardRootRampStartA ?? 1, 0, 1.5);
           if (BOOT_DEBUG.debug) {
             const faultPeak = BOOT_DEBUG.noCollapseFaultBand ? 0 : (this._faultBandSpec?.mainAlpha ?? 0);
-            const scanPeak = BOOT_DEBUG.noCollapseScan ? 0 : 0.052;
             console.log('[BOOT_COLLAPSE_DEBUG_START]', {
               flatAlpha: this._bootBg && !this._bootBg.destroyed ? this._bootBg.alpha : bg0,
               shardStartAlpha: bg0 * Math.min(aStart, 1),
               shockAlpha: BOOT_DEBUG.noCollapseShock ? 0 : shockPeak,
               faultBandAlpha: faultPeak,
-              scanFillAlpha: scanPeak,
+              scanFillAlpha: 0,
               collapseT: 0,
             });
           }
@@ -1637,24 +1611,52 @@
                 }
               } else if (ct < 128) {
                 this._scanGfx.clear();
-                const y0 = Math.round(H * Phaser.Math.FloatBetween(0.28, 0.58));
-                const h0 = Math.round(H * Phaser.Math.FloatBetween(0.028, 0.078));
-                this._scanGfx.fillStyle(0x070910, Phaser.Math.FloatBetween(0.028, 0.052));
-                this._scanGfx.fillRect(0, y0, W, h0);
-                if (Math.random() < 0.45) {
-                  const y1 = Math.round(H * Phaser.Math.FloatBetween(0.42, 0.88));
-                  this._scanGfx.fillStyle(0x0a0d14, Phaser.Math.FloatBetween(0.022, 0.042));
-                  this._scanGfx.fillRect(0, y1, W, Phaser.Math.FloatBetween(8, 22));
+                const yRef = Math.round(H * Phaser.Math.FloatBetween(0.28, 0.58));
+                const pickGlitchCol = () => {
+                  const r = Math.random();
+                  if (r < 0.34) return 0xff6b6b;
+                  if (r < 0.62) return 0xffffff;
+                  return 0x5ee8dc;
+                };
+                for (let i = 0; i < 8; i++) {
+                  const yy = Math.round(Phaser.Math.Clamp(yRef + (Math.random() - 0.5) * H * 0.14, 2, H - 2));
+                  const x0 = Phaser.Math.FloatBetween(-40, W * 0.28);
+                  const x1 = x0 + Phaser.Math.FloatBetween(W * 0.22, W * 0.78);
+                  this._scanGfx.lineStyle(Math.random() < 0.55 ? 1 : 2, pickGlitchCol(), Phaser.Math.FloatBetween(0.045, 0.12));
+                  this._scanGfx.lineBetween(x0, yy, x1, yy);
+                }
+                for (let row = 0; row < 3; row++) {
+                  const yy = Math.round(H * Phaser.Math.FloatBetween(0.12, 0.92));
+                  let x = Phaser.Math.FloatBetween(-20, W * 0.12);
+                  while (x < W + 30) {
+                    const len = Phaser.Math.FloatBetween(4, 14);
+                    this._scanGfx.lineStyle(1, pickGlitchCol(), Phaser.Math.FloatBetween(0.06, 0.13));
+                    this._scanGfx.lineBetween(x, yy, Math.min(W + 20, x + len), yy + (Math.random() - 0.5) * 1.5);
+                    x += len + Phaser.Math.FloatBetween(9, 26);
+                  }
+                }
+                for (let k = 0; k < 3; k++) {
+                  let px = Phaser.Math.FloatBetween(W * 0.08, W * 0.52);
+                  let py = Phaser.Math.FloatBetween(H * 0.2, H * 0.82);
+                  this._scanGfx.lineStyle(1, 0xe8eaef, Phaser.Math.FloatBetween(0.055, 0.1));
+                  const segs = 4 + Math.floor(Math.random() * 4);
+                  for (let s = 0; s < segs; s++) {
+                    const qx = px + Phaser.Math.FloatBetween(16, 52);
+                    const qy = py + Phaser.Math.FloatBetween(-20, 20);
+                    this._scanGfx.lineBetween(px, py, qx, qy);
+                    px = qx;
+                    py = qy;
+                  }
                 }
                 this._scanLineGfx.clear();
-                const jy = y0 + Math.round((Math.random() - 0.5) * 16);
+                const jy = yRef + Math.round((Math.random() - 0.5) * 16);
                 this._scanLineGfx.lineStyle(1.2, 0x5ee8dc, Phaser.Math.FloatBetween(0.35, 0.72));
                 this._scanLineGfx.lineBetween(Phaser.Math.FloatBetween(-20, 40), jy, W - Phaser.Math.FloatBetween(0, 50), jy + Math.round((Math.random() - 0.5) * 12));
                 if (this._titleScanGfx) {
                   this._titleScanGfx.clear();
                   const vx = Phaser.Math.FloatBetween(W * 0.15, W * 0.92);
-                  this._titleScanGfx.fillStyle(0xffffff, Phaser.Math.FloatBetween(0.08, 0.22));
-                  this._titleScanGfx.fillRect(vx, 0, Phaser.Math.FloatBetween(2, 5), H);
+                  this._titleScanGfx.lineStyle(1, 0xffffff, Phaser.Math.FloatBetween(0.08, 0.18));
+                  this._titleScanGfx.lineBetween(vx, 0, vx, H);
                 }
               } else if (ct < 140) {
                 this._scanGfx.clear();
