@@ -182,7 +182,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-12 16:20 UTC';
+      const BUILD_TIMESTAMP = '2026-05-12 18:48 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -986,7 +986,7 @@
             this._bootBg.width,
             this._bootBg.height,
           );
-          this._bootBg.setVisible(false);
+          // シャードは collapse 開始まで非表示（ルート alpha 0）。表は常に _bootBg の 1 枚。
 
           // ── スキャンオーバーレイ: 未表示エリアを覆う暗幕 (depth -40) ─────
           // 背景レイヤー(-52)より前、タイトル(10+)より後ろ
@@ -1229,7 +1229,8 @@
           const g = this._collapseBandGfx;
           if (!spec || !g || g.destroyed) return;
 
-          const peakMs = 120;
+          /** 亀裂・黒帯は 0〜120ms で 0→立ち上げ（開始フレームでは非表示） */
+          const CRACK_RAMP_MS = 120;
           const holdEnd = 300;
           const dur = this._collapseDur || 1100;
           const ease3 = (t) => {
@@ -1237,11 +1238,12 @@
             return 1 - u * u * u;
           };
 
-          const pop = linesOnly ? 1 : ease3((ct + 18) / peakMs);
+          const crackU = linesOnly ? 1 : Phaser.Math.Clamp(ct / CRACK_RAMP_MS, 0, 1);
+          const crackPop = ease3(crackU);
 
           const mainFillA = (() => {
             if (linesOnly) return 0;
-            if (ct < peakMs) return spec.mainAlpha * pop;
+            if (ct < CRACK_RAMP_MS) return spec.mainAlpha * crackPop;
             if (ct < holdEnd) return spec.mainAlpha;
             const fadeU = Phaser.Math.Clamp((ct - holdEnd) / Math.max(240, dur - holdEnd - 60), 0, 1);
             return spec.mainAlpha * (1 - ease3(fadeU) * 0.94);
@@ -1249,7 +1251,7 @@
 
           const subFillA = (() => {
             if (linesOnly || !spec.sub) return 0;
-            if (ct < peakMs) return spec.sub.alpha * pop;
+            if (ct < CRACK_RAMP_MS) return spec.sub.alpha * crackPop;
             if (ct < holdEnd) return spec.sub.alpha;
             const fadeU = Phaser.Math.Clamp((ct - holdEnd) / Math.max(240, dur - holdEnd - 60), 0, 1);
             return spec.sub.alpha * (1 - ease3(fadeU) * 0.92);
@@ -1257,10 +1259,17 @@
 
           const lineRamp = linesOnly
             ? 0.55
-            : ct < holdEnd
-              ? 0.22 + 0.16 * pop
-              : Phaser.Math.Linear(0.36, 0.7, Phaser.Math.Clamp((ct - holdEnd) / 400, 0, 1));
+            : (() => {
+                if (ct < holdEnd) {
+                  const base = 0.22 + 0.16 * crackPop;
+                  return base * (ct < CRACK_RAMP_MS ? crackPop : 1);
+                }
+                return Phaser.Math.Linear(0.36, 0.7, Phaser.Math.Clamp((ct - holdEnd) / 400, 0, 1));
+              })();
           const strokeCol = 0x5c6d8c;
+          const lineWMainTop = linesOnly ? 1.1 : Phaser.Math.Linear(0.35, 1.15, crackPop);
+          const lineWMainBot = linesOnly ? 0.85 : Phaser.Math.Linear(0.28, 1.05, crackPop);
+          const lineWSub = linesOnly ? 1 : Phaser.Math.Linear(0.3, 1, crackPop);
 
           const mainTop = spec.mainCy - spec.mainH * 0.5;
           g.clear();
@@ -1275,13 +1284,13 @@
               g.fillRect(0, subTop, W, spec.sub.h);
             }
             const subLineA = lineRamp * (linesOnly ? 0.36 : 0.4);
-            g.lineStyle(1, strokeCol, subLineA);
+            g.lineStyle(lineWSub, strokeCol, subLineA);
             g.lineBetween(0, subTop, W, subTop);
             g.lineBetween(0, subTop + spec.sub.h, W, subTop + spec.sub.h);
           }
-          g.lineStyle(1.1, strokeCol, lineRamp * 0.5);
+          g.lineStyle(lineWMainTop, strokeCol, lineRamp * 0.5);
           g.lineBetween(0, mainTop, W, mainTop);
-          g.lineStyle(0.85, strokeCol, lineRamp * 0.42);
+          g.lineStyle(lineWMainBot, strokeCol, lineRamp * 0.42);
           g.lineBetween(0, mainTop + spec.mainH, W, mainTop + spec.mainH);
         }
 
@@ -1365,7 +1374,20 @@
           this._initCollapseFaultBandSpec();
           this._drawCollapseFaultBand(0);
           if (this._bootBg && !this._bootBg.destroyed) {
+            this._bootBg.setVisible(true);
             activateBootBgCollapseShardPhysics(this, this._faultBandSpec, overlapT0);
+            syncBootBgShardSheetAlpha(this, Phaser.Math.Clamp(this._bgBaseAlpha, 0, 1));
+            this.tweens.add({
+              targets: this._bootBg,
+              alpha: 0,
+              duration: 72,
+              ease: 'Sine.easeIn',
+              onComplete: () => {
+                if (this._bootBg && !this._bootBg.destroyed) {
+                  this._bootBg.setVisible(false);
+                }
+              },
+            });
           }
           this._collapseShockOverlay?.destroy();
           this._collapseShockOverlay = this.add
@@ -1373,7 +1395,7 @@
             .setDepth(-33);
           this.tweens.add({
             targets: this._collapseShockOverlay,
-            alpha: 0.52,
+            alpha: 0.34,
             duration: 46,
             ease: 'Quad.easeOut',
             onComplete: () => {
@@ -1570,23 +1592,6 @@
               }
             }
 
-            if (this._bootBg && this._bootBg.visible) {
-              let bgTarget = Phaser.Math.Clamp(
-                0.25 + 0.05 * Math.sin(this._collapseT * 0.0014) + (Math.random() - 0.5) * 0.05,
-                0.2,
-                0.3,
-              );
-              if (ct < 115) {
-                bgTarget *= Phaser.Math.FloatBetween(0.45, 0.62);
-              }
-              this._bootBg.setAlpha(bgTarget);
-              const bgShake = Phaser.Math.FloatBetween(2, 4);
-              this._bootBg.setPosition(
-                this._bgBaseX + (Math.random() - 0.5) * 2 * bgShake,
-                this._bgBaseY + (Math.random() - 0.5) * 2 * bgShake,
-              );
-            }
-
             if (this._bootTitleImg && this._bootTitleImg.visible) {
               const titleShake = Phaser.Math.FloatBetween(3, 6);
               const ax = this._titleBaseX + (Math.random() - 0.5) * 2 * titleShake;
@@ -1669,7 +1674,6 @@
           const bgT = Phaser.Math.Clamp((p - bgStart) / (bgEnd - bgStart), 0, 1);
           const bgEase = bgT * bgT * bgT;
           if (this._bootBg) this._bootBg.setAlpha(bgEase);
-          syncBootBgShardSheetAlpha(this, bgEase);
           const revealY = Math.round(H * bgEase);
 
           // 未表示エリアの暗幕 (?noBootOverlay=1 で無効化)
