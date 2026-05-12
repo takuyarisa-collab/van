@@ -84,6 +84,7 @@
     } from './home-overlap-rebuild.js';
     import { destroyBootBgPanelForHome } from './home-ui.js';
     import {
+      BOOT_BG_COLLAPSE_CRACK_MS,
       mountBootBgCollapseShardSheet,
       activateBootBgCollapseShardPhysics,
       syncBootBgShardSheetAlpha,
@@ -182,7 +183,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-12 18:48 UTC';
+      const BUILD_TIMESTAMP = '2026-05-12 20:12 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1201,7 +1202,7 @@
           const H = WORLD_H;
           const mainH = Phaser.Math.FloatBetween(H * 0.06, H * 0.14);
           const mainCy = Phaser.Math.FloatBetween(H * 0.24, H * 0.47);
-          const mainAlpha = Phaser.Math.FloatBetween(0.55, 0.85);
+          const mainAlpha = Phaser.Math.FloatBetween(0.34, 0.52);
           let sub = null;
           if (Math.random() < 0.48) {
             const gapMin = mainH * 0.5 + 22;
@@ -1213,7 +1214,7 @@
             sub = {
               cy: subCy,
               h: Phaser.Math.FloatBetween(H * 0.045, H * 0.11),
-              alpha: Phaser.Math.FloatBetween(0.38, 0.68),
+              alpha: Phaser.Math.FloatBetween(0.24, 0.42),
             };
           }
           this._faultBandSpec = { mainH, mainCy, mainAlpha, sub };
@@ -1229,9 +1230,9 @@
           const g = this._collapseBandGfx;
           if (!spec || !g || g.destroyed) return;
 
-          /** 亀裂・黒帯は 0〜120ms で 0→立ち上げ（開始フレームでは非表示） */
-          const CRACK_RAMP_MS = 120;
-          const holdEnd = 300;
+          /** 亀裂・黒帯は 0〜BOOT_BG_COLLAPSE_CRACK_MS で 0→立ち上げ（開始フレームでは非表示） */
+          const CRACK_RAMP_MS = BOOT_BG_COLLAPSE_CRACK_MS;
+          const holdEnd = 280;
           const dur = this._collapseDur || 1100;
           const ease3 = (t) => {
             const u = 1 - Phaser.Math.Clamp(t, 0, 1);
@@ -1245,16 +1246,16 @@
             if (linesOnly) return 0;
             if (ct < CRACK_RAMP_MS) return spec.mainAlpha * crackPop;
             if (ct < holdEnd) return spec.mainAlpha;
-            const fadeU = Phaser.Math.Clamp((ct - holdEnd) / Math.max(240, dur - holdEnd - 60), 0, 1);
-            return spec.mainAlpha * (1 - ease3(fadeU) * 0.94);
+            const fadeU = Phaser.Math.Clamp((ct - holdEnd) / Math.max(260, dur - holdEnd - 60), 0, 1);
+            return spec.mainAlpha * (1 - ease3(fadeU) * 0.82);
           })();
 
           const subFillA = (() => {
             if (linesOnly || !spec.sub) return 0;
             if (ct < CRACK_RAMP_MS) return spec.sub.alpha * crackPop;
             if (ct < holdEnd) return spec.sub.alpha;
-            const fadeU = Phaser.Math.Clamp((ct - holdEnd) / Math.max(240, dur - holdEnd - 60), 0, 1);
-            return spec.sub.alpha * (1 - ease3(fadeU) * 0.92);
+            const fadeU = Phaser.Math.Clamp((ct - holdEnd) / Math.max(260, dur - holdEnd - 60), 0, 1);
+            return spec.sub.alpha * (1 - ease3(fadeU) * 0.78);
           })();
 
           const lineRamp = linesOnly
@@ -1375,19 +1376,15 @@
           this._drawCollapseFaultBand(0);
           if (this._bootBg && !this._bootBg.destroyed) {
             this._bootBg.setVisible(true);
+            this.tweens.killTweensOf(this._bootBg);
+            this._bootBgFlatFadeMs = 200;
+            this._bootBgShardRootRampMs = 124;
+            this._bootBgShardRootRampStartA = 0.22;
             activateBootBgCollapseShardPhysics(this, this._faultBandSpec, overlapT0);
-            syncBootBgShardSheetAlpha(this, Phaser.Math.Clamp(this._bgBaseAlpha, 0, 1));
-            this.tweens.add({
-              targets: this._bootBg,
-              alpha: 0,
-              duration: 72,
-              ease: 'Sine.easeIn',
-              onComplete: () => {
-                if (this._bootBg && !this._bootBg.destroyed) {
-                  this._bootBg.setVisible(false);
-                }
-              },
-            });
+            syncBootBgShardSheetAlpha(
+              this,
+              this._bgBaseAlpha * this._bootBgShardRootRampStartA,
+            );
           }
           this._collapseShockOverlay?.destroy();
           this._collapseShockOverlay = this.add
@@ -1395,15 +1392,15 @@
             .setDepth(-33);
           this.tweens.add({
             targets: this._collapseShockOverlay,
-            alpha: 0.34,
-            duration: 46,
+            alpha: 0.14,
+            duration: 54,
             ease: 'Quad.easeOut',
             onComplete: () => {
               if (this._collapseShockOverlay && !this._collapseShockOverlay.destroyed) {
                 this.tweens.add({
                   targets: this._collapseShockOverlay,
                   alpha: 0,
-                  duration: 84,
+                  duration: 102,
                   ease: 'Sine.easeIn',
                   onComplete: () => {
                     this._collapseShockOverlay?.destroy();
@@ -1534,6 +1531,23 @@
             const _structLayer = this._bootBackdrop?.containers?.[1];
             const _baseLayer = this._bootBackdrop?.containers?.[0];
             const ct = this._collapseT;
+            const bg0 = Phaser.Math.Clamp(this._bgBaseAlpha ?? 1, 0, 1);
+            if (this._bootBg && !this._bootBg.destroyed) {
+              this._bootBg.setVisible(true);
+              const flatMs = this._bootBgFlatFadeMs ?? 200;
+              const uFlat = Phaser.Math.Clamp(ct / flatMs, 0, 1);
+              const flatEase = 0.5 * (1 - Math.cos(Math.PI * uFlat));
+              this._bootBg.setAlpha(bg0 * (1 - flatEase));
+              if (uFlat >= 0.999) {
+                this._bootBg.setVisible(false);
+              }
+            }
+            const rampMs = this._bootBgShardRootRampMs ?? 124;
+            const aStart = this._bootBgShardRootRampStartA ?? 0.22;
+            const uShard = Phaser.Math.Clamp(ct / rampMs, 0, 1);
+            const shardEase = 1 - (1 - uShard) ** 3;
+            syncBootBgShardSheetAlpha(this, bg0 * Phaser.Math.Linear(aStart, 1, shardEase));
+
             if (_structLayer) {
               let gridLayerA = 0;
               if (ct < 125) {
@@ -1568,11 +1582,11 @@
                 this._scanGfx.clear();
                 const y0 = Math.round(H * Phaser.Math.FloatBetween(0.22, 0.62));
                 const h0 = Math.round(H * Phaser.Math.FloatBetween(0.06, 0.16));
-                this._scanGfx.fillStyle(0x070910, Phaser.Math.FloatBetween(0.28, 0.42));
+                this._scanGfx.fillStyle(0x070910, Phaser.Math.FloatBetween(0.12, 0.2));
                 this._scanGfx.fillRect(0, y0, W, h0);
                 if (Math.random() < 0.55) {
                   const y1 = Math.round(H * Phaser.Math.FloatBetween(0.35, 0.92));
-                  this._scanGfx.fillStyle(0x0a0d14, Phaser.Math.FloatBetween(0.22, 0.38));
+                  this._scanGfx.fillStyle(0x0a0d14, Phaser.Math.FloatBetween(0.1, 0.18));
                   this._scanGfx.fillRect(0, y1, W, Phaser.Math.FloatBetween(14, 40));
                 }
                 this._scanLineGfx.clear();

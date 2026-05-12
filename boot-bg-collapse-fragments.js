@@ -12,9 +12,15 @@ export const REG_BOOT_BG_FRAG_EPOCH_MS = 'bootBgFragEpochMs';
 /** Home の PLAY/SUB 背景パネル（クロップ）を不透明にする wall-clock 閾値（overlap rebuild と同期） */
 export const BOOT_BG_HOME_PANEL_REVEAL_MS = 995;
 
-const CRACK_MS = 120;
+/** Boot 崩壊: 亀裂立ち上げ（index の fault 帯 ramp と揃える） */
+export const BOOT_BG_COLLAPSE_CRACK_MS = 80;
+/** 隙間拡大終了 → 破片落下開始 */
+export const BOOT_BG_COLLAPSE_GAP_END_MS = 220;
+
+const CRACK_MS = BOOT_BG_COLLAPSE_CRACK_MS;
+const GAP_END_MS = BOOT_BG_COLLAPSE_GAP_END_MS;
 const BASE_SHARD_ALPHA = 1;
-const BAND_ALPHA_MULT = 0.82;
+const BAND_ALPHA_MULT = 0.93;
 
 function mulberry32(seed) {
   return function rnd() {
@@ -207,6 +213,11 @@ function easeInQuad(t) {
   return t * t;
 }
 
+function easeInOutCubic(t) {
+  const u = Phaser.Math.Clamp(t, 0, 1);
+  return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+}
+
 /**
  * Boot create 時: 背景断片シートを構築（1 枚に見える静止配置）。
  * @param {Phaser.Scene} bootScene
@@ -321,18 +332,26 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
     const len = Math.hypot(towardX, towardY) + 1e-6;
     const nx = towardX / len;
     const ny = towardY / len;
-    const sep = (3 + rnd() * 10) * bgScale * (0.55 + sizeRank);
-    const crackDxW = nx * sep * (0.4 + rnd() * 0.9) + (rnd() - 0.5) * 4.2 * bgScale;
-    const crackDyW = ny * sep * (0.35 + rnd() * 0.85) + (rnd() - 0.5) * 3.8 * bgScale;
-    const crackRot = Phaser.Math.DegToRad((rnd() - 0.5) * (14 + 52 * (1 - sizeRank * 0.65)));
+    const spread = (7 + rnd() * 22) * bgScale * (0.58 + sizeRank * 0.55);
+    const jitterX = (rnd() - 0.5) * 12 * bgScale;
+    const jitterY = (rnd() - 0.5) * 10 * bgScale;
+    const gx = nx * spread + jitterX;
+    const gy = ny * spread * 0.9 + jitterY;
+    const crackU = Phaser.Math.FloatBetween(0.32, 0.5);
+    const crackX = restW.x + gx * crackU;
+    const crackY = restW.y + gy * crackU;
+    const gapX = restW.x + gx;
+    const gapY = restW.y + gy;
+    const crackRot = Phaser.Math.DegToRad((rnd() - 0.5) * (18 + 58 * (1 - sizeRank * 0.62)));
+    const gapRot = crackRot * Phaser.Math.FloatBetween(1.28, 1.72);
     const depthNudge = (rnd() - 0.5) * 0.08;
 
-    const lateralBoost = rnd() < 0.18 ? (rnd() - 0.5) * 0.55 * bgScale : 0;
-    const vx0 = (rnd() - 0.5) * 0.095 * (1.15 - sizeRank * 0.35) + lateralBoost;
-    const vy0 = 0.055 + rnd() * 0.12 + (1 - sizeRank) * 0.05;
-    const vr0 = Phaser.Math.DegToRad(((rnd() - 0.5) * 0.055) / (0.65 + sizeRank));
+    const lateralBoost = rnd() < 0.42 ? (rnd() - 0.5) * 1.05 * bgScale : 0;
+    const vx0 = (rnd() - 0.5) * 0.175 * (1.22 - sizeRank * 0.38) + lateralBoost;
+    const vy0 = 0.095 + rnd() * 0.22 + (1 - sizeRank) * 0.1;
+    const vr0 = Phaser.Math.DegToRad(((rnd() - 0.5) * 0.2) / (0.52 + sizeRank * 0.38));
 
-    const ay = (0.00028 + rnd() * 0.00012) / Math.sqrt(mass / 9000);
+    const ay = (0.00044 + rnd() * 0.0002) / Math.sqrt(mass / 9000);
     const suckBand = rnd() < 0.38;
     const fadeEarly = mass < (natW * natH) * 0.012 && rnd() < 0.55;
     const bandBias = rnd();
@@ -359,9 +378,12 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
       texKey: baked.texKey,
       restX: restW.x,
       restY: restW.y,
-      crackX: restW.x + crackDxW,
-      crackY: restW.y + crackDyW,
+      crackX,
+      crackY,
       crackR: crackRot,
+      gapX,
+      gapY,
+      gapR: gapRot,
       mass,
       vx0,
       vy0,
@@ -464,22 +486,27 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
       x = Phaser.Math.Linear(it.restX, it.crackX, eCrack);
       y = Phaser.Math.Linear(it.restY, it.crackY, eCrack);
       rot = Phaser.Math.Linear(0, it.crackR, eCrack);
+    } else if (collapseT < GAP_END_MS) {
+      const uGap = easeInOutCubic((collapseT - CRACK_MS) / (GAP_END_MS - CRACK_MS));
+      x = Phaser.Math.Linear(it.crackX, it.gapX, uGap);
+      y = Phaser.Math.Linear(it.crackY, it.gapY, uGap);
+      rot = Phaser.Math.Linear(it.crackR, it.gapR, uGap);
     } else {
       if (!it.fallStarted) {
         it.fallStarted = true;
-        it.px = it.crackX;
-        it.py = it.crackY;
-        it.pr = it.crackR;
+        it.px = it.gapX;
+        it.py = it.gapY;
+        it.pr = it.gapR;
         it.vx = it.vx0;
         it.vy = it.vy0;
         it.vr = it.vr0;
       }
       it.vy += it.ay * dt;
-      it.vx *= Math.pow(0.985, dt / 16.67);
-      it.vr *= Math.pow(0.9988, dt / 16.67);
+      it.vx *= Math.pow(0.992, dt / 16.67);
+      it.vr *= Math.pow(0.9992, dt / 16.67);
 
-      if (it.suckBand && collapseT > CRACK_MS + 95) {
-        const post = collapseT - CRACK_MS;
+      if (it.suckBand && collapseT > GAP_END_MS + 95) {
+        const post = collapseT - GAP_END_MS;
         const tug = Phaser.Math.Clamp((post - 95) / 420, 0, 1) * 0.42;
         it.vx += ((bandPullX - it.px) * 0.00009 + (rndBandTug(it) - 0.5) * 0.02) * tug;
         it.vy += ((bandPullY - it.py) * 0.00011 + (rndBandTug(it) - 0.5) * 0.015) * tug;
@@ -497,17 +524,22 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
     it.container.setRotation(rot);
 
     let baseA = BASE_SHARD_ALPHA;
-    if (uCrack > 0.1 && pointInFaultBands(x, y, spec, W)) {
-      baseA *= BAND_ALPHA_MULT;
+    if (pointInFaultBands(x, y, spec, W)) {
+      let dim = BAND_ALPHA_MULT;
+      if (collapseT < GAP_END_MS + 100) {
+        dim = Phaser.Math.Linear(1, BAND_ALPHA_MULT, Phaser.Math.Clamp(collapseT / (GAP_END_MS + 100), 0, 1));
+      }
+      baseA *= dim;
     }
-    if (it.fadeEarly && wallT > 520) {
-      const uFade = Phaser.Math.Clamp((wallT - 520) / 420, 0, 1);
+    if (it.fadeEarly && wallT > GAP_END_MS + 140) {
+      const uFade = Phaser.Math.Clamp((wallT - (GAP_END_MS + 140)) / 480, 0, 1);
       baseA *= 1 - easeInQuad(uFade);
     }
     if (homeUrlDebugEnabled()) {
       it.img.setAlpha(Phaser.Math.Clamp(0.82 + Math.sin(collapseT * 0.003) * 0.06, 0.78, 0.95));
     } else {
-      it.img.setAlpha(Phaser.Math.Clamp(baseA, 0.52, 1));
+      const minPieceA = Phaser.Math.Linear(0.62, 0.78, Phaser.Math.Clamp(uCrack * 1.25, 0, 1));
+      it.img.setAlpha(Phaser.Math.Clamp(baseA, minPieceA, 1));
     }
   }
 }
