@@ -183,7 +183,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-12 23:31 UTC';
+      const BUILD_TIMESTAMP = '2026-05-13 12:00 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -301,7 +301,7 @@
       // ─────────────────────────────────────────────────────────────────────────
       // Boot デバッグ用 URLパラメータ
       // 例: ?bootDur=2000&noTitleMask=1&warnOffsetY=0.22
-      // collapse 暗転切り分け（?debug=1 必須）: noShock=1 noFaultBand=1 noCollapseScan=1 shardStartAlpha=1
+      // collapse 暗転切り分け（?debug=1 必須）: noShock=1 noFaultBand=1 noCollapseScan=1 shardStartAlpha=1 flatHoldAlpha=0.45 flatFadeEndMs=760
       // 未指定時は各デフォルト値（現在の挙動）を使用する
       // ─────────────────────────────────────────────────────────────────────────
       (() => {
@@ -387,6 +387,11 @@
       /** ここまでで不透明度ランプ完了（collapse 直前） */
       const BOOT_WARN_RAMP_END_PROGRESS = 0.86;
 
+      /** collapse 中 flat 背景: ホールド終了 ms / 完全消去 ms / ホールド時の相対 alpha（shard 切替直後の明度落ち抑制） */
+      const BOOT_COLLAPSE_FLAT_FADE_HOLD_MS = 260;
+      const BOOT_COLLAPSE_FLAT_FADE_END_MS = 760;
+      const BOOT_COLLAPSE_FLAT_MIN_ALPHA = 0.45;
+
       const BOOT_FLOAT_LOG_SNIPS = [
         '[WARN] IRQ STORM',
         'BUS fault',
@@ -433,6 +438,20 @@
           const o = window.BOOT_PARAM_getOptionalNum('shardStartAlpha');
           if (o === null) return 1;
           return Math.min(Math.max(o, 0), 1.5);
+        })(),
+        /** ?debug=1&flatHoldAlpha=N のみ。未指定時は collapse 開始で BOOT_COLLAPSE_FLAT_MIN_ALPHA を使用 */
+        collapseFlatHoldAlpha: (() => {
+          if (!window.BOOT_PARAM_getBool('debug', false)) return null;
+          const o = window.BOOT_PARAM_getOptionalNum('flatHoldAlpha');
+          if (o === null) return null;
+          return Math.min(Math.max(o, 0), 1);
+        })(),
+        /** ?debug=1&flatFadeEndMs=N のみ。未指定時は BOOT_COLLAPSE_FLAT_FADE_END_MS */
+        collapseFlatFadeEndMs: (() => {
+          if (!window.BOOT_PARAM_getBool('debug', false)) return null;
+          const o = window.BOOT_PARAM_getOptionalNum('flatFadeEndMs');
+          if (o === null || !Number.isFinite(o)) return null;
+          return Math.max(o, BOOT_COLLAPSE_FLAT_FADE_HOLD_MS + 1);
         })(),
       };
 
@@ -1379,10 +1398,18 @@
           }
           const aStartCfg = Phaser.Math.Clamp(BOOT_DEBUG.collapseShardStartAlpha ?? 1, 0, 1.5);
           this._bootBgShardRootRampStartA = aStartCfg;
+          this._bootBgFlatFadeHoldMs = BOOT_COLLAPSE_FLAT_FADE_HOLD_MS;
+          this._bootBgFlatFadeEndMs = Math.max(
+            BOOT_DEBUG.collapseFlatFadeEndMs ?? BOOT_COLLAPSE_FLAT_FADE_END_MS,
+            BOOT_COLLAPSE_FLAT_FADE_HOLD_MS + 1,
+          );
+          this._bootBgFlatMinAlpha = Math.min(
+            Math.max(BOOT_DEBUG.collapseFlatHoldAlpha ?? BOOT_COLLAPSE_FLAT_MIN_ALPHA, 0),
+            1,
+          );
           if (this._bootBg && !this._bootBg.destroyed) {
             this._bootBg.setVisible(true);
             this.tweens.killTweensOf(this._bootBg);
-            this._bootBgFlatFadeMs = 200;
             this._bootBgShardRootRampMs = 124;
             activateBootBgCollapseShardPhysics(this, this._faultBandSpec, overlapT0);
             syncBootBgShardSheetAlpha(
@@ -1424,6 +1451,9 @@
             const faultPeak = BOOT_DEBUG.noCollapseFaultBand ? 0 : (this._faultBandSpec?.mainAlpha ?? 0);
             console.log('[BOOT_COLLAPSE_DEBUG_START]', {
               flatAlpha: this._bootBg && !this._bootBg.destroyed ? this._bootBg.alpha : bg0,
+              flatFadeHoldMs: this._bootBgFlatFadeHoldMs,
+              flatFadeEndMs: this._bootBgFlatFadeEndMs,
+              flatMinAlpha: this._bootBgFlatMinAlpha,
               shardStartAlpha: bg0 * Math.min(aStart, 1),
               shockAlpha: BOOT_DEBUG.noCollapseShock ? 0 : shockPeak,
               faultBandAlpha: faultPeak,
@@ -1554,13 +1584,30 @@
             const ct = this._collapseT;
             const bg0 = Phaser.Math.Clamp(this._bgBaseAlpha ?? 1, 0, 1);
             if (this._bootBg && !this._bootBg.destroyed) {
-              this._bootBg.setVisible(true);
-              const flatMs = this._bootBgFlatFadeMs ?? 200;
-              const uFlat = Phaser.Math.Clamp(ct / flatMs, 0, 1);
-              const flatEase = 0.5 * (1 - Math.cos(Math.PI * uFlat));
-              this._bootBg.setAlpha(bg0 * (1 - flatEase));
-              if (uFlat >= 0.999) {
+              const holdMs = this._bootBgFlatFadeHoldMs ?? BOOT_COLLAPSE_FLAT_FADE_HOLD_MS;
+              let endMs = this._bootBgFlatFadeEndMs ?? BOOT_COLLAPSE_FLAT_FADE_END_MS;
+              endMs = Math.max(endMs, holdMs + 1);
+              const minRel = Phaser.Math.Clamp(
+                this._bootBgFlatMinAlpha ?? BOOT_COLLAPSE_FLAT_MIN_ALPHA,
+                0,
+                1,
+              );
+              if (ct >= endMs) {
+                this._bootBg.setAlpha(0);
                 this._bootBg.setVisible(false);
+              } else {
+                this._bootBg.setVisible(true);
+                let relA;
+                if (ct < holdMs) {
+                  const u = Phaser.Math.Clamp(ct / holdMs, 0, 1);
+                  const ease = 0.5 * (1 - Math.cos(Math.PI * u));
+                  relA = Phaser.Math.Linear(1, minRel, ease);
+                } else {
+                  const u = Phaser.Math.Clamp((ct - holdMs) / (endMs - holdMs), 0, 1);
+                  const ease = 0.5 * (1 - Math.cos(Math.PI * u));
+                  relA = Phaser.Math.Linear(minRel, 0, ease);
+                }
+                this._bootBg.setAlpha(bg0 * relA);
               }
             }
             const rampMs = this._bootBgShardRootRampMs ?? 124;
