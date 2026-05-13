@@ -20,7 +20,17 @@ export const BOOT_BG_COLLAPSE_GAP_END_MS = 220;
 const CRACK_MS = BOOT_BG_COLLAPSE_CRACK_MS;
 const GAP_END_MS = BOOT_BG_COLLAPSE_GAP_END_MS;
 const BASE_SHARD_ALPHA = 1;
+/** fault band 内 shard alpha 乗算（?debug=1&noShardDim=0 のときのみ使用） */
 const BAND_ALPHA_MULT = 0.93;
+
+function readCollapseShardTuning() {
+  const t = typeof window !== 'undefined' ? window.BOOT_COLLAPSE_SHARD : null;
+  return {
+    noFade: !t || t.noShardFade !== false,
+    noDim: !t || t.noShardDim !== false,
+    solidAlpha: !t || t.solidShardAlpha !== false,
+  };
+}
 
 function mulberry32(seed) {
   return function rnd() {
@@ -523,19 +533,22 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
     it.container.setPosition(x, y);
     it.container.setRotation(rot);
 
+    const tune = readCollapseShardTuning();
     let baseA = BASE_SHARD_ALPHA;
-    if (pointInFaultBands(x, y, spec, W)) {
+    if (!tune.noDim && pointInFaultBands(x, y, spec, W)) {
       let dim = BAND_ALPHA_MULT;
       if (collapseT < GAP_END_MS + 100) {
         dim = Phaser.Math.Linear(1, BAND_ALPHA_MULT, Phaser.Math.Clamp(collapseT / (GAP_END_MS + 100), 0, 1));
       }
       baseA *= dim;
     }
-    if (it.fadeEarly && wallT > GAP_END_MS + 140) {
+    if (!tune.noFade && it.fadeEarly && wallT > GAP_END_MS + 140) {
       const uFade = Phaser.Math.Clamp((wallT - (GAP_END_MS + 140)) / 480, 0, 1);
       baseA *= 1 - easeInQuad(uFade);
     }
-    if (homeUrlDebugEnabled()) {
+    if (tune.solidAlpha) {
+      it.img.setAlpha(1);
+    } else if (homeUrlDebugEnabled()) {
       it.img.setAlpha(Phaser.Math.Clamp(0.82 + Math.sin(collapseT * 0.003) * 0.06, 0.78, 0.95));
     } else {
       const minPieceA = Phaser.Math.Linear(0.62, 0.78, Phaser.Math.Clamp(uCrack * 1.25, 0, 1));
