@@ -47,11 +47,6 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
 
       const _registry = this.game.registry;
       this._homeWaitBootCollapse = Boolean(_registry.get(REG_BOOT_HOME_WAIT_COLLAPSE));
-      const _noHomeEarlyBgWait =
-        typeof window !== 'undefined' &&
-        window.BOOT_DEBUG &&
-        window.BOOT_DEBUG.debug &&
-        window.BOOT_DEBUG.noHomeEarlyBg;
 
       this._homeBackdrop = mountHomeGridOnly(this, {
         width: WORLD_W,
@@ -59,14 +54,6 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
       });
       this._homeDarkVeil = null;
       this._homeBgRebuildStarted = false;
-      if (this._homeWaitBootCollapse && !_noHomeEarlyBgWait) {
-        this._homeDarkVeil = this.add
-          .rectangle(WORLD_W / 2, WORLD_H / 2, WORLD_W, WORLD_H, 0x030711, 0.93)
-          .setDepth(-65);
-        this._homeBackdrop.layers?.forEach((layer) => {
-          if (layer && !layer.destroyed) layer.setAlpha(0.24);
-        });
-      }
 
       const _depthRebuildPanel = -48;
       const _rebuildTexKey = 'home-bg-normal';
