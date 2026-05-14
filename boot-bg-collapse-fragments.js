@@ -32,15 +32,35 @@ function readCollapseShardTuning() {
   };
 }
 
+/** 既定 facet 強度（URL 非指定時）。text id=yjlwm8: 0.28〜0.4 程度 */
+const DEFAULT_SHARD_FACET_STRENGTH = 0.34;
+
+/** area / maxArea から facet の面積係数（大型のみ面感、小型は silhouette / edge 優先） */
+function facetAreaScaleFromRatio(areaRatio) {
+  const u = Phaser.Math.Clamp(areaRatio, 0, 1);
+  if (u < 0.14) {
+    return Phaser.Math.Linear(0, 0.14, u / 0.14);
+  }
+  if (u < 0.42) {
+    return Phaser.Math.Linear(0.14, 0.45, (u - 0.14) / (0.42 - 0.14));
+  }
+  return Phaser.Math.Linear(0.45, 1, (u - 0.42) / (1 - 0.42));
+}
+
 /** index.html の BOOT_COLLAPSE_SHARD 由来（?debug=1 時 shardLighting 等） */
 function readShardVisualFlags() {
   const t = typeof window !== 'undefined' ? window.BOOT_COLLAPSE_SHARD : null;
+  const fs =
+    t && typeof t.shardFacetStrength === 'number' && Number.isFinite(t.shardFacetStrength)
+      ? Phaser.Math.Clamp(t.shardFacetStrength, 0, 1)
+      : DEFAULT_SHARD_FACET_STRENGTH;
   if (!t) {
     return {
       shardLighting: true,
       shardEdgeShade: true,
       shardDepthFade: true,
       shardFacetShade: true,
+      shardFacetStrength: fs,
     };
   }
   return {
@@ -48,6 +68,7 @@ function readShardVisualFlags() {
     shardEdgeShade: t.shardEdgeShade !== false,
     shardDepthFade: t.shardDepthFade !== false,
     shardFacetShade: t.shardFacetShade !== false,
+    shardFacetStrength: fs,
   };
 }
 
@@ -244,13 +265,13 @@ function drawShardSurfaceDetailInClip(ctx, cw, ch, rnd) {
 
   ctx.save();
   ctx.globalCompositeOperation = 'overlay';
-  const grains = 5 + ((rnd() * 6) | 0);
+  const grains = 4 + ((rnd() * 5) | 0);
   for (let g = 0; g < grains; g++) {
     const gx = rnd() * cw;
     const gy = rnd() * ch;
     const grd = ctx.createRadialGradient(gx, gy, 0, gx, gy, 0.5 + rnd() * minD * 0.09);
-    grd.addColorStop(0, `rgba(255,255,255,${0.04 + rnd() * 0.05})`);
-    grd.addColorStop(1, 'rgba(120,128,140,0)');
+    grd.addColorStop(0, `rgba(218,226,238,${0.018 + rnd() * 0.026})`);
+    grd.addColorStop(1, 'rgba(120,132,148,0)');
     ctx.fillStyle = grd;
     ctx.fillRect(0, 0, cw, ch);
   }
@@ -289,9 +310,9 @@ function drawShardEdgeShadeInClip(ctx, polyCanvas, cw, ch) {
   ctx.save();
   ctx.globalCompositeOperation = 'multiply';
   const g = ctx.createRadialGradient(cx, cy, Math.max(2, Math.min(cw, ch) * 0.08), cx, cy, maxR);
-  g.addColorStop(0, 'rgb(255,255,255)');
-  g.addColorStop(0.58, 'rgb(250,251,253)');
-  g.addColorStop(1, 'rgb(196,206,224)');
+  g.addColorStop(0, 'rgb(252,252,254)');
+  g.addColorStop(0.58, 'rgb(244,246,250)');
+  g.addColorStop(1, 'rgb(188,198,218)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, cw, ch);
   ctx.restore();
@@ -299,8 +320,8 @@ function drawShardEdgeShadeInClip(ctx, polyCanvas, cw, ch) {
   ctx.save();
   ctx.globalCompositeOperation = 'soft-light';
   const g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxR * 0.42);
-  g2.addColorStop(0, 'rgba(255,255,255,0.17)');
-  g2.addColorStop(0.42, 'rgba(255,255,255,0.05)');
+  g2.addColorStop(0, 'rgba(248,250,255,0.11)');
+  g2.addColorStop(0.42, 'rgba(240,244,252,0.04)');
   g2.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g2;
   ctx.fillRect(0, 0, cw, ch);
@@ -309,7 +330,7 @@ function drawShardEdgeShadeInClip(ctx, polyCanvas, cw, ch) {
   const strokeW = Phaser.Math.Clamp(Math.min(cw, ch) * 0.034, 2, 5);
   ctx.save();
   ctx.globalCompositeOperation = 'multiply';
-  ctx.strokeStyle = 'rgba(28, 36, 48, 0.14)';
+  ctx.strokeStyle = 'rgba(32, 40, 54, 0.13)';
   ctx.lineWidth = strokeW;
   ctx.lineJoin = 'round';
   ctx.beginPath();
@@ -323,72 +344,74 @@ function drawShardEdgeShadeInClip(ctx, polyCanvas, cw, ch) {
 }
 
 /**
- * centroid 三角扇で面ごとに明暗（左上光源）。線分割ではなく multiply / soft-light のみ。
+ * 左上光源に沿った単一线形グラデで「面」をほんのり感じさせる（三角分割線なし）。
+ * effectStrength = 面積係数 × shardFacetStrength。text id=4vvw4z: 明暗は約 0.92〜1.03 相当に抑える。
  * @param {CanvasRenderingContext2D} ctx
  * @param {{x:number,y:number}[]} polyCanvas
  * @param {number} cw
  * @param {number} ch
- * @param {number} strengthArea01 大型破片ほど 1 に近い
+ * @param {number} effectStrength 0 で無効
  */
-function drawShardFacetFanShadeInClip(ctx, polyCanvas, cw, ch, strengthArea01) {
+function drawShardFacetSoftGradientInClip(ctx, polyCanvas, cw, ch, effectStrength) {
+  if (effectStrength < 0.001) return;
   const n = polyCanvas.length;
   if (n < 3) return;
   const cen = centroidOfPoly(polyCanvas);
-  const smax = Phaser.Math.Clamp(strengthArea01, 0.12, 1);
-  const span = 0.038 + smax * 0.172;
   const Lx = SHARD_LIGHT_TO_X;
   const Ly = SHARD_LIGHT_TO_Y;
+  const halfLen = Math.hypot(cw, ch) * 0.5;
+  const s = Phaser.Math.Clamp(effectStrength, 0, 1.2);
+  const spanMul = 0.055 * s;
+  const lo = Phaser.Math.Clamp(0.975 - spanMul, 0.9, 0.975);
 
-  for (let i = 0; i < n; i++) {
-    const v1 = polyCanvas[i];
-    const v2 = polyCanvas[(i + 1) % n];
-    const mx = (v1.x + v2.x) * 0.5;
-    const my = (v1.y + v2.y) * 0.5;
-    const ex = v2.x - v1.x;
-    const ey = v2.y - v1.y;
-    const el = Math.hypot(ex, ey) || 1;
-    let nx = -ey / el;
-    let ny = ex / el;
-    const tox = cen.x - mx;
-    const toy = cen.y - my;
-    if (nx * tox + ny * toy < 0) {
-      nx = -nx;
-      ny = -ny;
-    }
-    const otx = -nx;
-    const oty = -ny;
-    const shade = Phaser.Math.Clamp(otx * Lx + oty * Ly, -1, 1);
-    let br = 0.9 + shade * span;
-    br = Phaser.Math.Clamp(br, 0.72, 1.08);
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(cen.x, cen.y);
-    ctx.lineTo(v1.x, v1.y);
-    ctx.lineTo(v2.x, v2.y);
-    ctx.closePath();
-    ctx.clip();
-
-    if (br <= 1 - 1e-6) {
-      ctx.globalCompositeOperation = 'multiply';
-      const g = Math.max(0, Math.min(255, Math.round(br * 255)));
-      ctx.fillStyle = `rgb(${g},${g},${g})`;
-      ctx.fillRect(0, 0, cw, ch);
-    } else {
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.fillStyle = 'rgb(255,255,255)';
-      ctx.fillRect(0, 0, cw, ch);
-      const t = Math.min(1, (br - 1) / 0.08);
-      ctx.globalCompositeOperation = 'soft-light';
-      ctx.fillStyle = `rgba(236,242,255,${0.07 + t * 0.15})`;
-      ctx.fillRect(0, 0, cw, ch);
-    }
-    ctx.restore();
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(polyCanvas[0].x, polyCanvas[0].y);
+  for (let i = 1; i < n; i++) {
+    ctx.lineTo(polyCanvas[i].x, polyCanvas[i].y);
   }
+  ctx.closePath();
+  ctx.clip();
+
+  const gx0 = cen.x - Lx * halfLen;
+  const gy0 = cen.y - Ly * halfLen;
+  const gx1 = cen.x + Lx * halfLen;
+  const gy1 = cen.y + Ly * halfLen;
+
+  const r0 = Math.round(255 * lo * 0.96);
+  const g0 = Math.round(255 * lo * 0.99);
+  const b0 = Math.round(Math.min(255, 255 * lo * 1.02));
+  const mid = (lo + 1) * 0.5;
+  const r1 = Math.round(255 * mid * 0.98);
+  const g1 = Math.round(255 * mid * 0.995);
+  const b1 = Math.round(Math.min(255, 255 * mid * 1.01));
+
+  const grd = ctx.createLinearGradient(gx0, gy0, gx1, gy1);
+  grd.addColorStop(0, `rgb(${r0},${g0},${b0})`);
+  grd.addColorStop(0.5, `rgb(${r1},${g1},${b1})`);
+  grd.addColorStop(1, 'rgb(252,253,255)');
+
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, cw, ch);
+
+  const hlA = 0.022 * s;
+  if (hlA > 0.0015) {
+    const grd2 = ctx.createLinearGradient(gx0, gy0, gx1, gy1);
+    grd2.addColorStop(0, 'rgba(198,208,228,0)');
+    grd2.addColorStop(0.52, 'rgba(210,218,236,0)');
+    grd2.addColorStop(1, `rgba(224,232,248,${hlA})`);
+    ctx.globalCompositeOperation = 'soft-light';
+    ctx.fillStyle = grd2;
+    ctx.fillRect(0, 0, cw, ch);
+  }
+  ctx.restore();
 }
 
 /**
  * Canvas clip でポリゴン領域を焼き込み、Phaser の canvas テクスチャとして登録。
+ * @param {number} facetStrength01 面積係数×shardFacetStrength（facet 合成強度、0 で実質無効）
  * @returns {{ texKey: string, dispW: number, dispH: number, localPts: {x:number,y:number}[] }}
  */
 function bakeShardCanvasTexture(
@@ -433,7 +456,7 @@ function bakeShardCanvasTexture(
   ctx.drawImage(src, cropL, cropT, cropW, cropH, 0, 0, cw, ch);
 
   if (facetShadeOn) {
-    drawShardFacetFanShadeInClip(ctx, polyCanvas, cw, ch, facetStrength01);
+    drawShardFacetSoftGradientInClip(ctx, polyCanvas, cw, ch, facetStrength01);
   }
 
   drawShardSurfaceDetailInClip(ctx, cw, ch, shardRnd);
@@ -582,7 +605,8 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
     const dispH = cropH * bgScale;
 
     const shardRnd = mulberry32(((seed0 ^ (di * 0x9e3779b9)) >>> 0) ^ 0x85ebca6b);
-    const facetStrength = Math.pow(cells[di].area / maxCellArea, 0.58);
+    const areaRatio = maxCellArea > 0 ? cells[di].area / maxCellArea : 0;
+    const facetPaintStrength = facetAreaScaleFromRatio(areaRatio) * visMount.shardFacetStrength;
     const baked = bakeShardCanvasTexture(
       bootScene,
       'home-bg-normal',
@@ -597,7 +621,7 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
       shardRnd,
       visMount.shardEdgeShade,
       visMount.shardFacetShade,
-      facetStrength,
+      facetPaintStrength,
     );
     if (!baked) continue;
 
@@ -687,7 +711,7 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
       facetNx: facet.nx,
       facetNy: facet.ny,
       depth01,
-      lightShadeAmp: (0.018 + sizeRank * 0.09) * (0.52 + 0.48 * sizeRank),
+      lightShadeAmp: (0.015 + sizeRank * 0.072) * (0.52 + 0.48 * sizeRank),
     });
   }
 
@@ -846,9 +870,12 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
       db = Phaser.Math.Linear(0.94, 1.02, it.depth01);
       dContr = Phaser.Math.Linear(0.97, 1, it.depth01);
     }
-    const comb = Phaser.Math.Clamp(lb * db * dContr, 0.9, 1.05);
+    const comb = Phaser.Math.Clamp(lb * db * dContr, 0.9, 1.04);
     const bi = Math.round(comb * 255);
-    it.img.setTint((bi << 16) | (bi << 8) | bi);
+    const tr = Phaser.Math.Clamp(Math.round(bi * 0.98), 0, 255);
+    const tg = Phaser.Math.Clamp(Math.round(bi * 0.996), 0, 255);
+    const tb = Phaser.Math.Clamp(Math.round(bi * 1.012), 0, 255);
+    it.img.setTint((tr << 16) | (tg << 8) | tb);
 
     if (tune.solidAlpha) {
       it.img.setAlpha(Phaser.Math.Clamp(depthA, 0.04, 1));
