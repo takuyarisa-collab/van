@@ -183,7 +183,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-13 18:45 UTC';
+      const BUILD_TIMESTAMP = '2026-05-14 12:00 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -302,6 +302,11 @@
       // Boot デバッグ用 URLパラメータ
       // 例: ?bootDur=2000&noTitleMask=1&warnOffsetY=0.22
       // collapse 暗転切り分け（?debug=1 必須）: noShock=1 noFaultBand=1 noCollapseScan=1 shardStartAlpha=1 flatHoldAlpha=0.45 flatFadeEndMs=760 noShardFade=1 noShardDim=1 solidShardAlpha=1 bgBackplateAlpha=0.3
+      // design ref text id=6met3f: _bootBackdrop / containers[0,1] / Home 先行 / camera 切り分け
+      // debug 全停止パラメータ一覧 text id=1m4c47: ?debug=1 時 noBootBackdropCollapse noBootStructLayer noBootBaseLayer noTitleScan noScanLine noHomeEarlyBg forceBrightCollapse（既存 noShock 等と併用可）
+      // collapse デバッグログ text id=5y7os3: ?debug=1 時 collapse 中 ~100ms 間隔 console
+      // 完全明るい検証 URL text id=q02eyh:
+      // ?debug=1&forceBrightCollapse=1&noShock=1&noFaultBand=1&noCollapseScan=1&noShardFade=1&noShardDim=1&solidShardAlpha=1&bgBackplateAlpha=0.8&flatHoldAlpha=0.8&flatFadeEndMs=2000&noBootBackdropCollapse=1&noBootStructLayer=1&noBootBaseLayer=1&noTitleScan=1&noScanLine=1&noHomeEarlyBg=1
       // 未指定時は各デフォルト値（現在の挙動）を使用する
       // ─────────────────────────────────────────────────────────────────────────
       (() => {
@@ -405,6 +410,10 @@
         'LAYER err',
       ];
 
+      const _BOOT_DBG = window.BOOT_PARAM_getBool('debug', false);
+      const _BOOT_FORCE_BRIGHT =
+        _BOOT_DBG && window.BOOT_PARAM_getBool('forceBrightCollapse', false);
+
       const BOOT_DEBUG = {
         // Boot progress tween の duration (ms)
         bootDur:          window.BOOT_PARAM_getNum('bootDur',          1200),
@@ -424,45 +433,83 @@
         // 1 なら BootScene に home-bg-normal を強制表示してロード確認できる
         showBootBg:       window.BOOT_PARAM_getBool('showBootBg',       false),
         // ?debug=1 のときだけ構造体を表示し、PNG と重ねてズレを確認する
-        debug:            window.BOOT_PARAM_getBool('debug',            false),
+        debug:            _BOOT_DBG,
+        /** ?debug=1&forceBrightCollapse=1: 暗化系デバッグフラグを一括で有効化（ログ用） */
+        forceBrightCollapse: _BOOT_FORCE_BRIGHT,
         // 警告ブロックの Y: タイトル中心 + displayHeight * この係数（?warnOffsetY= で上書き可）
         warnOffsetY:      window.BOOT_PARAM_getNum('warnOffsetY',        0.15),
         // ── ?debug=1 時のみ有効（collapse 暗転原因の切り分け） ──
-        noCollapseShock:  window.BOOT_PARAM_getBool('debug', false) && window.BOOT_PARAM_getBool('noShock', false),
+        noCollapseShock:
+          _BOOT_FORCE_BRIGHT || (_BOOT_DBG && window.BOOT_PARAM_getBool('noShock', false)),
         noCollapseFaultBand:
-          window.BOOT_PARAM_getBool('debug', false) && window.BOOT_PARAM_getBool('noFaultBand', false),
-        noCollapseScan:   window.BOOT_PARAM_getBool('debug', false) && window.BOOT_PARAM_getBool('noCollapseScan', false),
+          _BOOT_FORCE_BRIGHT || (_BOOT_DBG && window.BOOT_PARAM_getBool('noFaultBand', false)),
+        noCollapseScan:
+          _BOOT_FORCE_BRIGHT || (_BOOT_DBG && window.BOOT_PARAM_getBool('noCollapseScan', false)),
+        /** collapse 終了時 _bootBackdrop の収束 tween を止める */
+        noBootBackdropCollapse:
+          _BOOT_FORCE_BRIGHT || (_BOOT_DBG && window.BOOT_PARAM_getBool('noBootBackdropCollapse', false)),
+        /** collapse 中 containers[1]（構造グリッド）の alpha 変化を止める（visible false） */
+        noBootStructLayer:
+          _BOOT_FORCE_BRIGHT || (_BOOT_DBG && window.BOOT_PARAM_getBool('noBootStructLayer', false)),
+        /** collapse 中 containers[0]（基盤グラデ）の alpha 変化を止める（visible false） */
+        noBootBaseLayer:
+          _BOOT_FORCE_BRIGHT || (_BOOT_DBG && window.BOOT_PARAM_getBool('noBootBaseLayer', false)),
+        /** collapse 中 _titleScanGfx は clear のみ */
+        noTitleScan:
+          _BOOT_FORCE_BRIGHT || (_BOOT_DBG && window.BOOT_PARAM_getBool('noTitleScan', false)),
+        /** collapse 中 _scanLineGfx は clear のみ */
+        noScanLine:
+          _BOOT_FORCE_BRIGHT || (_BOOT_DBG && window.BOOT_PARAM_getBool('noScanLine', false)),
+        /** Home 先行起動時、collapse 中だけベール／グリッド暗化を出さない */
+        noHomeEarlyBg:
+          _BOOT_FORCE_BRIGHT || (_BOOT_DBG && window.BOOT_PARAM_getBool('noHomeEarlyBg', false)),
         /** collapse 開始時 shard root のランプ開始係数（既定 1.0）。?debug=1&shardStartAlpha=N のみ上書き */
         collapseShardStartAlpha: (() => {
-          if (!window.BOOT_PARAM_getBool('debug', false)) return 1;
+          if (!_BOOT_DBG) return 1;
+          if (_BOOT_FORCE_BRIGHT) return 1;
           const o = window.BOOT_PARAM_getOptionalNum('shardStartAlpha');
           if (o === null) return 1;
           return Math.min(Math.max(o, 0), 1.5);
         })(),
         /** ?debug=1&flatHoldAlpha=N のみ。未指定時は collapse 開始で BOOT_COLLAPSE_FLAT_MIN_ALPHA を使用 */
         collapseFlatHoldAlpha: (() => {
-          if (!window.BOOT_PARAM_getBool('debug', false)) return null;
+          if (!_BOOT_DBG) return null;
+          if (_BOOT_FORCE_BRIGHT) return 0.8;
           const o = window.BOOT_PARAM_getOptionalNum('flatHoldAlpha');
           if (o === null) return null;
           return Math.min(Math.max(o, 0), 1);
         })(),
         /** ?debug=1&flatFadeEndMs=N のみ。未指定時は BOOT_COLLAPSE_FLAT_FADE_END_MS */
         collapseFlatFadeEndMs: (() => {
-          if (!window.BOOT_PARAM_getBool('debug', false)) return null;
+          if (!_BOOT_DBG) return null;
+          if (_BOOT_FORCE_BRIGHT) return 2000;
           const o = window.BOOT_PARAM_getOptionalNum('flatFadeEndMs');
           if (o === null || !Number.isFinite(o)) return null;
           return Math.max(o, BOOT_COLLAPSE_FLAT_FADE_HOLD_MS + 1);
         })(),
       };
 
+      window.BOOT_DEBUG = BOOT_DEBUG;
+
       /** collapse 中 shard の fade/dim/alpha と背面明度板（boot-bg-collapse-fragments.js が参照） */
       window.BOOT_COLLAPSE_SHARD = (() => {
-        const dbg = window.BOOT_PARAM_getBool('debug', false);
+        const dbg = _BOOT_DBG;
         const clamp01 = (x) => Math.min(Math.max(x, 0), 1);
         const backRaw = dbg ? window.BOOT_PARAM_getOptionalNum('bgBackplateAlpha') : null;
-        const backplateAlpha =
+        let backplateAlpha =
           backRaw === null || !Number.isFinite(backRaw) ? 0.3 : clamp01(backRaw);
+        if (_BOOT_FORCE_BRIGHT) {
+          backplateAlpha = backRaw !== null && Number.isFinite(backRaw) ? clamp01(backRaw) : 0.8;
+        }
         if (!dbg) {
+          return {
+            noShardFade: true,
+            noShardDim: true,
+            solidShardAlpha: true,
+            backplateAlpha,
+          };
+        }
+        if (_BOOT_FORCE_BRIGHT) {
           return {
             noShardFade: true,
             noShardDim: true,
@@ -967,6 +1014,92 @@
         return p - 0.018 * m * (1 - ts);
       }
 
+      /** ?debug=1 collapse 切り分けログ（text id=5y7os3） */
+      function logBootCollapseDebug5y7os3(scene, collapseT, collapseNorm) {
+        const B = BOOT_DEBUG;
+        const cam = scene.cameras?.main;
+        const home = scene.scene?.get?.('home');
+        const c0 = scene._bootBackdrop?.containers?.[0];
+        const c1 = scene._bootBackdrop?.containers?.[1];
+        const shardRoot = scene._bootBgShardRoot;
+        const bp = scene._collapseBgBackplate;
+        const scanGfx = scene._scanGfx;
+        const scanLine = scene._scanLineGfx;
+        const titleScan = scene._titleScanGfx;
+        const tune = window.BOOT_COLLAPSE_SHARD || {};
+        let camBg = null;
+        try {
+          const bc = cam?.backgroundColor;
+          if (bc && typeof bc.rgba === 'number') camBg = bc.rgba;
+          else if (bc) camBg = bc.color ?? bc;
+        } catch (_) {
+          camBg = null;
+        }
+        const scanCollapseDraw =
+          Boolean(scanGfx?.active) &&
+          !B.noBootOverlay &&
+          !(B.debug && B.noCollapseScan) &&
+          collapseT < 128;
+
+        console.log('[collapseDbg:5y7os3]', {
+          collapseT: Math.round(collapseT),
+          collapseNorm: Number((collapseNorm ?? 0).toFixed(4)),
+          bootBgAlpha:
+            scene._bootBg && !scene._bootBg.destroyed ? Number(scene._bootBg.alpha.toFixed(3)) : null,
+          shardRootAlpha:
+            shardRoot && !shardRoot.destroyed ? Number(shardRoot.alpha.toFixed(3)) : null,
+          backplateAlpha: bp && !bp.destroyed ? Number(bp.alpha.toFixed(3)) : null,
+          bootBackdrop0:
+            c0 && !c0.destroyed
+              ? { alpha: Number(c0.alpha.toFixed(3)), visible: c0.visible }
+              : null,
+          bootBackdrop1:
+            c1 && !c1.destroyed
+              ? { alpha: Number(c1.alpha.toFixed(3)), visible: c1.visible }
+              : null,
+          scanGfx:
+            scanGfx && !scanGfx.destroyed
+              ? {
+                  alpha: Number(scanGfx.alpha.toFixed(3)),
+                  visible: scanGfx.visible,
+                  likelyCollapseDraw: scanCollapseDraw,
+                }
+              : null,
+          scanLineGfx:
+            scanLine && !scanLine.destroyed
+              ? { alpha: Number(scanLine.alpha.toFixed(3)), visible: scanLine.visible }
+              : null,
+          titleScanGfx:
+            titleScan && !titleScan.destroyed
+              ? { alpha: Number(titleScan.alpha.toFixed(3)), visible: titleScan.visible }
+              : null,
+          camera: cam
+            ? {
+                alpha: Number(cam.alpha.toFixed(3)),
+                backgroundColor: camBg,
+              }
+            : null,
+          noShardFade: tune.noShardFade,
+          noShardDim: tune.noShardDim,
+          solidShardAlpha: tune.solidShardAlpha,
+          bootCollapseShardBackplateCfg: tune.backplateAlpha,
+          home: home
+            ? {
+                sceneIsActive: scene.scene.isActive('home'),
+                sysSettingsVisible: home.sys?.settings?.visible !== false,
+                rebuildAlpha:
+                  home._homeRebuildPanel && !home._homeRebuildPanel.destroyed
+                    ? Number(home._homeRebuildPanel.alpha.toFixed(3))
+                    : null,
+                darkVeilAlpha:
+                  home._homeDarkVeil && !home._homeDarkVeil.destroyed
+                    ? Number(home._homeDarkVeil.alpha.toFixed(3))
+                    : null,
+              }
+            : { sceneIsActive: false },
+        });
+      }
+
       // ─────────────────────────────────────────────────────────────────────────
       // BOOT フェーズ 1〜3
       //
@@ -1352,6 +1485,7 @@
           this._collapseScheduled = true;
           this._collapsePhase = true;
           this._collapseT = 0;
+          this._collapseDbgLogAcc = 0;
           this._collapseDur = Phaser.Math.FloatBetween(1020, 1160);
           this._warnBlinkIrregular = Math.random() * Math.PI * 2;
           const cx = WORLD_W / 2;
@@ -1518,7 +1652,17 @@
           }
           // 構造グリッド: ショック中は欠損感のため低 alpha、0.3〜0.6 で本立ち上げ（containers[1]）
           const _structC = this._bootBackdrop?.containers?.[1];
-          if (_structC) _structC.setAlpha(0);
+          const _baseC0 = this._bootBackdrop?.containers?.[0];
+          if (_structC && !_structC.destroyed) {
+            if (BOOT_DEBUG.debug && BOOT_DEBUG.noBootStructLayer) {
+              _structC.setVisible(false);
+            } else if (!(BOOT_DEBUG.debug && BOOT_DEBUG.noBootBackdropCollapse)) {
+              _structC.setAlpha(0);
+            }
+          }
+          if (_baseC0 && !_baseC0.destroyed && BOOT_DEBUG.debug && BOOT_DEBUG.noBootBaseLayer) {
+            _baseC0.setVisible(false);
+          }
           console.log('[BootScene] collapse phase start', this._collapseDur, 'ms');
 
           if (this._bootTitleImg && !this._bootTitleImg.destroyed) {
@@ -1537,7 +1681,7 @@
             /* ignore */
           }
           this._collapseBgBackplate = null;
-          if (this._bootBackdrop?.convergeLayers) {
+          if (!(BOOT_DEBUG.debug && BOOT_DEBUG.noBootBackdropCollapse) && this._bootBackdrop?.convergeLayers) {
             this._bootBackdrop.convergeLayers(1, 'Linear');
           }
           this._freezeCollapseFaultBandGfx();
@@ -1704,7 +1848,12 @@
             const shardEase = 1 - (1 - uShard) ** 3;
             syncBootBgShardSheetAlpha(this, bg0 * Phaser.Math.Linear(aStart, 1, shardEase));
 
-            if (_structLayer) {
+            const _backdropCollapseOff = BOOT_DEBUG.debug && BOOT_DEBUG.noBootBackdropCollapse;
+            const _structCollapseOff =
+              BOOT_DEBUG.debug && (BOOT_DEBUG.noBootStructLayer || _backdropCollapseOff);
+            const _baseCollapseOff =
+              BOOT_DEBUG.debug && (BOOT_DEBUG.noBootBaseLayer || _backdropCollapseOff);
+            if (_structLayer && !_structCollapseOff) {
               let gridLayerA = 0;
               if (ct < 125) {
                 gridLayerA = 0.06 + Math.random() * 0.12;
@@ -1714,7 +1863,7 @@
               }
               _structLayer.setAlpha(gridLayerA);
             }
-            if (_baseLayer) {
+            if (_baseLayer && !_baseCollapseOff) {
               if (ct < 110) {
                 _baseLayer.setAlpha(0.68 + Math.random() * 0.1);
               } else if (ct < 220) {
@@ -1797,6 +1946,20 @@
                 this._scanGfx.clear();
                 this._scanLineGfx.clear();
                 this._titleScanGfx?.clear();
+              }
+            }
+
+            if (BOOT_DEBUG.debug && BOOT_DEBUG.noTitleScan) {
+              this._titleScanGfx?.clear();
+            }
+            if (BOOT_DEBUG.debug && BOOT_DEBUG.noScanLine) {
+              this._scanLineGfx?.clear();
+            }
+            if (BOOT_DEBUG.debug) {
+              this._collapseDbgLogAcc = (this._collapseDbgLogAcc || 0) + dt;
+              if (this._collapseDbgLogAcc >= 100) {
+                this._collapseDbgLogAcc = 0;
+                logBootCollapseDebug5y7os3(this, ct, collapseNorm);
               }
             }
 
