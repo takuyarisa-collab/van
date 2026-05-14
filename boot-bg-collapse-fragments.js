@@ -32,6 +32,65 @@ function readCollapseShardTuning() {
   };
 }
 
+/** index.html の BOOT_COLLAPSE_SHARD 由来（?debug=1 時 shardLighting 等） */
+function readShardVisualFlags() {
+  const t = typeof window !== 'undefined' ? window.BOOT_COLLAPSE_SHARD : null;
+  if (!t) {
+    return { shardLighting: true, shardEdgeShade: true, shardDepthFade: true };
+  }
+  return {
+    shardLighting: t.shardLighting !== false,
+    shardEdgeShade: t.shardEdgeShade !== false,
+    shardDepthFade: t.shardDepthFade !== false,
+  };
+}
+
+/** 光源は画面上の左上（Phaser 座標で -x -y 方向） */
+const SHARD_LIGHT_TO_X = -0.7071067811865476;
+const SHARD_LIGHT_TO_Y = -0.7071067811865476;
+
+/**
+ * 最長辺に直交する外向き単位法線（テクスチャ／キャンバス座標、y 下向き）
+ * @param {{x:number,y:number}[]} pts
+ */
+function computeFacetNormalFromPoly(pts) {
+  if (!pts?.length) return { nx: 1, ny: 0 };
+  let best = 0;
+  let nx = 1;
+  let ny = 0;
+  const n = pts.length;
+  let cx = 0;
+  let cy = 0;
+  for (const p of pts) {
+    cx += p.x;
+    cy += p.y;
+  }
+  cx /= n;
+  cy /= n;
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[i];
+    const p1 = pts[(i + 1) % n];
+    const ex = p1.x - p0.x;
+    const ey = p1.y - p0.y;
+    const el = Math.hypot(ex, ey);
+    if (el > best) {
+      best = el;
+      let px = -ey / el;
+      let py = ex / el;
+      const mx = (p0.x + p1.x) * 0.5;
+      const my = (p0.y + p1.y) * 0.5;
+      if ((mx - cx) * px + (my - cy) * py < 0) {
+        px = -px;
+        py = -py;
+      }
+      nx = px;
+      ny = py;
+    }
+  }
+  const h = Math.hypot(nx, ny) || 1;
+  return { nx: nx / h, ny: ny / h };
+}
+
 function mulberry32(seed) {
   return function rnd() {
     let t = (seed += 0x6d2b79f5);
@@ -156,10 +215,125 @@ function drawBootBgCollapseFragOutline(gfx, localPts, lineWidth, color, alpha) {
 }
 
 /**
+ * 背景クリップ後に液晶／ガラス断片向けの微細な面バラつきを乗算・ソフトライトで重ねる。
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} cw
+ * @param {number} ch
+ * @param {() => number} rnd
+ */
+function drawShardSurfaceDetailInClip(ctx, cw, ch, rnd) {
+  const cx = cw * 0.5;
+  const cy = ch * 0.5;
+  const minD = Math.min(cw, ch);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'soft-light';
+  const coolA = 0.035 + rnd() * 0.045;
+  ctx.fillStyle = `rgba(168, 188, 218, ${coolA})`;
+  ctx.fillRect(0, 0, cw, ch);
+  const warmA = rnd() * 0.028;
+  ctx.fillStyle = `rgba(210, 206, 200, ${warmA})`;
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'overlay';
+  const grains = 5 + ((rnd() * 6) | 0);
+  for (let g = 0; g < grains; g++) {
+    const gx = rnd() * cw;
+    const gy = rnd() * ch;
+    const grd = ctx.createRadialGradient(gx, gy, 0, gx, gy, 0.5 + rnd() * minD * 0.09);
+    grd.addColorStop(0, `rgba(255,255,255,${0.04 + rnd() * 0.05})`);
+    grd.addColorStop(1, 'rgba(120,128,140,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, cw, ch);
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'soft-light';
+  ctx.strokeStyle = `rgba(72, 82, 98, ${0.045 + rnd() * 0.035})`;
+  ctx.lineWidth = 1;
+  const scratches = 1 + ((rnd() * 3) | 0);
+  for (let s = 0; s < scratches; s++) {
+    let x0 = rnd() * cw;
+    let y0 = rnd() * ch;
+    const ang = rnd() * Math.PI * 2;
+    const len = minD * (0.22 + rnd() * 0.45);
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x0 + Math.cos(ang) * len, y0 + Math.sin(ang) * len);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/**
+ * 内側に薄いリム暗部（multiply + ごく弱いアウトラインストローク）
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {{x:number,y:number}[]} polyCanvas
+ * @param {number} cw
+ * @param {number} ch
+ */
+function drawShardEdgeShadeInClip(ctx, polyCanvas, cw, ch) {
+  const cx = cw * 0.5;
+  const cy = ch * 0.5;
+  const maxR = Math.hypot(cw, ch) * 0.55;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  const g = ctx.createRadialGradient(cx, cy, Math.max(2, Math.min(cw, ch) * 0.08), cx, cy, maxR);
+  g.addColorStop(0, 'rgb(255,255,255)');
+  g.addColorStop(0.62, 'rgb(252,252,254)');
+  g.addColorStop(1, 'rgb(218,224,236)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'soft-light';
+  const g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxR * 0.42);
+  g2.addColorStop(0, 'rgba(255,255,255,0.12)');
+  g2.addColorStop(0.45, 'rgba(255,255,255,0.03)');
+  g2.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g2;
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.restore();
+
+  const strokeW = Phaser.Math.Clamp(Math.min(cw, ch) * 0.028, 1.4, 3.2);
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.strokeStyle = 'rgba(28, 36, 48, 0.09)';
+  ctx.lineWidth = strokeW;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(polyCanvas[0].x, polyCanvas[0].y);
+  for (let i = 1; i < polyCanvas.length; i++) {
+    ctx.lineTo(polyCanvas[i].x, polyCanvas[i].y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
  * Canvas clip でポリゴン領域を焼き込み、Phaser の canvas テクスチャとして登録。
  * @returns {{ texKey: string, dispW: number, dispH: number, localPts: {x:number,y:number}[] }}
  */
-function bakeShardCanvasTexture(bootScene, texKey, ptsTex, cropL, cropT, cropW, cropH, dispW, dispH, uniqueKey) {
+function bakeShardCanvasTexture(
+  bootScene,
+  texKey,
+  ptsTex,
+  cropL,
+  cropT,
+  cropW,
+  cropH,
+  dispW,
+  dispH,
+  uniqueKey,
+  shardRnd,
+  edgeShadeOn,
+) {
   const cw = Math.max(1, Math.ceil(dispW));
   const ch = Math.max(1, Math.ceil(dispH));
   const canvas = document.createElement('canvas');
@@ -184,6 +358,11 @@ function bakeShardCanvasTexture(bootScene, texKey, ptsTex, cropL, cropT, cropW, 
   ctx.closePath();
   ctx.clip();
   ctx.drawImage(src, cropL, cropT, cropW, cropH, 0, 0, cw, ch);
+
+  drawShardSurfaceDetailInClip(ctx, cw, ch, shardRnd);
+  if (edgeShadeOn) {
+    drawShardEdgeShadeInClip(ctx, polyCanvas, cw, ch);
+  }
   ctx.restore();
 
   const key = `boot-bg-shard-${uniqueKey}`;
@@ -296,6 +475,7 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
 
   const uniq = `${(performance.now() % 1e7).toFixed(0)}_${(Math.random() * 1e6) | 0}`;
   const items = [];
+  const visMount = readShardVisualFlags();
 
   for (let di = 0; di < cells.length; di++) {
     const ptsTex0 = cells[di].poly.map((p) => ({
@@ -319,6 +499,7 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
     const dispW = cropW * bgScale;
     const dispH = cropH * bgScale;
 
+    const shardRnd = mulberry32(((seed0 ^ (di * 0x9e3779b9)) >>> 0) ^ 0x85ebca6b);
     const baked = bakeShardCanvasTexture(
       bootScene,
       'home-bg-normal',
@@ -330,8 +511,16 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
       dispW,
       dispH,
       `${uniq}_${di}`,
+      shardRnd,
+      visMount.shardEdgeShade,
     );
     if (!baked) continue;
+
+    const ptsNorm = ptsTex0.map((p) => ({
+      x: (p.x - cropL) / cropW,
+      y: (p.y - cropT) / cropH,
+    }));
+    const facet = computeFacetNormalFromPoly(ptsNorm);
 
     const restW = texToWorld(cenTex.x, cenTex.y);
     const mass = Math.max(400, cells[di].area);
@@ -355,6 +544,7 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
     const crackRot = Phaser.Math.DegToRad((rnd() - 0.5) * (18 + 58 * (1 - sizeRank * 0.62)));
     const gapRot = crackRot * Phaser.Math.FloatBetween(1.28, 1.72);
     const depthNudge = (rnd() - 0.5) * 0.08;
+    const depth01 = Phaser.Math.Clamp((depthNudge + 0.04) / 0.08, 0, 1);
 
     const lateralBoost = rnd() < 0.42 ? (rnd() - 0.5) * 1.05 * bgScale : 0;
     const vx0 = (rnd() - 0.5) * 0.175 * (1.22 - sizeRank * 0.38) + lateralBoost;
@@ -409,6 +599,10 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
       vx: 0,
       vy: 0,
       vr: 0,
+      facetNx: facet.nx,
+      facetNy: facet.ny,
+      depth01,
+      lightShadeAmp: (0.09 + sizeRank * 0.28) * (0.5 + 0.5 * sizeRank),
     });
   }
 
@@ -484,6 +678,8 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
 
   const uCrack = Phaser.Math.Clamp(collapseT / CRACK_MS, 0, 1);
   const eCrack = easeOutCubic(uCrack);
+  const tune = readCollapseShardTuning();
+  const vis = readShardVisualFlags();
 
   for (const it of items) {
     if (!it.container || it.container.destroyed) continue;
@@ -533,7 +729,6 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
     it.container.setPosition(x, y);
     it.container.setRotation(rot);
 
-    const tune = readCollapseShardTuning();
     let baseA = BASE_SHARD_ALPHA;
     if (!tune.noDim && pointInFaultBands(x, y, spec, W)) {
       let dim = BAND_ALPHA_MULT;
@@ -546,13 +741,39 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
       const uFade = Phaser.Math.Clamp((wallT - (GAP_END_MS + 140)) / 480, 0, 1);
       baseA *= 1 - easeInQuad(uFade);
     }
+
+    const depthA = vis.shardDepthFade ? Phaser.Math.Linear(0.56, 1, it.depth01) : 1;
+    const depthScale = vis.shardDepthFade ? Phaser.Math.Linear(0.996, 1.034, it.depth01) : 1;
+    it.container.setScale(depthScale);
+
+    let lb = 1;
+    if (vis.shardLighting) {
+      const cr = Math.cos(rot);
+      const sr = Math.sin(rot);
+      const wx = it.facetNx * cr - it.facetNy * sr;
+      const wy = it.facetNx * sr + it.facetNy * cr;
+      const shade = Phaser.Math.Clamp(wx * SHARD_LIGHT_TO_X + wy * SHARD_LIGHT_TO_Y, -1, 1);
+      lb = Phaser.Math.Clamp(0.9 + shade * it.lightShadeAmp, 0.72, 1.08);
+    }
+    let db = 1;
+    let dContr = 1;
+    if (vis.shardDepthFade) {
+      db = Phaser.Math.Linear(0.8, 1.04, it.depth01);
+      dContr = Phaser.Math.Linear(0.92, 1, it.depth01);
+    }
+    const comb = Phaser.Math.Clamp(lb * db * dContr, 0.72, 1.08);
+    const bi = Math.round(comb * 255);
+    it.img.setTint((bi << 16) | (bi << 8) | bi);
+
     if (tune.solidAlpha) {
-      it.img.setAlpha(1);
+      it.img.setAlpha(Phaser.Math.Clamp(depthA, 0.04, 1));
     } else if (homeUrlDebugEnabled()) {
-      it.img.setAlpha(Phaser.Math.Clamp(0.82 + Math.sin(collapseT * 0.003) * 0.06, 0.78, 0.95));
+      const pulse = 0.82 + Math.sin(collapseT * 0.003) * 0.06;
+      it.img.setAlpha(Phaser.Math.Clamp(pulse * depthA, 0.04, 1));
     } else {
       const minPieceA = Phaser.Math.Linear(0.62, 0.78, Phaser.Math.Clamp(uCrack * 1.25, 0, 1));
-      it.img.setAlpha(Phaser.Math.Clamp(baseA, minPieceA, 1));
+      const aPiece = Phaser.Math.Clamp(baseA, minPieceA, 1);
+      it.img.setAlpha(Phaser.Math.Clamp(aPiece * depthA, 0.04, 1));
     }
   }
 }
