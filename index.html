@@ -183,7 +183,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-14 19:00 UTC';
+      const BUILD_TIMESTAMP = '2026-05-14 22:45 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -301,13 +301,13 @@
       // ─────────────────────────────────────────────────────────────────────────
       // Boot デバッグ用 URLパラメータ
       // 例: ?bootDur=2000&noTitleMask=1&warnOffsetY=0.22
-      // collapse 暗転切り分け（?debug=1 必須）: noShock=1 noFaultBand=1 noCollapseScan=1 shardStartAlpha=1 flatHoldAlpha=0.45 flatFadeEndMs=760 noShardFade=1 noShardDim=1 solidShardAlpha=1 bgBackplateAlpha=0.3
+      // collapse 暗転切り分け（?debug=1 必須）: noShock=1 noFaultBand=1 noCollapseScan=1 shardStartAlpha=1 flatHoldAlpha=0.22 flatFadeEndMs=520 noShardFade=1 noShardDim=1 solidShardAlpha=1 bgBackplateAlpha=0.3（backplate は通常 0、debug で N 指定時のみ有効 text id=vlv49b）
       // design ref text id=6met3f: _bootBackdrop / containers[0,1] / Home 先行 / camera 切り分け
       // debug 全停止パラメータ一覧 text id=1m4c47: ?debug=1 時 noBootBackdropCollapse noBootStructLayer noBootBaseLayer noTitleScan noScanLine noHomeEarlyBg forceBrightCollapse（既存 noShock 等と併用可）
       // collapse デバッグログ text id=5y7os3: ?debug=1 時 collapse 中 ~100ms 間隔 console
       // 完全明るい検証 URL text id=q02eyh:
       // ?debug=1&forceBrightCollapse=1&noShock=1&noFaultBand=1&noCollapseScan=1&noShardFade=1&noShardDim=1&solidShardAlpha=1&bgBackplateAlpha=0.8&flatHoldAlpha=0.8&flatFadeEndMs=2000&noBootBackdropCollapse=1&noBootStructLayer=1&noBootBaseLayer=1&noTitleScan=1&noScanLine=1&noHomeEarlyBg=1
-      // 未指定時は各デフォルト値（現在の挙動）を使用する
+      // 通常時 flat 既定 text id=vlv49b: flatHoldAlpha≈0.22 flatFadeEndMs≈520 bgBackplateAlpha=0。debug 上書き例 text id=2syo49: ?debug=1&flatHoldAlpha=0.22&flatFadeEndMs=520&bgBackplateAlpha=0
       // ─────────────────────────────────────────────────────────────────────────
       (() => {
         const _qp = new URLSearchParams(window.location.search);
@@ -392,10 +392,10 @@
       /** ここまでで不透明度ランプ完了（collapse 直前） */
       const BOOT_WARN_RAMP_END_PROGRESS = 0.86;
 
-      /** collapse 中 flat 背景: ホールド終了 ms / 完全消去 ms / ホールド時の相対 alpha（shard 切替直後の明度落ち抑制） */
+      /** collapse 中 flat 背景: ホールド終了 ms / 完全消去 ms / ホールド時の相対 alpha（shard 切替直後の明度落ち抑制）。text id=u8aw22 推奨初期値 */
       const BOOT_COLLAPSE_FLAT_FADE_HOLD_MS = 260;
-      const BOOT_COLLAPSE_FLAT_FADE_END_MS = 760;
-      const BOOT_COLLAPSE_FLAT_MIN_ALPHA = 0.45;
+      const BOOT_COLLAPSE_FLAT_FADE_END_MS = 520;
+      const BOOT_COLLAPSE_FLAT_MIN_ALPHA = 0.22;
 
       const BOOT_FLOAT_LOG_SNIPS = [
         '[WARN] IRQ STORM',
@@ -491,15 +491,15 @@
 
       window.BOOT_DEBUG = BOOT_DEBUG;
 
-      /** collapse 中 shard の fade/dim/alpha と背面明度板（boot-bg-collapse-fragments.js が参照） */
+      /** collapse 中 shard の fade/dim/alpha と背面明度板（boot-bg-collapse-fragments.js が参照）。text id=dolp79: flatHoldAlpha flatFadeEndMs bgBackplateAlpha forceBrightCollapse は ?debug=1 のみ */
       window.BOOT_COLLAPSE_SHARD = (() => {
         const dbg = _BOOT_DBG;
         const clamp01 = (x) => Math.min(Math.max(x, 0), 1);
         const backRaw = dbg ? window.BOOT_PARAM_getOptionalNum('bgBackplateAlpha') : null;
-        let backplateAlpha =
-          backRaw === null || !Number.isFinite(backRaw) ? 0.3 : clamp01(backRaw);
-        if (_BOOT_FORCE_BRIGHT) {
-          backplateAlpha = backRaw !== null && Number.isFinite(backRaw) ? clamp01(backRaw) : 0.8;
+        /** 通常時 0。?debug=1&bgBackplateAlpha=N のときのみ（N は URL 明示時のみ適用） */
+        let backplateAlpha = 0;
+        if (dbg && backRaw !== null && Number.isFinite(backRaw)) {
+          backplateAlpha = clamp01(backRaw);
         }
         if (!dbg) {
           return {
@@ -1616,7 +1616,7 @@
             /* ignore */
           }
           this._collapseBgBackplate = null;
-          const _bpPeak = Math.min(Math.max(window.BOOT_COLLAPSE_SHARD?.backplateAlpha ?? 0.3, 0), 1);
+          const _bpPeak = Math.min(Math.max(window.BOOT_COLLAPSE_SHARD?.backplateAlpha ?? 0, 0), 1);
           if (
             this._bootBg &&
             !this._bootBg.destroyed &&
@@ -1818,7 +1818,7 @@
             const bp = this._collapseBgBackplate;
             if (bp && !bp.destroyed) {
               const peakA =
-                bg0 * Math.min(Math.max(window.BOOT_COLLAPSE_SHARD?.backplateAlpha ?? 0.3, 0), 1);
+                bg0 * Math.min(Math.max(window.BOOT_COLLAPSE_SHARD?.backplateAlpha ?? 0, 0), 1);
               const collapseDur = this._collapseDur || 1080;
               const tFadeStart = Math.min(440, collapseDur * 0.4);
               const tFadeEnd = Math.max(tFadeStart + 120, collapseDur - 90);
