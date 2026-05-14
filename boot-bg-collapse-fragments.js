@@ -36,12 +36,18 @@ function readCollapseShardTuning() {
 function readShardVisualFlags() {
   const t = typeof window !== 'undefined' ? window.BOOT_COLLAPSE_SHARD : null;
   if (!t) {
-    return { shardLighting: true, shardEdgeShade: true, shardDepthFade: true };
+    return {
+      shardLighting: true,
+      shardEdgeShade: true,
+      shardDepthFade: true,
+      shardFacetShade: true,
+    };
   }
   return {
     shardLighting: t.shardLighting !== false,
     shardEdgeShade: t.shardEdgeShade !== false,
     shardDepthFade: t.shardDepthFade !== false,
+    shardFacetShade: t.shardFacetShade !== false,
   };
 }
 
@@ -284,8 +290,8 @@ function drawShardEdgeShadeInClip(ctx, polyCanvas, cw, ch) {
   ctx.globalCompositeOperation = 'multiply';
   const g = ctx.createRadialGradient(cx, cy, Math.max(2, Math.min(cw, ch) * 0.08), cx, cy, maxR);
   g.addColorStop(0, 'rgb(255,255,255)');
-  g.addColorStop(0.62, 'rgb(252,252,254)');
-  g.addColorStop(1, 'rgb(218,224,236)');
+  g.addColorStop(0.58, 'rgb(250,251,253)');
+  g.addColorStop(1, 'rgb(196,206,224)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, cw, ch);
   ctx.restore();
@@ -293,17 +299,17 @@ function drawShardEdgeShadeInClip(ctx, polyCanvas, cw, ch) {
   ctx.save();
   ctx.globalCompositeOperation = 'soft-light';
   const g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxR * 0.42);
-  g2.addColorStop(0, 'rgba(255,255,255,0.12)');
-  g2.addColorStop(0.45, 'rgba(255,255,255,0.03)');
+  g2.addColorStop(0, 'rgba(255,255,255,0.17)');
+  g2.addColorStop(0.42, 'rgba(255,255,255,0.05)');
   g2.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g2;
   ctx.fillRect(0, 0, cw, ch);
   ctx.restore();
 
-  const strokeW = Phaser.Math.Clamp(Math.min(cw, ch) * 0.028, 1.4, 3.2);
+  const strokeW = Phaser.Math.Clamp(Math.min(cw, ch) * 0.034, 2, 5);
   ctx.save();
   ctx.globalCompositeOperation = 'multiply';
-  ctx.strokeStyle = 'rgba(28, 36, 48, 0.09)';
+  ctx.strokeStyle = 'rgba(28, 36, 48, 0.14)';
   ctx.lineWidth = strokeW;
   ctx.lineJoin = 'round';
   ctx.beginPath();
@@ -314,6 +320,71 @@ function drawShardEdgeShadeInClip(ctx, polyCanvas, cw, ch) {
   ctx.closePath();
   ctx.stroke();
   ctx.restore();
+}
+
+/**
+ * centroid 三角扇で面ごとに明暗（左上光源）。線分割ではなく multiply / soft-light のみ。
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {{x:number,y:number}[]} polyCanvas
+ * @param {number} cw
+ * @param {number} ch
+ * @param {number} strengthArea01 大型破片ほど 1 に近い
+ */
+function drawShardFacetFanShadeInClip(ctx, polyCanvas, cw, ch, strengthArea01) {
+  const n = polyCanvas.length;
+  if (n < 3) return;
+  const cen = centroidOfPoly(polyCanvas);
+  const smax = Phaser.Math.Clamp(strengthArea01, 0.12, 1);
+  const span = 0.038 + smax * 0.172;
+  const Lx = SHARD_LIGHT_TO_X;
+  const Ly = SHARD_LIGHT_TO_Y;
+
+  for (let i = 0; i < n; i++) {
+    const v1 = polyCanvas[i];
+    const v2 = polyCanvas[(i + 1) % n];
+    const mx = (v1.x + v2.x) * 0.5;
+    const my = (v1.y + v2.y) * 0.5;
+    const ex = v2.x - v1.x;
+    const ey = v2.y - v1.y;
+    const el = Math.hypot(ex, ey) || 1;
+    let nx = -ey / el;
+    let ny = ex / el;
+    const tox = cen.x - mx;
+    const toy = cen.y - my;
+    if (nx * tox + ny * toy < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    const otx = -nx;
+    const oty = -ny;
+    const shade = Phaser.Math.Clamp(otx * Lx + oty * Ly, -1, 1);
+    let br = 0.9 + shade * span;
+    br = Phaser.Math.Clamp(br, 0.72, 1.08);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cen.x, cen.y);
+    ctx.lineTo(v1.x, v1.y);
+    ctx.lineTo(v2.x, v2.y);
+    ctx.closePath();
+    ctx.clip();
+
+    if (br <= 1 - 1e-6) {
+      ctx.globalCompositeOperation = 'multiply';
+      const g = Math.max(0, Math.min(255, Math.round(br * 255)));
+      ctx.fillStyle = `rgb(${g},${g},${g})`;
+      ctx.fillRect(0, 0, cw, ch);
+    } else {
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = 'rgb(255,255,255)';
+      ctx.fillRect(0, 0, cw, ch);
+      const t = Math.min(1, (br - 1) / 0.08);
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fillStyle = `rgba(236,242,255,${0.07 + t * 0.15})`;
+      ctx.fillRect(0, 0, cw, ch);
+    }
+    ctx.restore();
+  }
 }
 
 /**
@@ -333,6 +404,8 @@ function bakeShardCanvasTexture(
   uniqueKey,
   shardRnd,
   edgeShadeOn,
+  facetShadeOn,
+  facetStrength01,
 ) {
   const cw = Math.max(1, Math.ceil(dispW));
   const ch = Math.max(1, Math.ceil(dispH));
@@ -358,6 +431,10 @@ function bakeShardCanvasTexture(
   ctx.closePath();
   ctx.clip();
   ctx.drawImage(src, cropL, cropT, cropW, cropH, 0, 0, cw, ch);
+
+  if (facetShadeOn) {
+    drawShardFacetFanShadeInClip(ctx, polyCanvas, cw, ch, facetStrength01);
+  }
 
   drawShardSurfaceDetailInClip(ctx, cw, ch, shardRnd);
   if (edgeShadeOn) {
@@ -477,6 +554,11 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
   const items = [];
   const visMount = readShardVisualFlags();
 
+  let maxCellArea = 1;
+  for (const c of cells) {
+    maxCellArea = Math.max(maxCellArea, c.area);
+  }
+
   for (let di = 0; di < cells.length; di++) {
     const ptsTex0 = cells[di].poly.map((p) => ({
       x: Phaser.Math.Clamp(p.x, 0.5, natW - 0.5),
@@ -500,6 +582,7 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
     const dispH = cropH * bgScale;
 
     const shardRnd = mulberry32(((seed0 ^ (di * 0x9e3779b9)) >>> 0) ^ 0x85ebca6b);
+    const facetStrength = Math.pow(cells[di].area / maxCellArea, 0.58);
     const baked = bakeShardCanvasTexture(
       bootScene,
       'home-bg-normal',
@@ -513,6 +596,8 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
       `${uniq}_${di}`,
       shardRnd,
       visMount.shardEdgeShade,
+      visMount.shardFacetShade,
+      facetStrength,
     );
     if (!baked) continue;
 
@@ -602,7 +687,7 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
       facetNx: facet.nx,
       facetNy: facet.ny,
       depth01,
-      lightShadeAmp: (0.09 + sizeRank * 0.28) * (0.5 + 0.5 * sizeRank),
+      lightShadeAmp: (0.018 + sizeRank * 0.09) * (0.52 + 0.48 * sizeRank),
     });
   }
 
@@ -742,8 +827,8 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
       baseA *= 1 - easeInQuad(uFade);
     }
 
-    const depthA = vis.shardDepthFade ? Phaser.Math.Linear(0.56, 1, it.depth01) : 1;
-    const depthScale = vis.shardDepthFade ? Phaser.Math.Linear(0.996, 1.034, it.depth01) : 1;
+    const depthA = vis.shardDepthFade ? Phaser.Math.Linear(0.76, 1, it.depth01) : 1;
+    const depthScale = vis.shardDepthFade ? Phaser.Math.Linear(0.982, 1.048, it.depth01) : 1;
     it.container.setScale(depthScale);
 
     let lb = 1;
@@ -753,15 +838,15 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
       const wx = it.facetNx * cr - it.facetNy * sr;
       const wy = it.facetNx * sr + it.facetNy * cr;
       const shade = Phaser.Math.Clamp(wx * SHARD_LIGHT_TO_X + wy * SHARD_LIGHT_TO_Y, -1, 1);
-      lb = Phaser.Math.Clamp(0.9 + shade * it.lightShadeAmp, 0.72, 1.08);
+      lb = Phaser.Math.Clamp(0.97 + shade * it.lightShadeAmp, 0.93, 1.03);
     }
     let db = 1;
     let dContr = 1;
     if (vis.shardDepthFade) {
-      db = Phaser.Math.Linear(0.8, 1.04, it.depth01);
-      dContr = Phaser.Math.Linear(0.92, 1, it.depth01);
+      db = Phaser.Math.Linear(0.94, 1.02, it.depth01);
+      dContr = Phaser.Math.Linear(0.97, 1, it.depth01);
     }
-    const comb = Phaser.Math.Clamp(lb * db * dContr, 0.72, 1.08);
+    const comb = Phaser.Math.Clamp(lb * db * dContr, 0.9, 1.05);
     const bi = Math.round(comb * 255);
     it.img.setTint((bi << 16) | (bi << 8) | bi);
 
