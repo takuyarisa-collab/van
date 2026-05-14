@@ -109,6 +109,12 @@ export function addOverlapCropImage(scene, texKey, crop, depth) {
 export function destroyBootBgPanelForHome(bootScene) {
   const bs = bootScene;
   destroyBootBgCollapseFragments(bs);
+  try {
+    bs._collapseBgBackplate?.destroy();
+  } catch (_) {
+    /* ignore */
+  }
+  bs._collapseBgBackplate = null;
   const bg = bs?._bootBg;
   if (bg && !bg.destroyed) {
     bg.destroy();

@@ -183,7 +183,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-13 12:00 UTC';
+      const BUILD_TIMESTAMP = '2026-05-13 18:45 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -301,7 +301,7 @@
       // ─────────────────────────────────────────────────────────────────────────
       // Boot デバッグ用 URLパラメータ
       // 例: ?bootDur=2000&noTitleMask=1&warnOffsetY=0.22
-      // collapse 暗転切り分け（?debug=1 必須）: noShock=1 noFaultBand=1 noCollapseScan=1 shardStartAlpha=1 flatHoldAlpha=0.45 flatFadeEndMs=760
+      // collapse 暗転切り分け（?debug=1 必須）: noShock=1 noFaultBand=1 noCollapseScan=1 shardStartAlpha=1 flatHoldAlpha=0.45 flatFadeEndMs=760 noShardFade=1 noShardDim=1 solidShardAlpha=1 bgBackplateAlpha=0.3
       // 未指定時は各デフォルト値（現在の挙動）を使用する
       // ─────────────────────────────────────────────────────────────────────────
       (() => {
@@ -454,6 +454,29 @@
           return Math.max(o, BOOT_COLLAPSE_FLAT_FADE_HOLD_MS + 1);
         })(),
       };
+
+      /** collapse 中 shard の fade/dim/alpha と背面明度板（boot-bg-collapse-fragments.js が参照） */
+      window.BOOT_COLLAPSE_SHARD = (() => {
+        const dbg = window.BOOT_PARAM_getBool('debug', false);
+        const clamp01 = (x) => Math.min(Math.max(x, 0), 1);
+        const backRaw = dbg ? window.BOOT_PARAM_getOptionalNum('bgBackplateAlpha') : null;
+        const backplateAlpha =
+          backRaw === null || !Number.isFinite(backRaw) ? 0.3 : clamp01(backRaw);
+        if (!dbg) {
+          return {
+            noShardFade: true,
+            noShardDim: true,
+            solidShardAlpha: true,
+            backplateAlpha,
+          };
+        }
+        return {
+          noShardFade: window.BOOT_PARAM_getBool('noShardFade', true),
+          noShardDim: window.BOOT_PARAM_getBool('noShardDim', true),
+          solidShardAlpha: window.BOOT_PARAM_getBool('solidShardAlpha', true),
+          backplateAlpha,
+        };
+      })();
 
       // Boot 左上ログ: メッセージプール（Phase A/B/C）
       // カテゴリ: 0=ERROR, 1=WARN, 2=SYS, 3=INFO
@@ -1227,6 +1250,12 @@
           this._bootBg = null;
           this._collapseShockOverlay?.destroy();
           this._collapseShockOverlay = null;
+          try {
+            this._collapseBgBackplate?.destroy();
+          } catch (_) {
+            /* ignore */
+          }
+          this._collapseBgBackplate = null;
           this._collapseBandGfx?.destroy();
           this._collapseBandGfx = null;
           this._faultBandSpec = null;
@@ -1447,8 +1476,30 @@
           }
           const bg0 = Phaser.Math.Clamp(this._bgBaseAlpha ?? 1, 0, 1);
           const aStart = Phaser.Math.Clamp(this._bootBgShardRootRampStartA ?? 1, 0, 1.5);
+          try {
+            this._collapseBgBackplate?.destroy();
+          } catch (_) {
+            /* ignore */
+          }
+          this._collapseBgBackplate = null;
+          const _bpPeak = Math.min(Math.max(window.BOOT_COLLAPSE_SHARD?.backplateAlpha ?? 0.3, 0), 1);
+          if (
+            this._bootBg &&
+            !this._bootBg.destroyed &&
+            _bpPeak > 0.001 &&
+            this.textures.exists('home-bg-normal')
+          ) {
+            const bbg = this._bootBg;
+            this._collapseBgBackplate = this.add
+              .image(bbg.x, bbg.y, 'home-bg-normal')
+              .setOrigin(0.5, 0.5)
+              .setDepth(-52)
+              .setScale(bbg.scaleX, bbg.scaleY)
+              .setAlpha(bg0 * _bpPeak);
+          }
           if (BOOT_DEBUG.debug) {
             const faultPeak = BOOT_DEBUG.noCollapseFaultBand ? 0 : (this._faultBandSpec?.mainAlpha ?? 0);
+            const _st = window.BOOT_COLLAPSE_SHARD || {};
             console.log('[BOOT_COLLAPSE_DEBUG_START]', {
               flatAlpha: this._bootBg && !this._bootBg.destroyed ? this._bootBg.alpha : bg0,
               flatFadeHoldMs: this._bootBgFlatFadeHoldMs,
@@ -1459,6 +1510,10 @@
               faultBandAlpha: faultPeak,
               scanFillAlpha: 0,
               collapseT: 0,
+              noShardFade: _st.noShardFade,
+              noShardDim: _st.noShardDim,
+              solidShardAlpha: _st.solidShardAlpha,
+              bgBackplateAlpha: _st.backplateAlpha,
             });
           }
           // 構造グリッド: ショック中は欠損感のため低 alpha、0.3〜0.6 で本立ち上げ（containers[1]）
@@ -1476,6 +1531,12 @@
 
         /** Collapse 完了直前: 残骸を静止化し depth を Home より下へ（destroy / visible 変更なし） */
         _freezeBootWreckForHome() {
+          try {
+            this._collapseBgBackplate?.destroy();
+          } catch (_) {
+            /* ignore */
+          }
+          this._collapseBgBackplate = null;
           if (this._bootBackdrop?.convergeLayers) {
             this._bootBackdrop.convergeLayers(1, 'Linear');
           }
@@ -1608,6 +1669,33 @@
                   relA = Phaser.Math.Linear(minRel, 0, ease);
                 }
                 this._bootBg.setAlpha(bg0 * relA);
+              }
+            }
+            const bp = this._collapseBgBackplate;
+            if (bp && !bp.destroyed) {
+              const peakA =
+                bg0 * Math.min(Math.max(window.BOOT_COLLAPSE_SHARD?.backplateAlpha ?? 0.3, 0), 1);
+              const collapseDur = this._collapseDur || 1080;
+              const tFadeStart = Math.min(440, collapseDur * 0.4);
+              const tFadeEnd = Math.max(tFadeStart + 120, collapseDur - 90);
+              let outA = 0;
+              if (ct < tFadeStart) {
+                outA = peakA;
+              } else if (ct >= tFadeEnd) {
+                outA = 0;
+              } else {
+                const u = (ct - tFadeStart) / Math.max(1, tFadeEnd - tFadeStart);
+                const ease = 0.5 * (1 - Math.cos(Math.PI * u));
+                outA = peakA * (1 - ease);
+              }
+              bp.setAlpha(outA);
+              if (outA <= 0.004 && ct >= tFadeStart) {
+                try {
+                  bp.destroy();
+                } catch (_) {
+                  /* ignore */
+                }
+                this._collapseBgBackplate = null;
               }
             }
             const rampMs = this._bootBgShardRootRampMs ?? 124;
