@@ -75,6 +75,7 @@
       mountBootHomeBackdrop,
     } from './boot-home-bg.js';
     import { createHomeScene } from './home-scene.js';
+    import { createHomeGridScene, REG_HOME_GRID_BACKDROP } from './home-grid-scene.js';
     import {
       OVERLAP_REBUILD_T0_KEY,
       REG_BOOT_COLLAPSE_DONE_FOR_HOME,
@@ -183,7 +184,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-14 16:45 UTC';
+      const BUILD_TIMESTAMP = '2026-05-15 12:00 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1025,6 +1026,33 @@
       }
 
       const HomeScene = createHomeScene(WORLD_W, WORLD_H, createDebugHUD);
+      const HomeGridScene = createHomeGridScene(WORLD_W, WORLD_H);
+
+      /** ?debug=1: 破片 vs グリッド vs UI の depth（シーン合成順はログに含めない） */
+      function logBootDepthDebug(scene, label) {
+        if (!BOOT_DEBUG.debug || !scene) return;
+        const regB = scene.game.registry.get(REG_HOME_GRID_BACKDROP);
+        const homeGridGfx = regB?.layers?.[0];
+        const homeInst = scene.scene?.get?.('home');
+        const homeSceneGrid = homeInst?._homeBackdrop?.layers?.[0];
+        const shardRoot = scene._bootBgShardRoot;
+        const firstShard = scene._bootBgCollapseFragItems?.[0]?.container;
+        const c0 = scene._bootBackdrop?.containers?.[0];
+        const c1 = scene._bootBackdrop?.containers?.[1];
+        console.log('[DEPTH_DEBUG]', label, {
+          shardRoot: shardRoot?.depth ?? null,
+          firstShard: firstShard?.depth ?? null,
+          bootBackdrop0: c0?.depth ?? null,
+          bootBackdrop1: c1?.depth ?? null,
+          structLayer: c1?.depth ?? null,
+          baseLayer: c0?.depth ?? null,
+          homeGridBackdrop: homeGridGfx?.depth ?? null,
+          homeBackdrop: homeSceneGrid?.depth ?? null,
+          scanGfx: scene._scanGfx?.depth ?? null,
+          scanLineGfx: scene._scanLineGfx?.depth ?? null,
+          titleScanGfx: scene._titleScanGfx?.depth ?? null,
+        });
+      }
 
       /** Boot タイトル水平スキャン: LAP 帯（文字インデックス 4〜6 / 7）付近で progress を僅かに遅らせる */
       function bootTitleProgressHitch(p) {
@@ -1158,6 +1186,10 @@
 
         create() {
           console.log('[BOOT] create');
+          if (!this.scene.isActive('homeGrid')) {
+            this.scene.launch('homeGrid');
+            this.scene.sendToBack('homeGrid');
+          }
           const cx = WORLD_W / 2;
           const cy = WORLD_H / 2;
 
@@ -1696,6 +1728,7 @@
           if (!this.scene.isActive('home')) {
             this.scene.launch('home');
           }
+          logBootDepthDebug(this, 'collapseStart');
         }
 
         /** Collapse 完了直前: 残骸を静止化し depth を Home より下へ（destroy / visible 変更なし） */
@@ -1759,6 +1792,7 @@
           }
 
           this._bootFrozen = true;
+          logBootDepthDebug(this, 'freezeBootWreckForHome');
         }
 
         _finishBootAfterCollapse() {
@@ -1806,6 +1840,14 @@
 
             this._collapseT += dt;
             const collapseNorm = Math.min(1, this._collapseT / this._collapseDur);
+
+            if (BOOT_DEBUG.debug) {
+              this._depthDbgCollapseAcc = (this._depthDbgCollapseAcc || 0) + dt;
+              if (this._depthDbgCollapseAcc >= 300) {
+                this._depthDbgCollapseAcc = 0;
+                logBootDepthDebug(this, 'collapseTick');
+              }
+            }
 
             updateBootFloatLogs(this, dt, 1, W, H, cx, cy);
 
@@ -2248,6 +2290,9 @@
         }
 
         create() {
+          if (this.scene.isActive('homeGrid')) {
+            this.scene.stop('homeGrid');
+          }
           if (this.scene.isActive('boot')) {
             this.scene.stop('boot');
           }
@@ -3746,7 +3791,7 @@
           width: WORLD_W,
           height: WORLD_H,
         },
-        scene: [BootScene, HomeScene, GameScene],
+        scene: [BootScene, HomeScene, GameScene, HomeGridScene],
       });
     })();
   </script>

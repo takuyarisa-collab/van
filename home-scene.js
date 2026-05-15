@@ -1,4 +1,5 @@
 import { mountHomeGridOnly, mountHomeScanMask } from './boot-home-bg.js';
+import { REG_HOME_GRID_BACKDROP } from './home-grid-scene.js';
 import {
   HOMEOVERLAP_TEX_KEY,
   addOverlapCropImage,
@@ -48,10 +49,17 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
       const _registry = this.game.registry;
       this._homeWaitBootCollapse = Boolean(_registry.get(REG_BOOT_HOME_WAIT_COLLAPSE));
 
-      this._homeBackdrop = mountHomeGridOnly(this, {
-        width: WORLD_W,
-        height: WORLD_H,
-      });
+      const _gridFromRegistry = this.game.registry.get(REG_HOME_GRID_BACKDROP);
+      if (_gridFromRegistry && _gridFromRegistry.layers?.length) {
+        this._homeBackdrop = _gridFromRegistry;
+        this._homeBackdropOwnedByThisScene = false;
+      } else {
+        this._homeBackdrop = mountHomeGridOnly(this, {
+          width: WORLD_W,
+          height: WORLD_H,
+        });
+        this._homeBackdropOwnedByThisScene = true;
+      }
       this._homeDarkVeil = null;
       this._homeBgRebuildStarted = false;
 
@@ -279,8 +287,11 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this._homeCropDebug?.destroy?.();
         this._homeCropDebug = null;
         this._homeReady = false;
-        this._homeBackdrop?.destroy?.();
+        if (this._homeBackdropOwnedByThisScene) {
+          this._homeBackdrop?.destroy?.();
+        }
         this._homeBackdrop = null;
+        this._homeBackdropOwnedByThisScene = false;
         this._homeScanMask?.destroy?.();
         this._homeScanMask = null;
         this._homeRebuildPanel?.destroy?.();
