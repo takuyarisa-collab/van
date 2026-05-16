@@ -1,3 +1,4 @@
+import { getPlayFormationPresentationTuning } from './home-url-debug.js';
 import { HOMEOVERLAP_CROPS } from './home-overlap-crops.js';
 import { getBootOverlapTitleScale } from './home-boot-title-scale.js';
 import {
@@ -218,10 +219,17 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
 
   const gx = (s) => _homeUiRandInt(s, -2, 2);
   const rBase = _homeUiRandRange(0x492100, 0.85, 1.0);
-  const alphaPlay = Math.min(
+  let alphaPlay = Math.min(
     1,
     lrPanel * flashMul * sf.alpha * rBase * bgPr * formMul,
   );
+  const pf = getPlayFormationPresentationTuning();
+  const shardPlayBg =
+    pf.disableDefaultPlayPanel !== false &&
+    (Boolean(scene._playFormationShardItems?.length) || Boolean(scene._playFormationShardBgActive));
+  if (shardPlayBg) {
+    alphaPlay = Math.min(alphaPlay, 0.12);
+  }
   scene._homeDbgPlayDisplayW = playBgDispW;
   scene._homeDbgPlayDisplayH = playBgDispH;
   const alphaP = Math.min(1, effGlyph('P') * flashMul * sf.alpha * rBase);

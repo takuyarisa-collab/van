@@ -276,7 +276,9 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
 
     const shockMs = Math.round(Phaser.Math.FloatBetween(76, 94));
     const sd = Math.round(Phaser.Math.FloatBetween(122, 176));
-    const cd = Math.round(Phaser.Math.FloatBetween(880, 1080));
+    const cdBase = Math.round(Phaser.Math.FloatBetween(880, 1080));
+    const overlapSlowConverge = key === 'P' || key === 'L' || key === 'A' || key === 'V';
+    const cd = overlapSlowConverge ? Math.round(cdBase * 1.68) : cdBase;
     const snapMs = Math.round(Phaser.Math.FloatBetween(158, 212));
 
     const rotSpike = Phaser.Math.DegToRad(Phaser.Math.FloatBetween(24, 44)) *
@@ -313,6 +315,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
       lagConvMs: 0,
       postSnapDelayMs: 0,
       totalDur: 0,
+      overlapSlowConverge,
     });
   });
 
@@ -531,6 +534,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
       handoffAlpha,
       lagConvMs,
       postSnapDelayMs,
+      overlapSlowConverge,
     } = p;
 
     if (u <= 0) {
@@ -596,7 +600,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     const uConv = uRel - lagConvMs;
     if (uConv <= cd) {
       const sn = Phaser.Math.Clamp(uConv / cd, 0, 1);
-      const s = easeConvergeT(sn);
+      const s = overlapSlowConverge ? easeInOutCubic(sn) : easeConvergeT(sn);
       const pt = quadBezier(sc, cp, over, s);
       return {
         x: pt.x,
@@ -616,7 +620,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     const uSnap = uAfterConv - postSnapDelayMs;
     if (uSnap <= snapMs) {
       const wn = Phaser.Math.Clamp(uSnap / snapMs, 0, 1);
-      const w = easeOutCubic(wn);
+      const w = overlapSlowConverge ? easeInOutCubic(wn) : easeOutCubic(wn);
       return {
         x: Phaser.Math.Linear(over.x, tEnd.x, w),
         y: Phaser.Math.Linear(over.y, tEnd.y, w),
