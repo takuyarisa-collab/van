@@ -4,10 +4,19 @@
  * 演出終了は Home 側 destroyBootBgPanelForHome で破棄（テクスチャ remove 含む）。
  */
 
-import { homeUrlDebugEnabled } from './home-url-debug.js';
+import { homeUrlDebugEnabled, homeUrlPlayFormationDebugFlags } from './home-url-debug.js';
+import {
+  computePlayPanelLayoutForShardFormation,
+  HOME_PLAY_NEUTRAL_START_FRAME,
+} from './home-play-ui.js';
+import { getHomeLayout } from './home-layout.js';
+import { getHomeUrlBgDisplayOverrides } from './home-bg-panels.js';
 
 /** Boot collapse 開始と同一時刻でセットし、Home の registry 削除後も残す */
 export const REG_BOOT_BG_FRAG_EPOCH_MS = 'bootBgFragEpochMs';
+
+/** collapse 継続時間 ms（PLAY 形成 norm と同期。index が registry に書き込む） */
+export const REG_BOOT_COLLAPSE_DUR_MS = 'bootCollapseDurMs';
 
 /** Home の PLAY/SUB 背景パネル（クロップ）を不透明にする wall-clock 閾値（overlap rebuild と同期） */
 export const BOOT_BG_HOME_PANEL_REVEAL_MS = 995;
@@ -507,6 +516,119 @@ function easeInOutCubic(t) {
   return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
 }
 
+/** 背景グリッドより前・通常破片より手前・PLAY 文字より奥（home-scene の glyph 11 より下） */
+const PLAY_SHARD_FORMATION_DEPTH = 10.15;
+
+function smoothstep01(t) {
+  const u = Phaser.Math.Clamp(t, 0, 1);
+  return u * u * (3 - 2 * u);
+}
+
+/**
+ * 大型寄り・空間分散で PLAY 形成用シャードをタグ付け（5〜12）
+ * @param {{ mass: number, restX: number, restY: number }[]} items
+ * @param {() => number} rnd
+ */
+function tagPlayFormationShards(items, rnd) {
+  if (!items?.length) return;
+  const hi = Math.min(12, items.length);
+  const lo = Math.min(5, hi);
+  let nWant = 5 + ((rnd() * 8) | 0);
+  if (nWant > hi) nWant = hi;
+  if (nWant < lo) nWant = lo;
+  const scored = items.map((it, i) => ({ i, mass: it.mass, x: it.restX, y: it.restY }));
+  scored.sort((a, b) => b.mass - a.mass);
+  const picked = new Set();
+  const seedIdx = scored[0]?.i ?? 0;
+  picked.add(seedIdx);
+  while (picked.size < nWant) {
+    let bestI = -1;
+    let bestScore = -Infinity;
+    for (const { i, x, y } of scored) {
+      if (picked.has(i)) continue;
+      let mind = 1e12;
+      for (const pj of picked) {
+        const o = items[pj];
+        const d = Math.hypot(x - o.restX, y - o.restY);
+        mind = Math.min(mind, d);
+      }
+      const score = mind + rnd() * 120;
+      if (score > bestScore) {
+        bestScore = score;
+        bestI = i;
+      }
+    }
+    if (bestI < 0) break;
+    picked.add(bestI);
+  }
+  for (const i of picked) {
+    items[i].playFormation = true;
+    items[i].retireMode = 0;
+  }
+  for (let j = 0; j < items.length; j++) {
+    if (items[j].playFormation) continue;
+    const r = rnd();
+    items[j].retireMode = r < 0.34 ? 1 : r < 0.67 ? 2 : 3;
+  }
+}
+
+/**
+ * @param {Phaser.Scene} bootScene
+ * @param {object[]} items
+ * @param {ReturnType<typeof computePlayPanelLayoutForShardFormation>} layout
+ * @param {() => number} rnd
+ */
+function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
+  if (bootScene._playFormationTargetsAssigned) return;
+  const form = items.filter((it) => it.playFormation);
+  if (!form.length) {
+    bootScene._playFormationTargetsAssigned = true;
+    return;
+  }
+  const { panelL, panelT, panelW, panelH } = layout;
+  const inset = Math.min(panelW, panelH) * 0.07;
+  const innerW = Math.max(8, panelW - 2 * inset);
+  const innerH = Math.max(8, panelH - 2 * inset);
+  const targets = [];
+  const n = form.length;
+  for (let k = 0; k < n; k++) {
+    const t = (k + 0.5) / Math.max(1, n);
+    const ring = k / Math.max(1, n - 0.001);
+    let tx;
+    let ty;
+    if (ring < 0.52) {
+      const side = k % 4;
+      const u = t;
+      if (side === 0) {
+        tx = panelL + inset + innerW * u;
+        ty = panelT + inset + (rnd() - 0.5) * 6;
+      } else if (side === 1) {
+        tx = panelL + inset + innerW;
+        ty = panelT + inset + innerH * u + (rnd() - 0.5) * 5;
+      } else if (side === 2) {
+        tx = panelL + inset + innerW * (1 - u);
+        ty = panelT + inset + innerH + (rnd() - 0.5) * 6;
+      } else {
+        tx = panelL + inset + (rnd() - 0.5) * 5;
+        ty = panelT + inset + innerH * u;
+      }
+    } else {
+      tx = panelL + inset + innerW * (0.22 + rnd() * 0.56) + (rnd() - 0.5) * innerW * 0.09;
+      ty = panelT + inset + innerH * (0.2 + rnd() * 0.6) + (rnd() - 0.5) * innerH * 0.08;
+    }
+    targets.push({ tx, ty });
+  }
+  form.sort((a, b) => b.mass - a.mass);
+  for (let fi = 0; fi < form.length; fi++) {
+    const it = form[fi];
+    const slot = targets[fi] ?? targets[targets.length - 1];
+    it.playTargetX = slot.tx + (rnd() - 0.5) * 9;
+    it.playTargetY = slot.ty + (rnd() - 0.5) * 8;
+    it.playTargetRot = (rnd() - 0.5) * 0.16;
+  }
+  bootScene._playFormationTargetsAssigned = true;
+}
+
 /**
  * Boot create 時: 背景断片シートを構築（1 枚に見える静止配置）。
  * @param {Phaser.Scene} bootScene
@@ -716,6 +838,8 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
   }
 
   root.setAlpha(0);
+  const tagRnd = mulberry32(((seed0 ^ 0x17c4b2a9) >>> 0) ^ 0x4bc3ef1d);
+  tagPlayFormationShards(items, tagRnd);
   bootScene._bootBgShardRoot = root;
   bootScene._bootBgCollapseFragItems = items;
   bootScene._bootBgCollapseFaultSpec = null;
@@ -750,6 +874,7 @@ export function syncBootBgShardSheetAlpha(bootScene, alpha) {
 export function activateBootBgCollapseShardPhysics(bootScene, faultBandSpec, epochMs) {
   bootScene._bootBgCollapseFaultSpec = faultBandSpec;
   bootScene._bootBgShardPhysicsActive = true;
+  bootScene._playFormationTargetsAssigned = false;
   if (typeof epochMs === 'number' && Number.isFinite(epochMs)) {
     bootScene.game.registry.set(REG_BOOT_BG_FRAG_EPOCH_MS, epochMs);
   }
@@ -770,14 +895,35 @@ export function activateBootBgCollapseShardPhysics(bootScene, faultBandSpec, epo
  * @param {number} dt
  * @param {number} W
  * @param {number} H
+ * @param {number} [collapseDurOpt] index.html の _collapseDur と同期
  */
-export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
+export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H, collapseDurOpt) {
   const items = bootScene._bootBgCollapseFragItems;
   if (!items?.length || !bootScene._bootBgShardPhysicsActive) return;
 
   const epoch = bootScene.game.registry.get(REG_BOOT_BG_FRAG_EPOCH_MS);
   const wallT =
     typeof epoch === 'number' && Number.isFinite(epoch) ? performance.now() - epoch : collapseT;
+
+  const regDur = bootScene.game.registry?.get?.(REG_BOOT_COLLAPSE_DUR_MS);
+  const collapseDur =
+    typeof collapseDurOpt === 'number' && collapseDurOpt > 40
+      ? collapseDurOpt
+      : typeof regDur === 'number' && regDur > 40
+        ? regDur
+        : bootScene._collapseDur || 1080;
+  const collapseNorm = Phaser.Math.Clamp(collapseT / collapseDur, 0, 1.35);
+
+  const L = getHomeLayout(W, H);
+  const disp = getHomeUrlBgDisplayOverrides();
+  const layout = computePlayPanelLayoutForShardFormation(
+    bootScene,
+    L,
+    disp,
+    HOME_PLAY_NEUTRAL_START_FRAME,
+  );
+  const tgtRnd = mulberry32(((W | 0) ^ ((H | 0) << 15) ^ 0x62d1f403) >>> 0);
+  ensurePlayFormationTargetsAssigned(bootScene, items, layout, tgtRnd);
 
   const spec = bootScene._bootBgCollapseFaultSpec;
   const mainTop = spec ? spec.mainCy - spec.mainH * 0.5 : H * 0.3;
@@ -816,15 +962,60 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
         it.vy = it.vy0;
         it.vr = it.vr0;
       }
-      it.vy += it.ay * dt;
+      let ayEff = it.ay;
+      if (it.playFormation) {
+        if (collapseNorm > 0.42 && collapseNorm < 0.76) {
+          const wob = Phaser.Math.Clamp((collapseNorm - 0.42) / 0.34, 0, 1);
+          ayEff *= Phaser.Math.Linear(1, 0.42, wob);
+        }
+        if (collapseNorm >= 0.48 && collapseNorm < 0.72) {
+          const dMul = Math.pow(0.9981, dt / 16.67);
+          it.vx *= dMul;
+          it.vy *= dMul;
+        }
+      } else if (collapseNorm > 0.38) {
+        const uR = Phaser.Math.Clamp((collapseNorm - 0.38) / 0.58, 0, 1);
+        const rm = it.retireMode ?? 1;
+        if (rm === 1) {
+          const ex = it.px < W * 0.5 ? -1.15 : 1.15;
+          it.vx += ex * 0.00026 * uR * dt;
+          it.vy -= 0.00007 * uR * dt;
+        } else if (rm === 2) {
+          ayEff *= Phaser.Math.Linear(1, 0.38, uR);
+          it.vx *= Math.pow(0.9955, dt / 16.67);
+          it.vy *= Math.pow(0.9955, dt / 16.67);
+        } else {
+          ayEff *= Phaser.Math.Linear(1, 0.62, uR);
+        }
+      }
+
+      it.vy += ayEff * dt;
       it.vx *= Math.pow(0.992, dt / 16.67);
       it.vr *= Math.pow(0.9992, dt / 16.67);
 
-      if (it.suckBand && collapseT > GAP_END_MS + 95) {
+      if (
+        it.suckBand &&
+        collapseT > GAP_END_MS + 95 &&
+        !(it.playFormation && collapseNorm > 0.52)
+      ) {
         const post = collapseT - GAP_END_MS;
         const tug = Phaser.Math.Clamp((post - 95) / 420, 0, 1) * 0.42;
-        it.vx += ((bandPullX - it.px) * 0.00009 + (rndBandTug(it) - 0.5) * 0.02) * tug;
-        it.vy += ((bandPullY - it.py) * 0.00011 + (rndBandTug(it) - 0.5) * 0.015) * tug;
+        const tugMul = it.playFormation ? Phaser.Math.Linear(1, 0.2, Phaser.Math.Clamp((collapseNorm - 0.35) / 0.35, 0, 1)) : 1;
+        it.vx += ((bandPullX - it.px) * 0.00009 + (rndBandTug(it) - 0.5) * 0.02) * tug * tugMul;
+        it.vy += ((bandPullY - it.py) * 0.00011 + (rndBandTug(it) - 0.5) * 0.015) * tug * tugMul;
+      }
+
+      if (it.playFormation && typeof it.playTargetX === 'number' && collapseNorm >= 0.58) {
+        const pull = smoothstep01(Phaser.Math.Clamp((collapseNorm - 0.58) / 0.34, 0, 1));
+        const dx = it.playTargetX - it.px;
+        const dy = it.playTargetY - it.py;
+        it.vx += dx * 0.0002 * pull * dt;
+        it.vy += dy * 0.000175 * pull * dt;
+        const dRot = it.playTargetRot - it.pr;
+        it.vr += dRot * 0.00009 * pull * dt;
+        const damp = Math.pow(0.984, (pull * dt) / 16.67);
+        it.vx *= damp;
+        it.vy *= damp;
       }
 
       it.px += it.vx * dt;
@@ -838,6 +1029,10 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
     it.container.setPosition(x, y);
     it.container.setRotation(rot);
 
+    if (it.playFormation && collapseNorm > 0.46) {
+      it.container.setDepth(PLAY_SHARD_FORMATION_DEPTH + (it.depth01 - 0.5) * 0.06);
+    }
+
     let baseA = BASE_SHARD_ALPHA;
     if (!tune.noDim && pointInFaultBands(x, y, spec, W)) {
       let dim = BAND_ALPHA_MULT;
@@ -849,6 +1044,13 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
     if (!tune.noFade && it.fadeEarly && wallT > GAP_END_MS + 140) {
       const uFade = Phaser.Math.Clamp((wallT - (GAP_END_MS + 140)) / 480, 0, 1);
       baseA *= 1 - easeInQuad(uFade);
+    }
+    if (!it.playFormation && collapseNorm > 0.44) {
+      const wf = Phaser.Math.Clamp((collapseNorm - 0.44) / 0.52, 0, 1);
+      const rm = it.retireMode ?? 1;
+      if (rm === 2) baseA *= 1 - 0.42 * wf * wf;
+      else if (rm === 3) baseA *= 1 - 0.28 * wf;
+      else if (rm === 1 && collapseNorm > 0.72) baseA *= 1 - 0.18 * Phaser.Math.Clamp((collapseNorm - 0.72) / 0.35, 0, 1);
     }
 
     const depthA = vis.shardDepthFade ? Phaser.Math.Linear(0.76, 1, it.depth01) : 1;
@@ -888,10 +1090,138 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H) {
       it.img.setAlpha(Phaser.Math.Clamp(aPiece * depthA, 0.04, 1));
     }
   }
+
+  const fd = homeUrlPlayFormationDebugFlags();
+  if (fd.showFormationTargets && layout && bootScene.add) {
+    let g = bootScene._playFormDebugGfx;
+    if (!g || g.destroyed) {
+      g = bootScene.add.graphics().setDepth(12000).setScrollFactor(0);
+      bootScene._playFormDebugGfx = g;
+    }
+    g.clear();
+    const formItems = items.filter((it) => it.playFormation && typeof it.playTargetX === 'number');
+    g.lineStyle(1, 0x6cf0c8, 0.55);
+    for (const it of formItems) {
+      g.strokeCircle(it.playTargetX, it.playTargetY, 5);
+    }
+    g.lineStyle(1, 0xff8866, 0.35);
+    g.strokeRect(layout.panelL, layout.panelT, layout.panelW, layout.panelH);
+  } else if (bootScene._playFormDebugGfx && !bootScene._playFormDebugGfx.destroyed) {
+    bootScene._playFormDebugGfx.clear();
+  }
 }
 
 function rndBandTug(it) {
   return Math.sin((it.bandBias || 0) * 12.9898 + it.restX * 0.01) * 0.5 + 0.5;
+}
+
+/**
+ * collapse 完了時: PLAY 形成シャードを Boot ルートから切り離し Home へ（destroy 前に呼ぶ）
+ * @param {Phaser.Scene} bootScene
+ * @param {Phaser.Scene} homeScene
+ */
+export function extractPlayFormationShardsToHome(bootScene, homeScene) {
+  const items = bootScene._bootBgCollapseFragItems;
+  const root = bootScene._bootBgShardRoot;
+  if (!items?.length || !homeScene) return;
+  const kept = [];
+  for (const it of items) {
+    if (!it.playFormation || !it.container || it.container.destroyed) continue;
+    try {
+      if (root && !root.destroyed && it.container.parentContainer === root) {
+        root.remove(it.container, false);
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    homeScene.add.existing(it.container);
+    it.container.setDepth(PLAY_SHARD_FORMATION_DEPTH + 0.05);
+    it.extractedToHome = true;
+    kept.push(it);
+  }
+  if (kept.length) {
+    homeScene._playFormationShardItems = kept;
+    const dbg = homeUrlPlayFormationDebugFlags();
+    if (dbg.showPlayFormation) {
+      console.log('[PLAY_FORMATION:jlwm14]', {
+        transferred: kept.length,
+        collapseDurMs: homeScene.game.registry?.get?.(REG_BOOT_COLLAPSE_DUR_MS) ?? null,
+      });
+    }
+  }
+  bootScene._bootBgCollapseFragItems = items.filter((it) => !it.extractedToHome);
+}
+
+/**
+ * Home overlap 経過時間で PLAY 形成シャードを微収束させ、パネルへクロスフェードする。
+ * @param {Phaser.Scene} homeScene
+ * @param {number} wallMs overlapRebuildT0 からの経過 ms
+ * @param {number} dt
+ * @returns {boolean} 処理完了（破片破棄済み）
+ */
+export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
+  const items = homeScene._playFormationShardItems;
+  if (!items?.length) return true;
+  const regDur = homeScene.game.registry?.get?.(REG_BOOT_COLLAPSE_DUR_MS);
+  const dur =
+    typeof regDur === 'number' && regDur > 40 ? regDur : 1080;
+  const nWall = wallMs / dur;
+  const cross = smoothstep01(Phaser.Math.Clamp((nWall - 0.86) / 0.24, 0, 1));
+  const settle = smoothstep01(Phaser.Math.Clamp((nWall - 0.78) / 0.36, 0, 1));
+
+  let maxErr = 0;
+  for (const it of items) {
+    if (!it.container || it.container.destroyed || !it.img || it.img.destroyed) continue;
+    if (typeof it.playTargetX === 'number') {
+      const dx = it.playTargetX - it.px;
+      const dy = it.playTargetY - it.py;
+      maxErr = Math.max(maxErr, Math.hypot(dx, dy));
+      const k = 0.00031 * (0.5 + settle * 0.5);
+      it.vx += dx * k * dt;
+      it.vy += dy * k * dt;
+      const dr = it.playTargetRot - it.pr;
+      it.vr += dr * 0.0001 * dt;
+      it.vx *= Math.pow(0.986, dt / 16.67);
+      it.vy *= Math.pow(0.986, dt / 16.67);
+      it.px += it.vx * dt;
+      it.py += it.vy * dt;
+      it.pr += it.vr * dt;
+      it.container.setPosition(it.px, it.py);
+      it.container.setRotation(it.pr);
+      const shardA = Phaser.Math.Clamp(0.94 * (1 - cross * 0.9), 0.04, 1);
+      it.img.setAlpha(shardA);
+    }
+  }
+
+  homeScene._playFormationPanelRevealMul = Phaser.Math.Linear(0.05, 1, cross);
+
+  const done = nWall >= 1.12 || (nWall >= 0.96 && maxErr < 16);
+  if (done) {
+    for (const it of items) {
+      try {
+        it.container?.destroy?.(true);
+      } catch (_) {
+        /* ignore */
+      }
+      const k = it.texKey;
+      if (k && homeScene.textures?.exists?.(k)) {
+        try {
+          homeScene.textures.remove(k);
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    }
+    homeScene._playFormationShardItems = null;
+    homeScene._playFormationPanelRevealMul = undefined;
+    try {
+      homeScene.game.registry.remove(REG_BOOT_COLLAPSE_DUR_MS);
+    } catch (_) {
+      /* ignore */
+    }
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -900,6 +1230,13 @@ function rndBandTug(it) {
 export function destroyBootBgCollapseFragments(bootScene) {
   const items = bootScene._bootBgCollapseFragItems;
   const texKeys = items?.length ? items.map((it) => it.texKey).filter(Boolean) : [];
+  try {
+    bootScene._playFormDebugGfx?.destroy?.();
+  } catch (_) {
+    /* ignore */
+  }
+  bootScene._playFormDebugGfx = null;
+  bootScene._playFormationTargetsAssigned = false;
   try {
     bootScene._bootBgShardRoot?.destroy?.(true);
   } catch (_) {

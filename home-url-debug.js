@@ -3,6 +3,24 @@ export function homeUrlDebugEnabled() {
   return /[?&]debug=1(?:&|$)/.test(window.location.search || '');
 }
 
+/**
+ * ?debug=1 時のみ text id=jlwm14: showPlayFormation=1 showFormationTargets=1
+ * @returns {{ showPlayFormation: boolean, showFormationTargets: boolean }}
+ */
+export function homeUrlPlayFormationDebugFlags() {
+  if (!homeUrlDebugEnabled()) {
+    return { showPlayFormation: false, showFormationTargets: false };
+  }
+  const getB = typeof window !== 'undefined' ? window.BOOT_PARAM_getBool : null;
+  if (typeof getB !== 'function') {
+    return { showPlayFormation: false, showFormationTargets: false };
+  }
+  return {
+    showPlayFormation: getB('showPlayFormation', false),
+    showFormationTargets: getB('showFormationTargets', false),
+  };
+}
+
 /** ?debug=1&bgFragNoMask=1 のときのみ true（Boot 背景断片の GeometryMask 切り分け用） */
 export function homeUrlBgFragNoMaskEnabled() {
   if (!homeUrlDebugEnabled()) return false;

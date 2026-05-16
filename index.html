@@ -90,6 +90,8 @@
       activateBootBgCollapseShardPhysics,
       syncBootBgShardSheetAlpha,
       updateBootBgCollapseFragments,
+      extractPlayFormationShardsToHome,
+      REG_BOOT_COLLAPSE_DUR_MS,
     } from './boot-bg-collapse-fragments.js';
     import {
       NEAR_ATTACK_FRONT_CONTACT_TUNING,
@@ -191,7 +193,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-15 23:27 UTC';
+      const BUILD_TIMESTAMP = '2026-05-16 12:00 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -317,6 +319,7 @@
       // ?debug=1&forceBrightCollapse=1&noShock=1&noFaultBand=1&noCollapseScan=1&noShardFade=1&noShardDim=1&solidShardAlpha=1&bgBackplateAlpha=0.8&flatHoldAlpha=0.8&flatFadeEndMs=2000&noBootBackdropCollapse=1&noBootStructLayer=1&noBootBaseLayer=1&noTitleScan=1&noScanLine=1&noHomeEarlyBg=1
       // 通常時 flat 既定 text id=vlv49b: flatHoldAlpha≈0.22 flatFadeEndMs≈520 bgBackplateAlpha=0。debug 上書き例 text id=2syo49: ?debug=1&flatHoldAlpha=0.22&flatFadeEndMs=520&bgBackplateAlpha=0
       // shard 疑似陰影デバッグ text id=mjlwm8: ?debug=1 時 shardLighting=0/1 shardEdgeShade=0/1 shardDepthFade=0/1 shardFacetShade=0/1（省略時はすべて ON text id=z7n24r）
+      // PLAY 形成デバッグ text id=jlwm14: ?debug=1 時 showPlayFormation=1 showFormationTargets=1
       // facet 強度デバッグ text id=a12lq9: ?debug=1 時 shardFacetStrength=N（0=無 0.2=微弱 0.5=通常 1=強 text id=lmjlwm。省略時は既定 text id=yjlwm8）
       // ─────────────────────────────────────────────────────────────────────────
       (() => {
@@ -1565,6 +1568,7 @@
           this._collapseT = 0;
           this._collapseDbgLogAcc = 0;
           this._collapseDur = Phaser.Math.FloatBetween(1020, 1160);
+          this.game.registry.set(REG_BOOT_COLLAPSE_DUR_MS, this._collapseDur);
           this._warnBlinkIrregular = Math.random() * Math.PI * 2;
           const cx = WORLD_W / 2;
           const cy = WORLD_H / 2;
@@ -1822,6 +1826,10 @@
           this._collapseTransitionDone = true;
           this._teardownReconnectUI();
           this._freezeBootWreckForHome();
+          const _homeForShards = this.scene.get('home');
+          if (_homeForShards) {
+            extractPlayFormationShardsToHome(this, _homeForShards);
+          }
           destroyBootBgPanelForHome(this);
           this.game.registry.set(REG_BOOT_COLLAPSE_DONE_FOR_HOME, true);
           this.game.registry.remove(REG_BOOT_HOME_WAIT_COLLAPSE);
@@ -1971,7 +1979,7 @@
               }
             }
 
-            updateBootBgCollapseFragments(this, ct, dt, W, H);
+            updateBootBgCollapseFragments(this, ct, dt, W, H, this._collapseDur);
 
             updateBootLogScatters(this, collapseNorm, dt);
 
