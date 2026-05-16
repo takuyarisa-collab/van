@@ -103,6 +103,13 @@
     (() => {
       const WORLD_W = 540;
       const WORLD_H = 960;
+      /** progress スキャン暗幕は flat bg(-51) より手前 / collapse 中のグリッチ線は破片(-51)より奥へ切替 */
+      const BOOT_SCAN_OVERLAY_DEPTH = -50;
+      const BOOT_SCAN_LINE_OVERLAY_DEPTH = -49;
+      const BOOT_SCAN_COLLAPSE_DEPTH = -53;
+      const BOOT_SCAN_LINE_COLLAPSE_DEPTH = -52;
+      const BOOT_TITLE_SCAN_COLLAPSE_DEPTH = -52;
+      const BOOT_COLLAPSE_FAULT_BAND_DEPTH = -54;
       const PLAYER_SPRITE_SVG = `
         <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
           <defs>
@@ -184,7 +191,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-15 12:00 UTC';
+      const BUILD_TIMESTAMP = '2026-05-15 23:27 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -1051,7 +1058,21 @@
           scanGfx: scene._scanGfx?.depth ?? null,
           scanLineGfx: scene._scanLineGfx?.depth ?? null,
           titleScanGfx: scene._titleScanGfx?.depth ?? null,
+          collapseBandGfx: scene._collapseBandGfx?.depth ?? null,
         });
+      }
+
+      function applyBootCollapseScanDepthBehindShards(bootScene) {
+        if (!bootScene) return;
+        if (bootScene._scanGfx && !bootScene._scanGfx.destroyed) {
+          bootScene._scanGfx.setDepth(BOOT_SCAN_COLLAPSE_DEPTH);
+        }
+        if (bootScene._scanLineGfx && !bootScene._scanLineGfx.destroyed) {
+          bootScene._scanLineGfx.setDepth(BOOT_SCAN_LINE_COLLAPSE_DEPTH);
+        }
+        if (bootScene._titleScanGfx && !bootScene._titleScanGfx.destroyed) {
+          bootScene._titleScanGfx.setDepth(BOOT_TITLE_SCAN_COLLAPSE_DEPTH);
+        }
       }
 
       /** Boot タイトル水平スキャン: LAP 帯（文字インデックス 4〜6 / 7）付近で progress を僅かに遅らせる */
@@ -1218,7 +1239,7 @@
           });
 
           // ── 背景: home-bg-normal を常時カバー表示 (depth -51) ───────────
-          // depth -51: 崩壊レイヤー(-55〜-52)より前、スキャンオーバーレイ(-40)より後ろ
+          // depth -51: 崩壊レイヤー(-55〜-52)より前、progress 用スキャン暗幕(-50)より後ろ
           // showBootBg はデバッグ用に残す（将来的なフラグ制御用）
           this._bootBg = this.add.image(cx, cy, 'home-bg-normal')
             .setOrigin(0.5, 0.5)
@@ -1241,12 +1262,12 @@
           );
           // シャードは collapse 開始まで非表示（ルート alpha 0）。表は常に _bootBg の 1 枚。
 
-          // ── スキャンオーバーレイ: 未表示エリアを覆う暗幕 (depth -40) ─────
-          // 背景レイヤー(-52)より前、タイトル(10+)より後ろ
-          this._scanGfx = this.add.graphics().setDepth(-40);
+          // ── スキャンオーバーレイ: 未表示エリアを覆う暗幕（progress 中のみ _bootBg より手前） ─
+          // collapse 開始時 applyBootCollapseScanDepthBehindShards で破片より奥へ
+          this._scanGfx = this.add.graphics().setDepth(BOOT_SCAN_OVERLAY_DEPTH);
 
-          // スキャン先端ライン (depth -39)
-          this._scanLineGfx = this.add.graphics().setDepth(-39);
+          // スキャン先端ライン（同上）
+          this._scanLineGfx = this.add.graphics().setDepth(BOOT_SCAN_LINE_OVERLAY_DEPTH);
 
           // ── 警告テキスト: 2行化（progress 0.72 以降のみ表示・collapse 直前にピーク） ──
           // 上段: CRITICAL ERROR / 下段: OVERLAP DETECTED
@@ -1609,7 +1630,8 @@
           this.game.registry.set(OVERLAP_REBUILD_T0_KEY, overlapT0);
           this.game.registry.set(REG_BOOT_HOME_WAIT_COLLAPSE, true);
           this._collapseBandGfx?.destroy();
-          this._collapseBandGfx = this.add.graphics().setDepth(-50);
+          this._collapseBandGfx = this.add.graphics().setDepth(BOOT_COLLAPSE_FAULT_BAND_DEPTH);
+          applyBootCollapseScanDepthBehindShards(this);
           this._initCollapseFaultBandSpec();
           if (!(BOOT_DEBUG.debug && BOOT_DEBUG.noCollapseFaultBand)) {
             this._drawCollapseFaultBand(0);
