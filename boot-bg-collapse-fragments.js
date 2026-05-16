@@ -4,7 +4,7 @@
  * 演出終了は Home 側 destroyBootBgPanelForHome で破棄（テクスチャ remove 含む）。
  */
 
-import { homeUrlDebugEnabled, homeUrlPlayFormationDebugFlags } from './home-url-debug.js';
+import { homeUrlDebugEnabled, getPlayFormationPresentationTuning } from './home-url-debug.js';
 import {
   computePlayPanelLayoutForShardFormation,
   HOME_PLAY_NEUTRAL_START_FRAME,
@@ -516,6 +516,11 @@ function easeInOutCubic(t) {
   return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
 }
 
+function easeInOutSine(t) {
+  const u = Phaser.Math.Clamp(t, 0, 1);
+  return -0.5 * (Math.cos(Math.PI * u) - 1);
+}
+
 /** 背景グリッドより前・通常破片より手前・PLAY 文字より奥（home-scene の glyph 11 より下） */
 const PLAY_SHARD_FORMATION_DEPTH = 10.15;
 
@@ -622,9 +627,9 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
   for (let fi = 0; fi < form.length; fi++) {
     const it = form[fi];
     const slot = targets[fi] ?? targets[targets.length - 1];
-    it.playTargetX = slot.tx + (rnd() - 0.5) * 9;
-    it.playTargetY = slot.ty + (rnd() - 0.5) * 8;
-    it.playTargetRot = (rnd() - 0.5) * 0.16;
+    it.playTargetX = slot.tx + (rnd() - 0.5) * 17;
+    it.playTargetY = slot.ty + (rnd() - 0.5) * 15;
+    it.playTargetRot = (rnd() - 0.5) * 0.22;
   }
   bootScene._playFormationTargetsAssigned = true;
 }
@@ -924,6 +929,18 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H, co
   );
   const tgtRnd = mulberry32(((W | 0) ^ ((H | 0) << 15) ^ 0x62d1f403) >>> 0);
   ensurePlayFormationTargetsAssigned(bootScene, items, layout, tgtRnd);
+  const pfTune = getPlayFormationPresentationTuning();
+  const spd = Math.max(0.48, pfTune.playFormationSpeedMul);
+  const formStart = 0.625;
+  const formEnd = Phaser.Math.Clamp(formStart + (0.38 * spd) / 1.85, 1.04, 1.28);
+  const formSpan = Math.max(0.2, formEnd - formStart);
+  let playFormRaw = 0;
+  if (collapseNorm >= formStart) {
+    playFormRaw = Phaser.Math.Clamp((collapseNorm - formStart) / formSpan, 0, 1);
+  }
+  const playFormEase = easeInOutSine(smoothstep01(playFormRaw));
+  const playFormDrift = playFormRaw < 0.24 ? Phaser.Math.Linear(0.06, 1, playFormRaw / 0.24) : 1;
+  const playFormPull = smoothstep01(easeInOutCubic(playFormRaw)) * playFormDrift;
 
   const spec = bootScene._bootBgCollapseFaultSpec;
   const mainTop = spec ? spec.mainCy - spec.mainH * 0.5 : H * 0.3;
@@ -977,9 +994,9 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H, co
         const uR = Phaser.Math.Clamp((collapseNorm - 0.38) / 0.58, 0, 1);
         const rm = it.retireMode ?? 1;
         if (rm === 1) {
-          const ex = it.px < W * 0.5 ? -1.15 : 1.15;
-          it.vx += ex * 0.00026 * uR * dt;
-          it.vy -= 0.00007 * uR * dt;
+          const ex = it.px < W * 0.5 ? -1.38 : 1.38;
+          it.vx += ex * 0.00031 * uR * dt;
+          it.vy -= 0.00009 * uR * dt;
         } else if (rm === 2) {
           ayEff *= Phaser.Math.Linear(1, 0.38, uR);
           it.vx *= Math.pow(0.9955, dt / 16.67);
@@ -996,24 +1013,27 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H, co
       if (
         it.suckBand &&
         collapseT > GAP_END_MS + 95 &&
-        !(it.playFormation && collapseNorm > 0.52)
+        !(it.playFormation && collapseNorm > formStart + 0.14)
       ) {
         const post = collapseT - GAP_END_MS;
         const tug = Phaser.Math.Clamp((post - 95) / 420, 0, 1) * 0.42;
-        const tugMul = it.playFormation ? Phaser.Math.Linear(1, 0.2, Phaser.Math.Clamp((collapseNorm - 0.35) / 0.35, 0, 1)) : 1;
+        const tugMul = it.playFormation
+          ? Phaser.Math.Linear(1, 0.18, Phaser.Math.Clamp((collapseNorm - 0.35) / 0.35, 0, 1))
+          : 1;
         it.vx += ((bandPullX - it.px) * 0.00009 + (rndBandTug(it) - 0.5) * 0.02) * tug * tugMul;
         it.vy += ((bandPullY - it.py) * 0.00011 + (rndBandTug(it) - 0.5) * 0.015) * tug * tugMul;
       }
 
-      if (it.playFormation && typeof it.playTargetX === 'number' && collapseNorm >= 0.58) {
-        const pull = smoothstep01(Phaser.Math.Clamp((collapseNorm - 0.58) / 0.34, 0, 1));
+      if (it.playFormation && typeof it.playTargetX === 'number' && collapseNorm >= formStart) {
+        const pull = playFormPull * (0.22 + 0.78 * playFormEase);
         const dx = it.playTargetX - it.px;
         const dy = it.playTargetY - it.py;
-        it.vx += dx * 0.0002 * pull * dt;
-        it.vy += dy * 0.000175 * pull * dt;
+        const fxy = 0.000088 * pull;
+        it.vx += dx * fxy * dt;
+        it.vy += dy * fxy * 0.9 * dt;
         const dRot = it.playTargetRot - it.pr;
-        it.vr += dRot * 0.00009 * pull * dt;
-        const damp = Math.pow(0.984, (pull * dt) / 16.67);
+        it.vr += dRot * 0.000055 * pull * dt;
+        const damp = Math.pow(0.988, (playFormEase * dt) / 16.67);
         it.vx *= damp;
         it.vy *= damp;
       }
@@ -1091,7 +1111,7 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H, co
     }
   }
 
-  const fd = homeUrlPlayFormationDebugFlags();
+  const fd = getPlayFormationPresentationTuning();
   if (fd.showFormationTargets && layout && bootScene.add) {
     let g = bootScene._playFormDebugGfx;
     if (!g || g.destroyed) {
@@ -1141,7 +1161,11 @@ export function extractPlayFormationShardsToHome(bootScene, homeScene) {
   }
   if (kept.length) {
     homeScene._playFormationShardItems = kept;
-    const dbg = homeUrlPlayFormationDebugFlags();
+    homeScene._playFormationShardBgActive = true;
+    homeScene._playFormationTailIdle = false;
+    homeScene._playFormationPhysicsDoneWall = undefined;
+    homeScene._playFormationTailFinalized = false;
+    const dbg = getPlayFormationPresentationTuning();
     if (dbg.showPlayFormation) {
       console.log('[PLAY_FORMATION:jlwm14]', {
         transferred: kept.length,
@@ -1157,17 +1181,19 @@ export function extractPlayFormationShardsToHome(bootScene, homeScene) {
  * @param {Phaser.Scene} homeScene
  * @param {number} wallMs overlapRebuildT0 からの経過 ms
  * @param {number} dt
- * @returns {boolean} 処理完了（破片破棄済み）
+ * @returns {boolean} 物理 tail 完了（disableDefaultPlayPanel 既定時は破片を残す）
  */
 export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
   const items = homeScene._playFormationShardItems;
   if (!items?.length) return true;
+  const tune = getPlayFormationPresentationTuning();
+  const speedMul = Math.max(0.48, tune.playFormationSpeedMul);
   const regDur = homeScene.game.registry?.get?.(REG_BOOT_COLLAPSE_DUR_MS);
-  const dur =
-    typeof regDur === 'number' && regDur > 40 ? regDur : 1080;
-  const nWall = wallMs / dur;
-  const cross = smoothstep01(Phaser.Math.Clamp((nWall - 0.86) / 0.24, 0, 1));
-  const settle = smoothstep01(Phaser.Math.Clamp((nWall - 0.78) / 0.36, 0, 1));
+  const dur = typeof regDur === 'number' && regDur > 40 ? regDur : 1080;
+  const nWall = wallMs / (dur * 0.84 * speedMul);
+  const cross = smoothstep01(Phaser.Math.Clamp((nWall - 0.38) / 0.72, 0, 1));
+  const settle = smoothstep01(Phaser.Math.Clamp((nWall - 0.32) / 0.78, 0, 1));
+  const settleEase = easeInOutSine(settle);
 
   let maxErr = 0;
   for (const it of items) {
@@ -1176,27 +1202,93 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
       const dx = it.playTargetX - it.px;
       const dy = it.playTargetY - it.py;
       maxErr = Math.max(maxErr, Math.hypot(dx, dy));
-      const k = 0.00031 * (0.5 + settle * 0.5);
+      const k = 0.000105 * (0.32 + settleEase * 0.68);
       it.vx += dx * k * dt;
       it.vy += dy * k * dt;
       const dr = it.playTargetRot - it.pr;
-      it.vr += dr * 0.0001 * dt;
-      it.vx *= Math.pow(0.986, dt / 16.67);
-      it.vy *= Math.pow(0.986, dt / 16.67);
+      it.vr += dr * 0.000055 * dt;
+      it.vx *= Math.pow(0.989, dt / 16.67);
+      it.vy *= Math.pow(0.989, dt / 16.67);
       it.px += it.vx * dt;
       it.py += it.vy * dt;
       it.pr += it.vr * dt;
       it.container.setPosition(it.px, it.py);
       it.container.setRotation(it.pr);
-      const shardA = Phaser.Math.Clamp(0.94 * (1 - cross * 0.9), 0.04, 1);
-      it.img.setAlpha(shardA);
+      if (tune.disableDefaultPlayPanel) {
+        const shardA = Phaser.Math.Clamp(0.84 + 0.12 * easeInOutSine(cross * 0.42), 0.72, 0.97);
+        it.img.setAlpha(shardA);
+      } else {
+        const shardA = Phaser.Math.Clamp(0.94 * (1 - cross * 0.88), 0.04, 1);
+        it.img.setAlpha(shardA);
+      }
     }
   }
 
-  homeScene._playFormationPanelRevealMul = Phaser.Math.Linear(0.05, 1, cross);
+  if (tune.disableDefaultPlayPanel) {
+    homeScene._playFormationPanelRevealMul = Phaser.Math.Linear(
+      0.04,
+      0.11,
+      easeInOutCubic(smoothstep01(cross)),
+    );
+    homeScene._playFormationShardBgActive = true;
+  } else {
+    homeScene._playFormationPanelRevealMul = Phaser.Math.Linear(0.05, 1, cross);
+  }
 
-  const done = nWall >= 1.12 || (nWall >= 0.96 && maxErr < 16);
+  const settleGate = nWall >= 0.58;
+  const closeEnough = maxErr < 34;
+  if (settleGate && closeEnough && homeScene._playFormationPhysicsDoneWall == null) {
+    homeScene._playFormationPhysicsDoneWall = wallMs;
+  }
+  const bias =
+    typeof items[0]?.bandBias === 'number' && Number.isFinite(items[0].bandBias)
+      ? items[0].bandBias
+      : 0.35;
+  const holdMs = 620 + Math.abs(Math.sin(bias * 14.2 + dur * 0.001)) * 480;
+
+  const heldLong =
+    typeof homeScene._playFormationPhysicsDoneWall === 'number' &&
+    wallMs - homeScene._playFormationPhysicsDoneWall > holdMs;
+
+  if (homeScene._playFormationPhysicsDoneWall != null && wallMs > homeScene._playFormationPhysicsDoneWall + 120) {
+    for (const it of items) {
+      if (!it.container || it.container.destroyed) continue;
+      it.vx *= Math.pow(0.9, dt / 16.67);
+      it.vy *= Math.pow(0.9, dt / 16.67);
+      it.vr *= Math.pow(0.92, dt / 16.67);
+    }
+  }
+
+  let done = false;
+  if (tune.disableDefaultPlayPanel) {
+    done = heldLong && maxErr < 42 && nWall >= 0.55;
+  } else {
+    done = nWall >= 1.12 || (nWall >= 0.96 && maxErr < 16);
+  }
+
+  if (done && tune.disableDefaultPlayPanel && !homeScene._playFormationTailFinalized) {
+    homeScene._playFormationTailFinalized = true;
+    for (const it of items) {
+      if (!it.container || it.container.destroyed || it._playFinNudge) continue;
+      it._playFinNudge = true;
+      const jx = Math.sin((it.restY ?? it.py) * 0.091) * 7.2;
+      const jy = Math.cos((it.restX ?? it.px) * 0.084) * 6.1;
+      it.px += jx;
+      it.py += jy;
+      it.container.setPosition(it.px, it.py);
+    }
+    homeScene._playFormationPanelRevealMul = 0.09;
+  }
+
   if (done) {
+    try {
+      homeScene.game.registry.remove(REG_BOOT_COLLAPSE_DUR_MS);
+    } catch (_) {
+      /* ignore */
+    }
+    if (tune.disableDefaultPlayPanel) {
+      return true;
+    }
     for (const it of items) {
       try {
         it.container?.destroy?.(true);
@@ -1214,11 +1306,7 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
     }
     homeScene._playFormationShardItems = null;
     homeScene._playFormationPanelRevealMul = undefined;
-    try {
-      homeScene.game.registry.remove(REG_BOOT_COLLAPSE_DUR_MS);
-    } catch (_) {
-      /* ignore */
-    }
+    homeScene._playFormationShardBgActive = false;
     return true;
   }
   return false;

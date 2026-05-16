@@ -325,6 +325,10 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         }
         this._playFormationShardItems = null;
         this._playFormationPanelRevealMul = undefined;
+        this._playFormationShardBgActive = false;
+        this._playFormationTailIdle = false;
+        this._playFormationPhysicsDoneWall = undefined;
+        this._playFormationTailFinalized = false;
         [
           this._startA, this._startP, this._startL, this._startV, this._startY,
         ].forEach((o) => o?.destroy?.());
@@ -412,10 +416,16 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
           this._homeDebris.setAlpha(0.82);
         }
       }
-      if (this._playFormationShardItems?.length && typeof this._overlapRebuildEpochMs === 'number') {
+      if (
+        this._playFormationShardItems?.length &&
+        typeof this._overlapRebuildEpochMs === 'number' &&
+        !this._playFormationTailIdle
+      ) {
         const dt = this.game.loop.delta || 16.67;
         const T = performance.now() - this._overlapRebuildEpochMs;
-        updatePlayFormationShardTail(this, T, dt);
+        if (updatePlayFormationShardTail(this, T, dt)) {
+          this._playFormationTailIdle = true;
+        }
         this._redrawHomeUI();
       }
       this._debugHud?.tick();
