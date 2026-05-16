@@ -1141,6 +1141,13 @@ export function extractPlayFormationShardsToHome(bootScene, homeScene) {
   }
   if (kept.length) {
     homeScene._playFormationShardItems = kept;
+    const dbg = homeUrlPlayFormationDebugFlags();
+    if (dbg.showPlayFormation) {
+      console.log('[PLAY_FORMATION:jlwm14]', {
+        transferred: kept.length,
+        collapseDurMs: homeScene.game.registry?.get?.(REG_BOOT_COLLAPSE_DUR_MS) ?? null,
+      });
+    }
   }
   bootScene._bootBgCollapseFragItems = items.filter((it) => !it.extractedToHome);
 }
