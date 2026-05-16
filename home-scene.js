@@ -16,6 +16,7 @@ import {
   REG_BOOT_HOME_WAIT_COLLAPSE,
   runBootToHomeOverlapRebuild,
 } from './home-overlap-rebuild.js';
+import { updatePlayFormationShardTail } from './boot-bg-collapse-fragments.js';
 
 /**
  * @param {number} WORLD_W
@@ -305,6 +306,25 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this._homeDarkVeil = null;
         this._bootToHomeFlying?.forEach((s) => s?.destroy?.());
         this._bootToHomeFlying = null;
+        if (this._playFormationShardItems?.length) {
+          this._playFormationShardItems.forEach((it) => {
+            try {
+              it.container?.destroy?.(true);
+            } catch (_) {
+              /* ignore */
+            }
+            const k = it.texKey;
+            if (k && this.textures?.exists?.(k)) {
+              try {
+                this.textures.remove(k);
+              } catch (_) {
+                /* ignore */
+              }
+            }
+          });
+        }
+        this._playFormationShardItems = null;
+        this._playFormationPanelRevealMul = undefined;
         [
           this._startA, this._startP, this._startL, this._startV, this._startY,
         ].forEach((o) => o?.destroy?.());
@@ -391,6 +411,12 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         if (this._homeDebris && !this._homeDebris.destroyed && this._homeDebris.alpha < 0.1) {
           this._homeDebris.setAlpha(0.82);
         }
+      }
+      if (this._playFormationShardItems?.length && typeof this._overlapRebuildEpochMs === 'number') {
+        const dt = this.game.loop.delta || 16.67;
+        const T = performance.now() - this._overlapRebuildEpochMs;
+        updatePlayFormationShardTail(this, T, dt);
+        this._redrawHomeUI();
       }
       this._debugHud?.tick();
     }

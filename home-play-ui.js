@@ -35,6 +35,125 @@ function _homePlayUrlOffsets() {
   };
 }
 
+/** Boot 崩壊中など `_delta` 未整備時と同一の中立フレーム */
+export const HOME_PLAY_NEUTRAL_START_FRAME = Object.freeze({
+  offsetX: 0,
+  offsetY: 0,
+  scaleX: 1,
+  scaleY: 1,
+  alpha: 1,
+  rotation: 0,
+});
+
+function _resolvePlayGlyphYWidthPx(scene) {
+  const w = scene?._startY?.width;
+  if (typeof w === 'number' && Number.isFinite(w) && w > 0) return w;
+  try {
+    const home = scene?.scene?.get?.('home');
+    const w2 = home?._startY?.width;
+    if (typeof w2 === 'number' && Number.isFinite(w2) && w2 > 0) return w2;
+  } catch (_) {
+    /* ignore */
+  }
+  return 30;
+}
+
+/**
+ * redrawHomePlayUI と同一式の PLAY パネル矩形（最終位置の基準。Boot シャード吸着ターゲット用）
+ *
+ * @param {Phaser.Scene} scene
+ * @param {object} L HOME_LAYOUT
+ * @param {{ playW: number|null, playH: number|null }} urlBgDisp
+ * @param {object} [startFrame] scene._delta.startFrame 相当
+ */
+export function computePlayPanelLayoutForShardFormation(
+  scene,
+  L,
+  urlBgDisp,
+  startFrame = HOME_PLAY_NEUTRAL_START_FRAME,
+) {
+  const sf = startFrame;
+  const playCenterX = L.playCenterX + sf.offsetX;
+  const playCenterY = L.playCenterY + sf.offsetY;
+  const { poX, poY, ppX, ppY, ptX, ptY } = _homePlayUrlOffsets();
+  const baseCx = playCenterX + poX;
+  const baseCy = playCenterY + poY;
+  const textCx = baseCx + ptX;
+  const textCy = baseCy + ptY;
+  const panelImgCx = baseCx + ppX;
+  const panelImgCy = baseCy + ppY;
+
+  const Cr = HOMEOVERLAP_CROPS;
+  const P = Cr.P;
+  const Ltr = Cr.L;
+  const A = Cr.A;
+  const Vcrop = Cr.V;
+  const playRefNatH = Math.max(P.h, Ltr.h, A.h);
+
+  const bootTitleScale = getBootOverlapTitleScale(scene);
+  const gS = bootTitleScale * sf.scaleX;
+  const gSy = bootTitleScale * sf.scaleY;
+
+  const wP = P.w * gS;
+  const wL = Ltr.w * gS;
+  const wA = A.w * gS;
+  const gapPL = _homeUiRandRange(0x492010, 10, 16);
+  const gapLA = _homeUiRandRange(0x492011, 20, 30);
+  const gapAY = _homeUiRandRange(0x492012, 12, 18);
+
+  const wY = _resolvePlayGlyphYWidthPx(scene);
+  const playRowDispH = playRefNatH * gSy;
+
+  const totalW = wP + gapPL + wL + gapLA + wA + gapAY + wY;
+  const padX = _homeUiRandRange(0x491101, 41, 60);
+  const padY = _homeUiRandRange(0x491102, 22, 34);
+  const triDispW = Vcrop.w * gS;
+  const triDispH = Vcrop.h * gSy;
+  const triSize = Math.max(triDispW, triDispH);
+  const midGap = _homeUiRandRange(0x491104, 5, 9);
+
+  const panelW = Math.max(totalW, triSize * 1.05) + padX * 2;
+  const panelH = padY * 2 + triDispH + midGap + playRowDispH;
+  const panelL = baseCx - panelW * 0.5;
+  const panelT = baseCy - panelH * 0.5;
+
+  const playContentH = triDispH + midGap + playRowDispH;
+  let playBgDispW = PLAY_BG_PANEL_DISPLAY_W_DEFAULT;
+  let playBgDispH = PLAY_BG_PANEL_DISPLAY_H_DEFAULT;
+  if (urlBgDisp.playW != null) playBgDispW = urlBgDisp.playW;
+  if (urlBgDisp.playH != null) playBgDispH = urlBgDisp.playH;
+
+  return {
+    baseCx,
+    baseCy,
+    textCx,
+    textCy,
+    panelImgCx,
+    panelImgCy,
+    panelL,
+    panelT,
+    panelW,
+    panelH,
+    playRefNatH,
+    playRowDispH,
+    playContentH,
+    playBgDispW,
+    playBgDispH,
+    triDispH,
+    midGap,
+    gS,
+    gSy,
+    totalW,
+    wP,
+    wY,
+    gapPL,
+    wL,
+    gapLA,
+    wA,
+    gapAY,
+  };
+}
+
 /**
  * @param {Phaser.Scene} scene
  * @param {object} L HOME_LAYOUT
@@ -43,23 +162,38 @@ function _homePlayUrlOffsets() {
  */
 export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
   const sf = scene._delta.startFrame;
-  const playCenterX = L.playCenterX + sf.offsetX;
-  const playCenterY = L.playCenterY + sf.offsetY;
+  const core = computePlayPanelLayoutForShardFormation(scene, L, urlBgDisp, sf);
   const {
-    poX,
-    poY,
-    ppX,
-    ppY,
-    ptX,
-    ptY,
-  } = _homePlayUrlOffsets();
-  /** PLAY 全体の基準中心（▷+文字+ヒット）。パネル専用・文字専用オフセットの共通起点 */
-  const baseCx = playCenterX + poX;
-  const baseCy = playCenterY + poY;
-  const textCx = baseCx + ptX;
-  const textCy = baseCy + ptY;
-  const panelImgCx = baseCx + ppX;
-  const panelImgCy = baseCy + ppY;
+    baseCx,
+    baseCy,
+    textCx,
+    textCy,
+    panelImgCx,
+    panelImgCy,
+    panelL,
+    panelT,
+    panelW,
+    panelH,
+    playRefNatH,
+    playRowDispH,
+    playContentH,
+    playBgDispW,
+    playBgDispH,
+    triDispH,
+    midGap,
+    gS,
+    gSy,
+    totalW,
+    wP,
+    wY,
+    gapPL,
+    wL,
+    gapLA,
+    wA,
+    gapAY,
+  } = core;
+  scene._homePlayRefNatH = playRefNatH;
+
   const flashMul = scene._startPressFlash ? 1.15 : 1.0;
   const lr = Phaser.Math.Clamp(linkReveal, 0, 1);
   /** Boot→Home 再接続中のみ: 断片ごとの点灯（未設定時は lr のみ） */
@@ -76,57 +210,20 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
     : 0;
   const lrPanel = Math.max(lr, glyphBoost);
   const bgPr = scene._homeBgPanelReveal?.play ?? 1;
-
-  const Cr = HOMEOVERLAP_CROPS;
-  const P = Cr.P;
-  const Ltr = Cr.L;
-  const A = Cr.A;
-  const Vcrop = Cr.V;
-  const playRefNatH = Math.max(P.h, Ltr.h, A.h);
-  scene._homePlayRefNatH = playRefNatH;
-
-  const bootTitleScale = getBootOverlapTitleScale(scene);
-  const gS = bootTitleScale * sf.scaleX;
-  const gSy = bootTitleScale * sf.scaleY;
-
-  const wP = P.w * gS;
-  const wL = Ltr.w * gS;
-  const wA = A.w * gS;
-  const gapPL = _homeUiRandRange(0x492010, 10, 16);
-  const gapLA = _homeUiRandRange(0x492011, 20, 30);
-  const gapAY = _homeUiRandRange(0x492012, 12, 18);
-
-  const wY = scene._startY.width;
-  const playRowDispH = playRefNatH * gSy;
-
-  const totalW = wP + gapPL + wL + gapLA + wA + gapAY + wY;
-  const padX = _homeUiRandRange(0x491101, 41, 60);
-  const padY = _homeUiRandRange(0x491102, 22, 34);
-  const triDispW = Vcrop.w * gS;
-  const triDispH = Vcrop.h * gSy;
-  const triSize = Math.max(triDispW, triDispH);
-  const midGap = _homeUiRandRange(0x491104, 5, 9);
-
-  /** クリック用ヒット矩形（従来どおり・変更しない） */
-  const panelW = Math.max(totalW, triSize * 1.05) + padX * 2;
-  const panelH = padY * 2 + triDispH + midGap + playRowDispH;
-  const panelL = baseCx - panelW * 0.5;
-  const panelT = baseCy - panelH * 0.5;
-
-  const playContentH = triDispH + midGap + playRowDispH;
-  let playBgDispW = PLAY_BG_PANEL_DISPLAY_W_DEFAULT;
-  let playBgDispH = PLAY_BG_PANEL_DISPLAY_H_DEFAULT;
-  if (urlBgDisp.playW != null) playBgDispW = urlBgDisp.playW;
-  if (urlBgDisp.playH != null) playBgDispH = urlBgDisp.playH;
-  scene._homeDbgPlayDisplayW = playBgDispW;
-  scene._homeDbgPlayDisplayH = playBgDispH;
+  const formReveal = scene._playFormationPanelRevealMul;
+  const formMul =
+    typeof formReveal === 'number' && Number.isFinite(formReveal)
+      ? Phaser.Math.Clamp(formReveal, 0, 1)
+      : 1;
 
   const gx = (s) => _homeUiRandInt(s, -2, 2);
   const rBase = _homeUiRandRange(0x492100, 0.85, 1.0);
   const alphaPlay = Math.min(
     1,
-    lrPanel * flashMul * sf.alpha * rBase * bgPr,
+    lrPanel * flashMul * sf.alpha * rBase * bgPr * formMul,
   );
+  scene._homeDbgPlayDisplayW = playBgDispW;
+  scene._homeDbgPlayDisplayH = playBgDispH;
   const alphaP = Math.min(1, effGlyph('P') * flashMul * sf.alpha * rBase);
   const alphaL = Math.min(1, effGlyph('L') * flashMul * sf.alpha * rBase);
   const alphaA = Math.min(1, effGlyph('A') * flashMul * sf.alpha * rBase);

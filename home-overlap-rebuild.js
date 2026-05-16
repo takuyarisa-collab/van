@@ -145,6 +145,11 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
   scene._homeBgPanelReveal = scene._homeWaitBootCollapse
     ? { play: 0, sub: [0, 0, 0] }
     : { play: 1, sub: [1, 1, 1] };
+  if (scene._homeWaitBootCollapse) {
+    scene._playFormationPanelRevealMul = 0.06;
+  } else {
+    scene._playFormationPanelRevealMul = undefined;
+  }
   scene._overlapGlyphReveal = { P: 0, L: 0, A: 0, V: 0, y: 0 };
   scene._bootYRevealUsesLogFragments = Boolean(
     yLetterFragSpec?.items?.length,
@@ -175,6 +180,7 @@ export function runBootToHomeOverlapRebuild(scene, _HOME_LAYOUT, onComplete) {
     scene._overlapGlyphReveal = null;
     scene._homeLinkReveal = { play: 1, sub: [1, 1, 1] };
     scene._homeBgPanelReveal = { play: 1, sub: [1, 1, 1] };
+    scene._playFormationPanelRevealMul = undefined;
     scene._delta.startFrame.offsetX = 0;
     scene._delta.startFrame.offsetY = 0;
     scene._delta.startFrame.alpha = 1;
