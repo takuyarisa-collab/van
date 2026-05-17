@@ -84,6 +84,7 @@
       captureBootOverlapCollapseStartHandoff,
     } from './home-overlap-rebuild.js';
     import { destroyBootBgPanelForHome } from './home-ui.js';
+    import { getPlayFormationBootCollapseHandoffMul } from './home-url-debug.js';
     import {
       BOOT_BG_COLLAPSE_CRACK_MS,
       mountBootBgCollapseShardSheet,
@@ -193,7 +194,7 @@
         FAIL: 'fail',
       };
       const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-16 18:45 UTC';
+      const BUILD_TIMESTAMP = '2026-05-17 12:00 UTC';
 
       const BUILD_COMMIT_SHORT = 'local';
       const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
@@ -2129,7 +2130,7 @@
               applyBootCollapseLogVisuals(this);
             }
 
-            if (this._collapseT >= this._collapseDur) {
+            if (this._collapseT >= this._collapseDur * getPlayFormationBootCollapseHandoffMul()) {
               this._finishBootAfterCollapse();
             }
             this._debugHud?.tick();
