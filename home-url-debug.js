@@ -68,6 +68,7 @@ export function getPlayFormationPresentationTuning() {
  * PLAY 形成シャード有効時、collapseNorm が 1.0 を超えても描画更新するためのブート崩壊延長倍率。
  */
 export function getPlayFormationBootCollapseHandoffMul() {
+  if (typeof window === 'undefined' || typeof window.BOOT_PARAM_getBool !== 'function') return 1;
   const t = getPlayFormationPresentationTuning();
   if (!t.disableDefaultPlayPanel || !t.playFormationSlow) return 1;
   return 1.54;
