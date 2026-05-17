@@ -4,20 +4,60 @@ export function homeUrlDebugEnabled() {
 }
 
 /**
- * ?debug=1 時のみ text id=jlwm14: showPlayFormation=1 showFormationTargets=1
- * @returns {{ showPlayFormation: boolean, showFormationTargets: boolean }}
+ * PLAY 形成の見た目・URL 既定（通常: playFormationSlow=1 disableDefaultPlayPanel=1）。
+ * ?debug=1 時: playFormationSpeed=N showPlayFormationTargets=1 等。
+ *
+ * @returns {{
+ *   playFormationSlow: boolean,
+ *   disableDefaultPlayPanel: boolean,
+ *   playFormationSpeedMul: number,
+ *   showPlayFormation: boolean,
+ *   showFormationTargets: boolean,
+ * }}
  */
-export function homeUrlPlayFormationDebugFlags() {
-  if (!homeUrlDebugEnabled()) {
-    return { showPlayFormation: false, showFormationTargets: false };
-  }
+export function getPlayFormationPresentationTuning() {
   const getB = typeof window !== 'undefined' ? window.BOOT_PARAM_getBool : null;
+  const getN = typeof window !== 'undefined' ? window.BOOT_PARAM_getNum : null;
   if (typeof getB !== 'function') {
-    return { showPlayFormation: false, showFormationTargets: false };
+    return {
+      playFormationSlow: true,
+      disableDefaultPlayPanel: true,
+      playFormationSpeedMul: 2,
+      showPlayFormation: false,
+      showFormationTargets: false,
+    };
+  }
+  const dbg = homeUrlDebugEnabled();
+  const playFormationSlow = getB('playFormationSlow', true);
+  const disableDefaultPlayPanel = getB('disableDefaultPlayPanel', true);
+  let playFormationSpeedMul = 2;
+  if (dbg && typeof getN === 'function') {
+    playFormationSpeedMul = Math.max(0.45, Math.min(4.2, getN('playFormationSpeed', 2)));
+  } else if (!playFormationSlow) {
+    playFormationSpeedMul = 1;
+  }
+  let showPlayFormation = false;
+  let showFormationTargets = false;
+  if (dbg) {
+    showPlayFormation = getB('showPlayFormation', false);
+    showFormationTargets =
+      getB('showPlayFormationTargets', false) || getB('showFormationTargets', false);
   }
   return {
-    showPlayFormation: getB('showPlayFormation', false),
-    showFormationTargets: getB('showFormationTargets', false),
+    playFormationSlow,
+    disableDefaultPlayPanel,
+    playFormationSpeedMul,
+    showPlayFormation,
+    showFormationTargets,
+  };
+}
+
+/** @deprecated 互換: getPlayFormationPresentationTuning と同等の debug 系フラグ */
+export function homeUrlPlayFormationDebugFlags() {
+  const t = getPlayFormationPresentationTuning();
+  return {
+    showPlayFormation: t.showPlayFormation,
+    showFormationTargets: t.showFormationTargets,
   };
 }
 
