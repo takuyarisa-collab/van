@@ -5,14 +5,16 @@ export function homeUrlDebugEnabled() {
 
 /**
  * PLAY 形成の見た目・URL 既定（通常: playFormationSlow=1 disableDefaultPlayPanel=1）。
- * ?debug=1 時: playFormationSpeed=N showPlayFormationTargets=1 等。
+ * ?debug=1 時: playFormationSpeed=N showFormationTargets=1 showFormationLock=1 等。
  *
  * @returns {{
  *   playFormationSlow: boolean,
  *   disableDefaultPlayPanel: boolean,
  *   playFormationSpeedMul: number,
+ *   playFormationOvershoot: boolean,
  *   showPlayFormation: boolean,
  *   showFormationTargets: boolean,
+ *   showFormationLock: boolean,
  * }}
  */
 export function getPlayFormationPresentationTuning() {
@@ -22,34 +24,68 @@ export function getPlayFormationPresentationTuning() {
     return {
       playFormationSlow: true,
       disableDefaultPlayPanel: true,
-      playFormationSpeedMul: 2,
+      playFormationSpeedMul: 4.5,
+      playFormationOvershoot: false,
       showPlayFormation: false,
       showFormationTargets: false,
+      showFormationLock: false,
     };
   }
   const dbg = homeUrlDebugEnabled();
   const playFormationSlow = getB('playFormationSlow', true);
   const disableDefaultPlayPanel = getB('disableDefaultPlayPanel', true);
-  let playFormationSpeedMul = 2;
+  /** 既定は従来比おおよそ 2.1〜2.3 倍遅い形成（URL 非指定時） */
+  const defaultSlowMul = 4.5;
+  let playFormationSpeedMul = defaultSlowMul;
   if (dbg && typeof getN === 'function') {
-    playFormationSpeedMul = Math.max(0.45, Math.min(4.2, getN('playFormationSpeed', 2)));
+    playFormationSpeedMul = Math.max(0.35, Math.min(6.5, getN('playFormationSpeed', defaultSlowMul)));
   } else if (!playFormationSlow) {
     playFormationSpeedMul = 1;
   }
   let showPlayFormation = false;
   let showFormationTargets = false;
+  let showFormationLock = false;
+  let playFormationOvershoot = false;
   if (dbg) {
     showPlayFormation = getB('showPlayFormation', false);
     showFormationTargets =
       getB('showPlayFormationTargets', false) || getB('showFormationTargets', false);
+    showFormationLock = getB('showFormationLock', false);
+    playFormationOvershoot = getB('playFormationOvershoot', false);
   }
   return {
     playFormationSlow,
     disableDefaultPlayPanel,
     playFormationSpeedMul,
+    playFormationOvershoot,
     showPlayFormation,
     showFormationTargets,
+    showFormationLock,
   };
+}
+
+/**
+ * PLAY 形成シャード有効時、collapseNorm が 1.0 を超えても描画更新するためのブート崩壊延長倍率。
+ */
+export function getPlayFormationBootCollapseHandoffMul() {
+  const t = getPlayFormationPresentationTuning();
+  if (!t.disableDefaultPlayPanel || !t.playFormationSlow) return 1;
+  return 1.54;
+}
+
+/** ?debug=1 時に PLAY 形成の URL 既定を一度だけ console に出す */
+export function logPlayFormationDebugParamsOnce(scene) {
+  if (!homeUrlDebugEnabled() || !scene || scene._playFormationDbgParamsLogged) return;
+  scene._playFormationDbgParamsLogged = true;
+  const t = getPlayFormationPresentationTuning();
+  console.log('[PLAY_FORMATION_DEBUG]', {
+    playFormationSpeed: t.playFormationSpeedMul,
+    playFormationOvershoot: t.playFormationOvershoot ? 1 : 0,
+    showFormationLock: t.showFormationLock ? 1 : 0,
+    showFormationTargets: t.showFormationTargets ? 1 : 0,
+    playFormationSlow: t.playFormationSlow,
+    disableDefaultPlayPanel: t.disableDefaultPlayPanel,
+  });
 }
 
 /** @deprecated 互換: getPlayFormationPresentationTuning と同等の debug 系フラグ */

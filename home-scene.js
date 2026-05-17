@@ -329,6 +329,7 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this._playFormationTailIdle = false;
         this._playFormationPhysicsDoneWall = undefined;
         this._playFormationTailFinalized = false;
+        this._playFormationAllLockedAt = undefined;
         [
           this._startA, this._startP, this._startL, this._startV, this._startY,
         ].forEach((o) => o?.destroy?.());
