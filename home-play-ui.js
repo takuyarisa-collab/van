@@ -228,7 +228,7 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
     pf.disableDefaultPlayPanel !== false &&
     (Boolean(scene._playFormationShardItems?.length) || Boolean(scene._playFormationShardBgActive));
   if (shardPlayBg) {
-    alphaPlay = Math.min(alphaPlay, 0.12);
+    alphaPlay = 0;
   }
   scene._homeDbgPlayDisplayW = playBgDispW;
   scene._homeDbgPlayDisplayH = playBgDispH;
@@ -248,7 +248,11 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
     debugLogKind: 'PLAY',
   });
 
-  if (!scene._playBgPanelImg.visible) {
+  if (shardPlayBg) {
+    scene._playBgPanelImg.setVisible(false);
+    scene._playBgMaskGfx?.clear?.();
+    scene._playBgFragEdgeGfx?.clear?.();
+  } else if (!scene._playBgPanelImg.visible) {
     scene._playBgMaskGfx?.clear?.();
     scene._playBgFragEdgeGfx?.clear?.();
   } else {

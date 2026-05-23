@@ -535,18 +535,35 @@ function smoothstep01(t) {
 }
 
 /**
- * 大型寄り・空間分散で PLAY 形成用シャードをタグ付け（8〜16）
+ * 大型〜中型のみ・3〜6 枚で PLAY 形成用シャードをタグ付け（小破片は対象外）
  * @param {{ mass: number, restX: number, restY: number }[]} items
  * @param {() => number} rnd
  */
 function tagPlayFormationShards(items, rnd) {
   if (!items?.length) return;
-  const hi = Math.min(16, items.length);
-  const lo = Math.min(8, hi);
-  let nWant = 8 + ((rnd() * 9) | 0);
+  let maxM = 0;
+  for (const it of items) maxM = Math.max(maxM, it.mass);
+  if (!(maxM > 0)) return;
+  /** 最大セルに対する面積比の下限（小破片を PLAY 形成から除外） */
+  let minRatio = 0.11;
+  let elig = items
+    .map((it, i) => (it.mass >= maxM * minRatio ? i : -1))
+    .filter((i) => i >= 0);
+  while (elig.length < 3 && minRatio > 0.042) {
+    minRatio *= 0.86;
+    elig = items.map((it, i) => (it.mass >= maxM * minRatio ? i : -1)).filter((i) => i >= 0);
+  }
+  const eligSet = new Set(elig);
+  const scored = items
+    .map((it, i) => ({ i, mass: it.mass, x: it.restX, y: it.restY }))
+    .filter((s) => eligSet.has(s.i));
+  if (!scored.length) return;
+
+  const hi = Math.min(6, scored.length);
+  const lo = Math.min(3, hi);
+  let nWant = 3 + ((rnd() * 4) | 0);
   if (nWant > hi) nWant = hi;
   if (nWant < lo) nWant = lo;
-  const scored = items.map((it, i) => ({ i, mass: it.mass, x: it.restX, y: it.restY }));
   scored.sort((a, b) => b.mass - a.mass);
   const picked = new Set();
   const seedIdx = scored[0]?.i ?? 0;
@@ -596,14 +613,16 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
     return;
   }
   const { panelL, panelT, panelW, panelH } = layout;
-  const inset = Math.min(panelW, panelH) * 0.03;
+  /** 外周寄せ：インセットを小さくしてパネル矩形に近づける */
+  const inset = Math.min(panelW, panelH) * 0.011;
   const innerW = Math.max(8, panelW - 2 * inset);
   const innerH = Math.max(8, panelH - 2 * inset);
   const n = form.length;
-  const nx = Math.max(2, Math.ceil(Math.sqrt(n * (innerW / Math.max(innerH, 1)) * 1.05)));
-  const ny = Math.max(2, Math.ceil(n / nx));
+  const nx = Math.max(1, Math.ceil(Math.sqrt(n * (innerW / Math.max(innerH, 1)) * 0.92)));
+  const ny = Math.max(1, Math.ceil(n / nx));
   const cellW = innerW / nx;
   const cellH = innerH / ny;
+  const jitterMul = 0.2;
   const slots = [];
   for (let gy = 0; gy < ny; gy++) {
     for (let gx = 0; gx < nx && slots.length < n; gx++) {
@@ -611,8 +630,8 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
       const v = (gy + 0.5) / ny;
       const edge = Math.max(Math.abs(u - 0.5), Math.abs(v - 0.5)) * 2;
       slots.push({
-        tx: panelL + inset + innerW * u + (rnd() - 0.5) * cellW * 0.42,
-        ty: panelT + inset + innerH * v + (rnd() - 0.5) * cellH * 0.42,
+        tx: panelL + inset + innerW * u + (rnd() - 0.5) * cellW * jitterMul,
+        ty: panelT + inset + innerH * v + (rnd() - 0.5) * cellH * jitterMul,
         edge,
       });
     }
@@ -626,12 +645,19 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
     });
   }
   form.sort((a, b) => b.mass - a.mass);
+  const pcx = panelL + panelW * 0.5;
+  const pcy = panelT + panelH * 0.5;
   for (let fi = 0; fi < form.length; fi++) {
     const it = form[fi];
     const slot = slots[fi] ?? slots[slots.length - 1];
-    it.playTargetX = slot.tx + (rnd() - 0.5) * 5;
-    it.playTargetY = slot.ty + (rnd() - 0.5) * 5;
-    it.playTargetRot = (rnd() - 0.5) * 0.11;
+    let tx = slot.tx + (rnd() - 0.5) * 4;
+    let ty = slot.ty + (rnd() - 0.5) * 4;
+    /** わずかにパネル中心へ寄せて破片同士の重なりを増やす */
+    tx = Phaser.Math.Linear(tx, pcx, 0.062);
+    ty = Phaser.Math.Linear(ty, pcy, 0.058);
+    it.playTargetX = tx;
+    it.playTargetY = ty;
+    it.playTargetRot = (rnd() - 0.5) * 0.075;
   }
   bootScene._playFormationTargetsAssigned = true;
 }
