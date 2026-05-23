@@ -527,7 +527,9 @@ function easeInOutSine(t) {
 }
 
 /** 背景グリッドより前・通常破片より手前・PLAY 文字より奥（home-scene の glyph 11 より下） */
-const PLAY_SHARD_FORMATION_DEPTH = 10.15;
+const PLAY_SHARD_FORMATION_DEPTH = 10.05;
+/** 形成破片同士の前後差（2〜4 段。過剰な段差にしない） */
+const PLAY_FORM_SHARD_DEPTH_STEP = 0.11;
 
 function smoothstep01(t) {
   const u = Phaser.Math.Clamp(t, 0, 1);
@@ -605,6 +607,15 @@ function tagPlayFormationShards(items, rnd) {
  * @param {ReturnType<typeof computePlayPanelLayoutForShardFormation>} layout
  * @param {() => number} rnd
  */
+function _playFormShardRadiusPx(it) {
+  const w = it?.img?.displayWidth;
+  const h = it?.img?.displayHeight;
+  if (typeof w === 'number' && w > 4 && typeof h === 'number' && h > 4) {
+    return 0.46 * Math.max(w, h);
+  }
+  return 0.018 * Math.sqrt(Math.max(400, it.mass || 0));
+}
+
 function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
   if (bootScene._playFormationTargetsAssigned) return;
   const form = items.filter((it) => it.playFormation);
@@ -613,16 +624,18 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
     return;
   }
   const { panelL, panelT, panelW, panelH } = layout;
-  /** 外周寄せ：インセットを小さくしてパネル矩形に近づける */
-  const inset = Math.min(panelW, panelH) * 0.011;
+  const pcx = panelL + panelW * 0.5;
+  const pcy = panelT + panelH * 0.5;
+  /** 外周はパネル矩形に沿わせる（内部よりタイトなインセット） */
+  const inset = Math.min(panelW, panelH) * 0.0075;
   const innerW = Math.max(8, panelW - 2 * inset);
   const innerH = Math.max(8, panelH - 2 * inset);
   const n = form.length;
-  const nx = Math.max(1, Math.ceil(Math.sqrt(n * (innerW / Math.max(innerH, 1)) * 0.92)));
+  const nx = Math.max(1, Math.ceil(Math.sqrt(n * (innerW / Math.max(innerH, 1)) * 0.88)));
   const ny = Math.max(1, Math.ceil(n / nx));
   const cellW = innerW / nx;
   const cellH = innerH / ny;
-  const jitterMul = 0.2;
+  const jitterMul = 0.14;
   const slots = [];
   for (let gy = 0; gy < ny; gy++) {
     for (let gx = 0; gx < nx && slots.length < n; gx++) {
@@ -645,19 +658,80 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
     });
   }
   form.sort((a, b) => b.mass - a.mass);
-  const pcx = panelL + panelW * 0.5;
-  const pcy = panelT + panelH * 0.5;
+  const nDepthSteps = Math.min(4, Math.max(2, n));
+  const targets = [];
   for (let fi = 0; fi < form.length; fi++) {
     const it = form[fi];
     const slot = slots[fi] ?? slots[slots.length - 1];
-    let tx = slot.tx + (rnd() - 0.5) * 4;
-    let ty = slot.ty + (rnd() - 0.5) * 4;
-    /** わずかにパネル中心へ寄せて破片同士の重なりを増やす */
-    tx = Phaser.Math.Linear(tx, pcx, 0.062);
-    ty = Phaser.Math.Linear(ty, pcy, 0.058);
-    it.playTargetX = tx;
-    it.playTargetY = ty;
-    it.playTargetRot = (rnd() - 0.5) * 0.075;
+    let tx = slot.tx + (rnd() - 0.5) * 3.2;
+    let ty = slot.ty + (rnd() - 0.5) * 3.2;
+    /** 外周ほどわずかに外へ張り、矩形シルエットを強調（中央は崩しやすい） */
+    const rx = tx - pcx;
+    const ry = ty - pcy;
+    const rlen = Math.hypot(rx, ry) + 1e-6;
+    const edgeF = slot.edge ?? 0;
+    const outwardPx = Phaser.Math.Clamp((edgeF - 0.28) * (3.5 + rnd() * 6), -2.5, 9);
+    tx += (rx / rlen) * outwardPx;
+    ty += (ry / rlen) * outwardPx;
+    /** 各破片を中心へ 6〜18px（右上は追加で寄せる） */
+    const dxC = pcx - tx;
+    const dyC = pcy - ty;
+    const distC = Math.hypot(dxC, dyC) + 1e-6;
+    let pullMag = 6 + rnd() * 12;
+    if (tx > pcx + 1 && ty < pcy - 1) {
+      pullMag += 6 + rnd() * 10;
+    }
+    tx += (dxC / distC) * pullMag;
+    ty += (dyC / distC) * pullMag;
+    /** 中央付近のスロットだけ隣接スロットへ軽く寄せて稜線の接触感 */
+    if (edgeF < 0.62) {
+      const hubPull = 2.2 + rnd() * 5.5;
+      tx = Phaser.Math.Linear(tx, pcx, hubPull / Math.max(120, distC));
+      ty = Phaser.Math.Linear(ty, pcy, hubPull / Math.max(120, distC));
+    }
+    targets.push({ it, tx, ty });
+    it.playFormationDepthIdx = fi % nDepthSteps;
+  }
+  /** 軽いオーバーラップ（5〜18px）を狙いつつ完全重なりは避ける */
+  const passes = 4;
+  for (let pass = 0; pass < passes; pass++) {
+    for (let i = 0; i < targets.length; i++) {
+      for (let j = i + 1; j < targets.length; j++) {
+        const a = targets[i];
+        const b = targets[j];
+        const dx = b.tx - a.tx;
+        const dy = b.ty - a.ty;
+        const d = Math.hypot(dx, dy) + 1e-6;
+        const ra = _playFormShardRadiusPx(a.it);
+        const rb = _playFormShardRadiusPx(b.it);
+        const minSep = Math.max(14, Math.min(ra, rb) * 0.34);
+        const overlapWant = 5 + rnd() * 13;
+        const ideal = Phaser.Math.Clamp(ra + rb - overlapWant, minSep * 0.88, ra + rb - 3);
+        if (d > ideal) {
+          const pull = Math.min(7.5, (d - ideal) * (pass < 2 ? 0.42 : 0.28));
+          const ux = dx / d;
+          const uy = dy / d;
+          a.tx += ux * pull * 0.5;
+          a.ty += uy * pull * 0.5;
+          b.tx -= ux * pull * 0.5;
+          b.ty -= uy * pull * 0.5;
+        } else if (d < minSep) {
+          const push = (minSep - d) * 0.48;
+          const ux = dx / d;
+          const uy = dy / d;
+          a.tx -= ux * push * 0.5;
+          a.ty -= uy * push * 0.5;
+          b.tx += ux * push * 0.5;
+          b.ty += uy * push * 0.5;
+        }
+      }
+    }
+  }
+  for (const { it, tx, ty } of targets) {
+    const margin = 3;
+    it.playTargetX = Phaser.Math.Clamp(tx, panelL + margin, panelL + panelW - margin);
+    it.playTargetY = Phaser.Math.Clamp(ty, panelT + margin, panelT + panelH - margin);
+    it.playTargetRot = (rnd() - 0.5) * 0.082;
   }
   bootScene._playFormationTargetsAssigned = true;
 }
@@ -1110,7 +1184,12 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H, co
     it.container.setRotation(rot);
 
     if (it.playFormation && collapseNorm > 0.46) {
-      it.container.setDepth(PLAY_SHARD_FORMATION_DEPTH + (it.depth01 - 0.5) * 0.06);
+      const layer = typeof it.playFormationDepthIdx === 'number' ? it.playFormationDepthIdx : 0;
+      it.container.setDepth(
+        PLAY_SHARD_FORMATION_DEPTH +
+          layer * PLAY_FORM_SHARD_DEPTH_STEP +
+          (it.depth01 - 0.5) * 0.034,
+      );
     }
 
     let baseA = BASE_SHARD_ALPHA;
@@ -1226,7 +1305,8 @@ export function extractPlayFormationShardsToHome(bootScene, homeScene) {
       /* ignore */
     }
     homeScene.add.existing(it.container);
-    it.container.setDepth(PLAY_SHARD_FORMATION_DEPTH + 0.05);
+    const layer = typeof it.playFormationDepthIdx === 'number' ? it.playFormationDepthIdx : 0;
+    it.container.setDepth(PLAY_SHARD_FORMATION_DEPTH + layer * PLAY_FORM_SHARD_DEPTH_STEP + 0.02);
     it.extractedToHome = true;
     kept.push(it);
   }
