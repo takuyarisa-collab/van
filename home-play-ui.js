@@ -219,15 +219,15 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
 
   const gx = (s) => _homeUiRandInt(s, -2, 2);
   const rBase = _homeUiRandRange(0x492100, 0.85, 1.0);
+  const pf = getPlayFormationPresentationTuning();
+  const shardPlayBg =
+    pf.disableDefaultPlayPanel !== false &&
+    (Boolean(scene._playFormationShardItems?.length) || Boolean(scene._playFormationShardBgActive));
   const glyphReadMul = shardPlayBg ? 1.055 : 1;
   let alphaPlay = Math.min(
     1,
     lrPanel * flashMul * sf.alpha * rBase * bgPr * formMul,
   );
-  const pf = getPlayFormationPresentationTuning();
-  const shardPlayBg =
-    pf.disableDefaultPlayPanel !== false &&
-    (Boolean(scene._playFormationShardItems?.length) || Boolean(scene._playFormationShardBgActive));
   if (shardPlayBg) {
     alphaPlay = 0;
   }
