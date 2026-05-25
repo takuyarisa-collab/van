@@ -5,10 +5,11 @@
  */
 
 import {
-  homeUrlDebugEnabled,
   getPlayFormationPresentationTuning,
   getPlayFormationBootCollapseHandoffMul,
   logPlayFormationDebugParamsOnce,
+  playFormationDebugSurfaceEnabled,
+  logPerfPlayFormSample,
 } from './home-url-debug.js';
 import {
   computePlayPanelLayoutForShardFormation,
@@ -870,7 +871,7 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
 
   bootScene._playFormationTargetsAssigned = true;
 
-  if (homeUrlDebugEnabled() && !bootScene._playFormRoleDebugLogged) {
+  if (playFormationDebugSurfaceEnabled() && !bootScene._playFormRoleDebugLogged) {
     bootScene._playFormRoleDebugLogged = true;
     const lines = ['[PLAY_FORM_ROLE]'];
     const order = ['centerCore', 'leftWing', 'rightWing', 'topCap', 'bottomCap'];
@@ -1050,7 +1051,7 @@ export function mountBootBgCollapseShardSheet(bootScene, W, H, bgCx, bgCy, bgSca
     img.setDisplaySize(baked.dispW + bleedPx, baked.dispH + bleedPx);
 
     let outlineGfx = null;
-    if (homeUrlDebugEnabled()) {
+    if (playFormationDebugSurfaceEnabled()) {
       outlineGfx = bootScene.add.graphics();
       drawBootBgCollapseFragOutline(outlineGfx, baked.localPts, 1.2, 0x00ffff, 0.85);
     }
@@ -1157,8 +1158,17 @@ export function activateBootBgCollapseShardPhysics(bootScene, faultBandSpec, epo
  * @param {ReturnType<typeof getPlayFormationPresentationTuning>} fd
  * @param {string} [gfxProp='_playFormDebugGfx']
  */
+function playFormationDebugOverlayFlagsActive(fd) {
+  return Boolean(
+    fd.showFormationTargets ||
+      fd.showFormationLock ||
+      fd.highlightCenterCore ||
+      fd.showPlayFormationRoles,
+  );
+}
+
 function syncPlayFormationDebugOverlay(scene, layout, items, fd, gfxProp = '_playFormDebugGfx') {
-  if (!homeUrlDebugEnabled()) {
+  if (!playFormationDebugSurfaceEnabled()) {
     try {
       scene[gfxProp]?.clear?.();
     } catch (_) {
@@ -1242,6 +1252,8 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H, co
   const items = bootScene._bootBgCollapseFragItems;
   if (!items?.length || !bootScene._bootBgShardPhysicsActive) return;
 
+  const _perfT0 = playFormationDebugSurfaceEnabled() ? performance.now() : 0;
+
   const epoch = bootScene.game.registry.get(REG_BOOT_BG_FRAG_EPOCH_MS);
   const wallT =
     typeof epoch === 'number' && Number.isFinite(epoch) ? performance.now() - epoch : collapseT;
@@ -1256,17 +1268,26 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H, co
   const collapseNormMax = Math.max(1, getPlayFormationBootCollapseHandoffMul());
   const collapseNorm = Phaser.Math.Clamp(collapseT / collapseDur, 0, collapseNormMax);
 
-  const L = getHomeLayout(W, H);
-  const disp = getHomeUrlBgDisplayOverrides();
-  const layout = computePlayPanelLayoutForShardFormation(
-    bootScene,
-    L,
-    disp,
-    HOME_PLAY_NEUTRAL_START_FRAME,
-  );
-  const tgtRnd = mulberry32(((W | 0) ^ ((H | 0) << 15) ^ 0x62d1f403) >>> 0);
-  ensurePlayFormationTargetsAssigned(bootScene, items, layout, tgtRnd);
   const pfTune = getPlayFormationPresentationTuning();
+  const dbgGfx = playFormationDebugSurfaceEnabled();
+  const overlayWanted = playFormationDebugOverlayFlagsActive(pfTune);
+  const needPanelLayout = !bootScene._playFormationTargetsAssigned || (dbgGfx && overlayWanted);
+
+  let layout = null;
+  if (needPanelLayout) {
+    const L = getHomeLayout(W, H);
+    const disp = getHomeUrlBgDisplayOverrides();
+    layout = computePlayPanelLayoutForShardFormation(
+      bootScene,
+      L,
+      disp,
+      HOME_PLAY_NEUTRAL_START_FRAME,
+    );
+  }
+  const tgtRnd = mulberry32(((W | 0) ^ ((H | 0) << 15) ^ 0x62d1f403) >>> 0);
+  if (!bootScene._playFormationTargetsAssigned) {
+    ensurePlayFormationTargetsAssigned(bootScene, items, layout, tgtRnd);
+  }
   const spd = Math.max(0.48, pfTune.playFormationSpeedMul);
   const formStart = Phaser.Math.Clamp(0.58 + (spd - 2.2) * 0.008, 0.55, 0.64);
   const rawFormEnd = formStart + (0.58 * spd) / 2.05;
@@ -1485,7 +1506,7 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H, co
 
     if (tune.solidAlpha) {
       it.img.setAlpha(Phaser.Math.Clamp(depthA * capAlphaMul, 0.04, 1));
-    } else if (homeUrlDebugEnabled()) {
+    } else if (playFormationDebugSurfaceEnabled()) {
       const pulse = 0.82 + Math.sin(collapseT * 0.003) * 0.06;
       it.img.setAlpha(Phaser.Math.Clamp(pulse * depthA * capAlphaMul, 0.04, 1));
     } else {
@@ -1495,10 +1516,20 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H, co
     }
   }
 
-  const fd = getPlayFormationPresentationTuning();
-  syncPlayFormationDebugOverlay(bootScene, layout, items, fd, '_playFormDebugGfx');
-  if (!homeUrlDebugEnabled() && bootScene._playFormDebugGfx && !bootScene._playFormDebugGfx.destroyed) {
+  if (dbgGfx) {
+    syncPlayFormationDebugOverlay(bootScene, layout, items, pfTune, '_playFormDebugGfx');
+  } else if (bootScene._playFormDebugGfx && !bootScene._playFormDebugGfx.destroyed) {
     bootScene._playFormDebugGfx.clear();
+  }
+
+  if (_perfT0) {
+    const formationShardCount = items.filter((it) => it.playFormation).length;
+    logPerfPlayFormSample({
+      collapseT: Math.round(collapseT),
+      formationShardCount,
+      debugOverlayActive: overlayWanted,
+      updateMs: Math.round(performance.now() - _perfT0),
+    });
   }
 }
 
@@ -1539,7 +1570,7 @@ export function extractPlayFormationShardsToHome(bootScene, homeScene) {
     homeScene._playFormationTailFinalized = false;
     homeScene._playFormationAllLockedAt = undefined;
     const dbg = getPlayFormationPresentationTuning();
-    if (dbg.showPlayFormation) {
+    if (playFormationDebugSurfaceEnabled() && dbg.showPlayFormation) {
       console.log('[PLAY_FORMATION:jlwm14]', {
         transferred: kept.length,
         collapseDurMs: homeScene.game.registry?.get?.(REG_BOOT_COLLAPSE_DUR_MS) ?? null,
@@ -1568,6 +1599,7 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
     homeScene._playFormHomeDebugGfx = null;
     return true;
   }
+  const _perfT0 = playFormationDebugSurfaceEnabled() ? performance.now() : 0;
   const tune = getPlayFormationPresentationTuning();
   const speedMul = Math.max(0.48, tune.playFormationSpeedMul);
   const regDur = homeScene.game.registry?.get?.(REG_BOOT_COLLAPSE_DUR_MS);
@@ -1723,13 +1755,9 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
   }
 
   const fdTail = tune;
-  if (
-    homeUrlDebugEnabled() &&
-    (fdTail.showFormationTargets ||
-      fdTail.showFormationLock ||
-      fdTail.highlightCenterCore ||
-      fdTail.showPlayFormationRoles)
-  ) {
+  const dbgSurface = playFormationDebugSurfaceEnabled();
+  const overlayTailWanted = playFormationDebugOverlayFlagsActive(fdTail);
+  if (dbgSurface && overlayTailWanted) {
     const W = homeScene.scale?.width ?? homeScene.sys?.game?.config?.width ?? 800;
     const H = homeScene.scale?.height ?? homeScene.sys?.game?.config?.height ?? 600;
     const L = getHomeLayout(W, H);
@@ -1741,8 +1769,22 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
       HOME_PLAY_NEUTRAL_START_FRAME,
     );
     syncPlayFormationDebugOverlay(homeScene, dbgLayout, items, fdTail, '_playFormHomeDebugGfx');
-  } else {
-    homeScene._playFormHomeDebugGfx?.clear?.();
+  } else if (homeScene._playFormHomeDebugGfx && !homeScene._playFormHomeDebugGfx.destroyed) {
+    try {
+      homeScene._playFormHomeDebugGfx.destroy();
+    } catch (_) {
+      /* ignore */
+    }
+    homeScene._playFormHomeDebugGfx = null;
+  }
+
+  if (_perfT0) {
+    logPerfPlayFormSample({
+      collapseT: Math.round(wallMs),
+      formationShardCount: items.filter((it) => it.playFormation).length,
+      debugOverlayActive: overlayTailWanted,
+      updateMs: Math.round(performance.now() - _perfT0),
+    });
   }
 
   return false;

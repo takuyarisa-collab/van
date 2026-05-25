@@ -4,6 +4,31 @@ export function homeUrlDebugEnabled() {
 }
 
 /**
+ * PLAY 形成のデバッグ描画・専用 console 等。
+ * `?debug=1` かつ index.html の `BOOT_DEBUG.debug` の両方が true のときだけ true（通常 URL は false）。
+ */
+export function playFormationDebugSurfaceEnabled() {
+  if (!homeUrlDebugEnabled()) return false;
+  if (typeof window === 'undefined') return false;
+  return Boolean(window.BOOT_DEBUG && window.BOOT_DEBUG.debug);
+}
+
+let _perfPlayFormLastLogMs = 0;
+const PERF_PLAY_FORM_LOG_INTERVAL_MS = 240;
+
+/**
+ * collapse〜Home PLAY 形成区間の軽い計測（?debug=1 かつ BOOT_DEBUG.debug のみ）。
+ * @param {{ collapseT: number, formationShardCount: number, debugOverlayActive: boolean, updateMs: number }} sample
+ */
+export function logPerfPlayFormSample(sample) {
+  if (!playFormationDebugSurfaceEnabled()) return;
+  const now = performance.now();
+  if (now - _perfPlayFormLastLogMs < PERF_PLAY_FORM_LOG_INTERVAL_MS) return;
+  _perfPlayFormLastLogMs = now;
+  console.log('[PERF_PLAY_FORM]', sample);
+}
+
+/**
  * PLAY 形成の見た目・URL 既定（通常: playFormationSlow=1 disableDefaultPlayPanel=1）。
  * ?debug=1 時: playFormationSpeed=N showFormationTargets showFormationLock highlightCenterCore（既定 1）showPlayFormationRoles（既定 1）等。
  *
@@ -86,7 +111,7 @@ export function getPlayFormationBootCollapseHandoffMul() {
 
 /** ?debug=1 時に PLAY 形成の URL 既定を一度だけ console に出す */
 export function logPlayFormationDebugParamsOnce(scene) {
-  if (!homeUrlDebugEnabled() || !scene || scene._playFormationDbgParamsLogged) return;
+  if (!playFormationDebugSurfaceEnabled() || !scene || scene._playFormationDbgParamsLogged) return;
   scene._playFormationDbgParamsLogged = true;
   const t = getPlayFormationPresentationTuning();
   console.log('[PLAY_FORMATION_DEBUG]', {
