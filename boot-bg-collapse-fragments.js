@@ -626,34 +626,79 @@ function _shardBbCompactness01(it) {
   return Math.min(w, h) / Math.max(w, h);
 }
 
+function _shardDisplayArea(it) {
+  const w = it?.img?.displayWidth;
+  const h = it?.img?.displayHeight;
+  if (!(typeof w === 'number' && w > 2 && typeof h === 'number' && h > 2)) return 0;
+  return w * h;
+}
+
 /** centerCore に極細長を割り当てない下限 */
 const PLAY_FORM_CORE_COMPACT_MIN = 0.14;
 
+/**
+ * PLAY 行外接幅（totalW）の 50〜70% 付近を覆える横長シャードを主面に選ぶ
+ * @param {object[]} formItems
+ * @param {number} playRowSpanW
+ */
+function pickPlayFormationCenterCore(formItems, playRowSpanW) {
+  const byMass = [...formItems].sort((a, b) => b.mass - a.mass);
+  if (!byMass.length) return null;
+  const span = typeof playRowSpanW === 'number' && playRowSpanW > 48 ? playRowSpanW : 0;
+  const compactOk = byMass.filter((c) => _shardBbCompactness01(c) >= PLAY_FORM_CORE_COMPACT_MIN);
+  const pool = compactOk.length ? compactOk : byMass;
+  if (!span) return pool[0];
+  const loW = span * 0.5;
+  const hiW = span * 0.7;
+  let best = pool[0];
+  let bestScore = -Infinity;
+  for (const c of pool) {
+    const w = typeof c.img?.displayWidth === 'number' && c.img.displayWidth > 2 ? c.img.displayWidth : 0;
+    const h = typeof c.img?.displayHeight === 'number' && c.img.displayHeight > 2 ? c.img.displayHeight : 1;
+    const horiz = w / Math.max(h, 1e-3);
+    let score = 0;
+    if (w >= loW && w <= hiW) {
+      score = 520 + w * 0.02 + Math.min(horiz, 2.4) * 42;
+    } else if (w < loW) {
+      score = 180 + w * 1.05 + (w / Math.max(loW, 1e-3)) * 88 + Math.min(horiz, 2.2) * 28;
+    } else {
+      score = 165 + hiW * 1.15 - (w - hiW) * 0.32 + Math.min(horiz, 2.2) * 22;
+    }
+    if (horiz >= 1.04) score += 26;
+    else if (horiz < 0.78) score -= 38;
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  return best;
+}
+
+/** 数値は段差 weight（center を翼より手前に） */
 const PLAY_FORM_ROLE_DEPTH = Object.freeze({
-  topCap: 0,
-  leftWing: 1,
-  centerCore: 2,
-  rightWing: 3,
-  bottomCap: 4,
+  topCap: 0.12,
+  bottomCap: 0.14,
+  leftWing: 1.32,
+  rightWing: 1.36,
+  centerCore: 2.58,
 });
 
-function assignPlayFormationRoles(formItems) {
+function assignPlayFormationRoles(formItems, playRowSpanW) {
   for (const it of formItems) delete it.playFormationRole;
   if (!formItems.length) return;
   const byMass = [...formItems].sort((a, b) => b.mass - a.mass);
-  let core = byMass[0];
-  for (const c of byMass) {
-    if (_shardBbCompactness01(c) >= PLAY_FORM_CORE_COMPACT_MIN) {
-      core = c;
-      break;
-    }
-  }
+  const core = pickPlayFormationCenterCore(formItems, playRowSpanW) ?? byMass[0];
   const pool = byMass.filter((x) => x !== core);
   pool.sort((a, b) => a.restX - b.restX || a.restY - b.restY || a.mass - b.mass);
   const leftWing = pool[0];
   const rightWing = pool[pool.length - 1];
   const mids = pool.slice(1, -1);
-  mids.sort((a, b) => a.mass - b.mass);
+  mids.sort((a, b) => {
+    const da = _shardDisplayArea(a);
+    const dba = _shardDisplayArea(b);
+    if (da !== dba) return da - dba;
+    return a.mass - b.mass;
+  });
   let topCap = null;
   let bottomCap = null;
   if (mids.length >= 2) {
@@ -727,7 +772,7 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
     bootScene._playFormationTargetsAssigned = true;
     return;
   }
-  assignPlayFormationRoles(form);
+  assignPlayFormationRoles(form, layout.totalW);
 
   const { panelL, panelT, panelW, panelH, textCx } = layout;
   const playCy = computePlayGlyphRowCenterY(layout);
@@ -739,8 +784,12 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
   const topC = form.find((x) => x.playFormationRole === 'topCap');
   const botC = form.find((x) => x.playFormationRole === 'bottomCap');
 
-  const olap = Phaser.Math.Clamp(12 + rnd() * 16, 12, 28);
-  const olapR = Phaser.Math.Clamp(12 + rnd() * 16, 12, 28);
+  const olap = Phaser.Math.Clamp(18 + rnd() * 18, 18, 36);
+  const olapR = Phaser.Math.Clamp(18 + rnd() * 18, 18, 36);
+  /** 翼内端を主面下へ少し潜らせ、接続感を出す */
+  const wingTuckY = 3 + rnd() * 5;
+  /** 外周を横長パネル寄りに：翼外端をわずかに張り出す */
+  const wingOutX = 3 + rnd() * 5;
 
   let ccX = textCx + (rnd() - 0.5) * 6;
   let ccY = playCy + (rnd() - 0.5) * 5;
@@ -753,7 +802,7 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
       it: core,
       tx: ccX,
       ty: ccY,
-      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 8),
+      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 6),
     });
   }
 
@@ -762,9 +811,9 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
     const { hw: cwh } = _playFormShardHalfSize(core);
     targets.push({
       it: leftW,
-      tx: ccX - cwh - lhw + olap,
-      ty: ccY + (rnd() - 0.5) * 12,
-      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 16),
+      tx: ccX - cwh - lhw + olap - wingOutX,
+      ty: ccY + wingTuckY + (rnd() - 0.5) * 6,
+      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 10),
     });
   }
 
@@ -773,37 +822,37 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
     const { hw: cwh2 } = _playFormShardHalfSize(core);
     targets.push({
       it: rightW,
-      tx: ccX + cwh2 + rhw - olapR,
-      ty: ccY + (rnd() - 0.5) * 12,
-      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 16),
+      tx: ccX + cwh2 + rhw - olapR + wingOutX,
+      ty: ccY + wingTuckY + (rnd() - 0.5) * 6,
+      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 10),
     });
   }
 
   if (topC && core) {
     const { hh: thh } = _playFormShardHalfSize(topC);
     const { hh: cchh } = _playFormShardHalfSize(core);
-    const overlapVert = 5 + rnd() * 9;
-    const rawTy = ccY - cchh - thh * 0.72 + overlapVert;
-    const ty = Phaser.Math.Clamp(rawTy, panelT + margin + thh * 0.45, ccY - cchh * 0.32);
+    const overlapVert = 6 + rnd() * 7;
+    const rawTy = ccY - cchh - thh * 0.56 + overlapVert;
+    const ty = Phaser.Math.Clamp(rawTy, panelT + margin + thh * 0.42, ccY - cchh * 0.36);
     targets.push({
       it: topC,
-      tx: ccX + (rnd() - 0.5) * panelW * 0.1,
+      tx: ccX + (rnd() - 0.5) * panelW * 0.08,
       ty,
-      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 10),
+      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 7),
     });
   }
 
   if (botC && core) {
     const { hh: bhh } = _playFormShardHalfSize(botC);
     const { hh: cchh2 } = _playFormShardHalfSize(core);
-    const overlapVertB = 5 + rnd() * 9;
-    const rawBy = ccY + cchh2 + bhh * 0.72 - overlapVertB;
-    const ty = Phaser.Math.Clamp(rawBy, ccY + cchh2 * 0.32, panelT + panelH - margin - bhh * 0.45);
+    const overlapVertB = 6 + rnd() * 7;
+    const rawBy = ccY + cchh2 + bhh * 0.56 - overlapVertB;
+    const ty = Phaser.Math.Clamp(rawBy, ccY + cchh2 * 0.36, panelT + panelH - margin - bhh * 0.42);
     targets.push({
       it: botC,
-      tx: ccX + (rnd() - 0.5) * panelW * 0.1,
+      tx: ccX + (rnd() - 0.5) * panelW * 0.08,
       ty,
-      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 10),
+      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 7),
     });
   }
 
@@ -1101,6 +1150,87 @@ export function activateBootBgCollapseShardPhysics(bootScene, faultBandSpec, epo
 }
 
 /**
+ * ?debug=1 時: 形成ターゲット・ロック・主面ハイライト・役割色分け
+ * @param {Phaser.Scene} scene
+ * @param {ReturnType<typeof computePlayPanelLayoutForShardFormation>|null|undefined} layout
+ * @param {object[]} items
+ * @param {ReturnType<typeof getPlayFormationPresentationTuning>} fd
+ * @param {string} [gfxProp='_playFormDebugGfx']
+ */
+function syncPlayFormationDebugOverlay(scene, layout, items, fd, gfxProp = '_playFormDebugGfx') {
+  if (!homeUrlDebugEnabled()) {
+    try {
+      scene[gfxProp]?.clear?.();
+    } catch (_) {
+      /* ignore */
+    }
+    return;
+  }
+  const want =
+    Boolean(fd.showFormationTargets) ||
+    Boolean(fd.showFormationLock) ||
+    Boolean(fd.highlightCenterCore) ||
+    Boolean(fd.showPlayFormationRoles);
+  let g = scene[gfxProp];
+  if (!want) {
+    g?.clear?.();
+    return;
+  }
+  if (!scene.add) return;
+  if (!g || g.destroyed) {
+    g = scene.add.graphics().setDepth(12000).setScrollFactor(0);
+    scene[gfxProp] = g;
+  }
+  g.clear();
+  const formItems = items.filter((it) => it.playFormation && typeof it.playTargetX === 'number');
+
+  if (layout && fd.showFormationTargets) {
+    g.lineStyle(1, 0x6cf0c8, 0.55);
+    for (const it of formItems) {
+      g.strokeCircle(it.playTargetX, it.playTargetY, 5);
+    }
+    g.lineStyle(1, 0xff8866, 0.35);
+    g.strokeRect(layout.panelL, layout.panelT, layout.panelW, layout.panelH);
+  }
+
+  if (fd.showPlayFormationRoles) {
+    const col = {
+      centerCore: 0xffcc66,
+      leftWing: 0x5cdbd0,
+      rightWing: 0x5ca0ff,
+      topCap: 0xaa88dd,
+      bottomCap: 0xcc88aa,
+    };
+    for (const it of formItems) {
+      const role = it.playFormationRole;
+      if (!role) continue;
+      const c = col[role] ?? 0xffffff;
+      const rad = role === 'centerCore' ? 12 : 8;
+      g.lineStyle(1.3, c, 0.72);
+      g.strokeCircle(it.playTargetX, it.playTargetY, rad);
+    }
+  }
+
+  if (fd.highlightCenterCore) {
+    const cc = formItems.find((x) => x.playFormationRole === 'centerCore');
+    if (cc && typeof cc.playTargetX === 'number') {
+      g.lineStyle(2.8, 0xffee66, 0.9);
+      g.strokeCircle(cc.playTargetX, cc.playTargetY, 24);
+    }
+  }
+
+  if (fd.showFormationLock) {
+    g.lineStyle(1.2, 0x9ad8ff, 0.72);
+    for (const it of formItems) {
+      if (!it.playFormationLocked) continue;
+      const cx = typeof it.playTargetX === 'number' ? it.playTargetX : it.px;
+      const cy = typeof it.playTargetY === 'number' ? it.playTargetY : it.py;
+      g.strokeRect(cx - 6, cy - 6, 12, 12);
+    }
+  }
+}
+
+/**
  * @param {Phaser.Scene} bootScene
  * @param {number} collapseT ms since collapse start
  * @param {number} dt
@@ -1334,52 +1464,40 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H, co
       db = Phaser.Math.Linear(0.94, 1.02, it.depth01);
       dContr = Phaser.Math.Linear(0.97, 1, it.depth01);
     }
-    const comb = Phaser.Math.Clamp(lb * db * dContr, 0.9, 1.04);
+    let roleLightMul = 1;
+    if (it.playFormation) {
+      const r = it.playFormationRole;
+      if (r === 'centerCore') roleLightMul = 1.045;
+      else if (r === 'leftWing' || r === 'rightWing') roleLightMul = 0.966;
+      else if (r === 'topCap' || r === 'bottomCap') roleLightMul = 0.925;
+    }
+    const comb = Phaser.Math.Clamp(lb * db * dContr * roleLightMul, 0.9, 1.055);
     const bi = Math.round(comb * 255);
     const tr = Phaser.Math.Clamp(Math.round(bi * 0.98), 0, 255);
     const tg = Phaser.Math.Clamp(Math.round(bi * 0.996), 0, 255);
     const tb = Phaser.Math.Clamp(Math.round(bi * 1.012), 0, 255);
     it.img.setTint((tr << 16) | (tg << 8) | tb);
 
+    const capAlphaMul =
+      it.playFormation && (it.playFormationRole === 'topCap' || it.playFormationRole === 'bottomCap')
+        ? 0.9
+        : 1;
+
     if (tune.solidAlpha) {
-      it.img.setAlpha(Phaser.Math.Clamp(depthA, 0.04, 1));
+      it.img.setAlpha(Phaser.Math.Clamp(depthA * capAlphaMul, 0.04, 1));
     } else if (homeUrlDebugEnabled()) {
       const pulse = 0.82 + Math.sin(collapseT * 0.003) * 0.06;
-      it.img.setAlpha(Phaser.Math.Clamp(pulse * depthA, 0.04, 1));
+      it.img.setAlpha(Phaser.Math.Clamp(pulse * depthA * capAlphaMul, 0.04, 1));
     } else {
       const minPieceA = Phaser.Math.Linear(0.62, 0.78, Phaser.Math.Clamp(uCrack * 1.25, 0, 1));
       const aPiece = Phaser.Math.Clamp(baseA, minPieceA, 1);
-      it.img.setAlpha(Phaser.Math.Clamp(aPiece * depthA, 0.04, 1));
+      it.img.setAlpha(Phaser.Math.Clamp(aPiece * depthA * capAlphaMul, 0.04, 1));
     }
   }
 
   const fd = getPlayFormationPresentationTuning();
-  if (layout && bootScene.add && (fd.showFormationTargets || fd.showFormationLock)) {
-    let g = bootScene._playFormDebugGfx;
-    if (!g || g.destroyed) {
-      g = bootScene.add.graphics().setDepth(12000).setScrollFactor(0);
-      bootScene._playFormDebugGfx = g;
-    }
-    g.clear();
-    const formItems = items.filter((it) => it.playFormation && typeof it.playTargetX === 'number');
-    if (fd.showFormationTargets) {
-      g.lineStyle(1, 0x6cf0c8, 0.55);
-      for (const it of formItems) {
-        g.strokeCircle(it.playTargetX, it.playTargetY, 5);
-      }
-      g.lineStyle(1, 0xff8866, 0.35);
-      g.strokeRect(layout.panelL, layout.panelT, layout.panelW, layout.panelH);
-    }
-    if (fd.showFormationLock) {
-      g.lineStyle(1.2, 0x9ad8ff, 0.72);
-      for (const it of formItems) {
-        if (!it.playFormationLocked) continue;
-        const cx = typeof it.playTargetX === 'number' ? it.playTargetX : it.px;
-        const cy = typeof it.playTargetY === 'number' ? it.playTargetY : it.py;
-        g.strokeRect(cx - 6, cy - 6, 12, 12);
-      }
-    }
-  } else if (bootScene._playFormDebugGfx && !bootScene._playFormDebugGfx.destroyed) {
+  syncPlayFormationDebugOverlay(bootScene, layout, items, fd, '_playFormDebugGfx');
+  if (!homeUrlDebugEnabled() && bootScene._playFormDebugGfx && !bootScene._playFormDebugGfx.destroyed) {
     bootScene._playFormDebugGfx.clear();
   }
 }
@@ -1441,7 +1559,15 @@ export function extractPlayFormationShardsToHome(bootScene, homeScene) {
  */
 export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
   const items = homeScene._playFormationShardItems;
-  if (!items?.length) return true;
+  if (!items?.length) {
+    try {
+      homeScene._playFormHomeDebugGfx?.destroy?.();
+    } catch (_) {
+      /* ignore */
+    }
+    homeScene._playFormHomeDebugGfx = null;
+    return true;
+  }
   const tune = getPlayFormationPresentationTuning();
   const speedMul = Math.max(0.48, tune.playFormationSpeedMul);
   const regDur = homeScene.game.registry?.get?.(REG_BOOT_COLLAPSE_DUR_MS);
@@ -1501,7 +1627,10 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
     }
 
     if (tune.disableDefaultPlayPanel) {
-      const shardA = Phaser.Math.Clamp(0.84 + 0.12 * easeInOutSine(cross * 0.42), 0.72, 0.97);
+      let shardA = Phaser.Math.Clamp(0.84 + 0.12 * easeInOutSine(cross * 0.42), 0.72, 0.97);
+      if (it.playFormationRole === 'topCap' || it.playFormationRole === 'bottomCap') {
+        shardA = Phaser.Math.Clamp(shardA * 0.92, 0.58, 0.86);
+      }
       it.img.setAlpha(shardA);
     } else {
       const shardA = Phaser.Math.Clamp(0.94 * (1 - cross * 0.88), 0.04, 1);
@@ -1559,6 +1688,12 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
 
   if (done) {
     try {
+      homeScene._playFormHomeDebugGfx?.destroy?.();
+    } catch (_) {
+      /* ignore */
+    }
+    homeScene._playFormHomeDebugGfx = null;
+    try {
       homeScene.game.registry.remove(REG_BOOT_COLLAPSE_DUR_MS);
     } catch (_) {
       /* ignore */
@@ -1586,6 +1721,30 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
     homeScene._playFormationShardBgActive = false;
     return true;
   }
+
+  const fdTail = tune;
+  if (
+    homeUrlDebugEnabled() &&
+    (fdTail.showFormationTargets ||
+      fdTail.showFormationLock ||
+      fdTail.highlightCenterCore ||
+      fdTail.showPlayFormationRoles)
+  ) {
+    const W = homeScene.scale?.width ?? homeScene.sys?.game?.config?.width ?? 800;
+    const H = homeScene.scale?.height ?? homeScene.sys?.game?.config?.height ?? 600;
+    const L = getHomeLayout(W, H);
+    const disp = getHomeUrlBgDisplayOverrides();
+    const dbgLayout = computePlayPanelLayoutForShardFormation(
+      homeScene,
+      L,
+      disp,
+      HOME_PLAY_NEUTRAL_START_FRAME,
+    );
+    syncPlayFormationDebugOverlay(homeScene, dbgLayout, items, fdTail, '_playFormHomeDebugGfx');
+  } else {
+    homeScene._playFormHomeDebugGfx?.clear?.();
+  }
+
   return false;
 }
 

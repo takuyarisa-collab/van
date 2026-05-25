@@ -330,6 +330,12 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this._playFormationPhysicsDoneWall = undefined;
         this._playFormationTailFinalized = false;
         this._playFormationAllLockedAt = undefined;
+        try {
+          this._playFormHomeDebugGfx?.destroy?.();
+        } catch (_) {
+          /* ignore */
+        }
+        this._playFormHomeDebugGfx = null;
         [
           this._startA, this._startP, this._startL, this._startV, this._startY,
         ].forEach((o) => o?.destroy?.());

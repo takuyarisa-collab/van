@@ -5,7 +5,7 @@ export function homeUrlDebugEnabled() {
 
 /**
  * PLAY 形成の見た目・URL 既定（通常: playFormationSlow=1 disableDefaultPlayPanel=1）。
- * ?debug=1 時: playFormationSpeed=N showFormationTargets=1 showFormationLock=1 等。
+ * ?debug=1 時: playFormationSpeed=N showFormationTargets showFormationLock highlightCenterCore（既定 1）showPlayFormationRoles（既定 1）等。
  *
  * @returns {{
  *   playFormationSlow: boolean,
@@ -15,6 +15,8 @@ export function homeUrlDebugEnabled() {
  *   showPlayFormation: boolean,
  *   showFormationTargets: boolean,
  *   showFormationLock: boolean,
+ *   highlightCenterCore: boolean,
+ *   showPlayFormationRoles: boolean,
  * }}
  */
 export function getPlayFormationPresentationTuning() {
@@ -29,6 +31,8 @@ export function getPlayFormationPresentationTuning() {
       showPlayFormation: false,
       showFormationTargets: false,
       showFormationLock: false,
+      highlightCenterCore: false,
+      showPlayFormationRoles: false,
     };
   }
   const dbg = homeUrlDebugEnabled();
@@ -46,12 +50,16 @@ export function getPlayFormationPresentationTuning() {
   let showFormationTargets = false;
   let showFormationLock = false;
   let playFormationOvershoot = false;
+  let highlightCenterCore = false;
+  let showPlayFormationRoles = false;
   if (dbg) {
     showPlayFormation = getB('showPlayFormation', false);
     showFormationTargets =
       getB('showPlayFormationTargets', false) || getB('showFormationTargets', false);
     showFormationLock = getB('showFormationLock', false);
     playFormationOvershoot = getB('playFormationOvershoot', false);
+    highlightCenterCore = getB('highlightCenterCore', true);
+    showPlayFormationRoles = getB('showPlayFormationRoles', true);
   }
   return {
     playFormationSlow,
@@ -61,6 +69,8 @@ export function getPlayFormationPresentationTuning() {
     showPlayFormation,
     showFormationTargets,
     showFormationLock,
+    highlightCenterCore,
+    showPlayFormationRoles,
   };
 }
 
@@ -84,6 +94,8 @@ export function logPlayFormationDebugParamsOnce(scene) {
     playFormationOvershoot: t.playFormationOvershoot ? 1 : 0,
     showFormationLock: t.showFormationLock ? 1 : 0,
     showFormationTargets: t.showFormationTargets ? 1 : 0,
+    highlightCenterCore: t.highlightCenterCore ? 1 : 0,
+    showPlayFormationRoles: t.showPlayFormationRoles ? 1 : 0,
     playFormationSlow: t.playFormationSlow,
     disableDefaultPlayPanel: t.disableDefaultPlayPanel,
   });
