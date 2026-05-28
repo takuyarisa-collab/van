@@ -614,9 +614,10 @@ function computePlayGlyphRowCenterY(layout) {
 function _playFormShardHalfSize(it) {
   const w = it?.img?.displayWidth;
   const h = it?.img?.displayHeight;
+  const roleScale = _playFormRoleScale(it?.playFormationRole);
   const hw = typeof w === 'number' && w > 4 ? w * 0.5 : 40;
   const hh = typeof h === 'number' && h > 4 ? h * 0.5 : 40;
-  return { hw, hh };
+  return { hw: hw * roleScale.x, hh: hh * roleScale.y };
 }
 
 /** min(w,h)/max(w,h) — 極細長ほど小さい */
@@ -632,6 +633,32 @@ function _shardDisplayArea(it) {
   const h = it?.img?.displayHeight;
   if (!(typeof w === 'number' && w > 2 && typeof h === 'number' && h > 2)) return 0;
   return w * h;
+}
+
+const PLAY_FORM_ROLE_SCALE = Object.freeze({
+  centerCore: { x: 1.14, y: 0.96 },
+  leftWing: { x: 1.05, y: 0.88 },
+  rightWing: { x: 1.05, y: 0.88 },
+  topCap: { x: 1.08, y: 0.7 },
+  bottomCap: { x: 1.12, y: 0.72 },
+});
+
+function _playFormRoleScale(role) {
+  return PLAY_FORM_ROLE_SCALE[role] ?? { x: 1, y: 1 };
+}
+
+function _playFormRoleLightMul(role) {
+  if (role === 'centerCore') return 1.072;
+  if (role === 'leftWing' || role === 'rightWing') return 0.948;
+  if (role === 'topCap' || role === 'bottomCap') return 0.91;
+  return 1;
+}
+
+function _playFormRoleAlphaMul(role) {
+  if (role === 'centerCore') return 1.035;
+  if (role === 'leftWing' || role === 'rightWing') return 0.94;
+  if (role === 'topCap' || role === 'bottomCap') return 0.88;
+  return 1;
 }
 
 /** centerCore に極細長を割り当てない下限 */
@@ -785,15 +812,13 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
   const topC = form.find((x) => x.playFormationRole === 'topCap');
   const botC = form.find((x) => x.playFormationRole === 'bottomCap');
 
-  const olap = Phaser.Math.Clamp(18 + rnd() * 18, 18, 36);
-  const olapR = Phaser.Math.Clamp(18 + rnd() * 18, 18, 36);
-  /** 翼内端を主面下へ少し潜らせ、接続感を出す */
-  const wingTuckY = 3 + rnd() * 5;
-  /** 外周を横長パネル寄りに：翼外端をわずかに張り出す */
-  const wingOutX = 3 + rnd() * 5;
+  const olap = Phaser.Math.Clamp(26 + rnd() * 18, 26, 44);
+  const olapR = Phaser.Math.Clamp(26 + rnd() * 18, 26, 44);
+  /** 補修板を主面へ噛ませつつ、外周は横長ボタン寄りに広げる。 */
+  const wingOutX = 8 + rnd() * 8;
 
   let ccX = textCx + (rnd() - 0.5) * 6;
-  let ccY = playCy + (rnd() - 0.5) * 5;
+  let ccY = playCy + (rnd() - 0.5) * 3;
 
   /** @type {{ it: object, tx: number, ty: number, rot: number }[]} */
   const targets = [];
@@ -803,57 +828,65 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
       it: core,
       tx: ccX,
       ty: ccY,
-      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 6),
+      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 4),
     });
   }
 
   if (leftW && core) {
-    const { hw: lhw } = _playFormShardHalfSize(leftW);
-    const { hw: cwh } = _playFormShardHalfSize(core);
+    const { hw: lhw, hh: lhh } = _playFormShardHalfSize(leftW);
+    const { hw: cwh, hh: cchh } = _playFormShardHalfSize(core);
+    const baseBottom = ccY + cchh;
     targets.push({
       it: leftW,
       tx: ccX - cwh - lhw + olap - wingOutX,
-      ty: ccY + wingTuckY + (rnd() - 0.5) * 6,
-      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 10),
+      ty: baseBottom - lhh + (rnd() - 0.5) * 3,
+      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 5),
     });
   }
 
   if (rightW && core) {
-    const { hw: rhw } = _playFormShardHalfSize(rightW);
-    const { hw: cwh2 } = _playFormShardHalfSize(core);
+    const { hw: rhw, hh: rhh } = _playFormShardHalfSize(rightW);
+    const { hw: cwh2, hh: cchh2 } = _playFormShardHalfSize(core);
+    const baseBottom = ccY + cchh2;
     targets.push({
       it: rightW,
       tx: ccX + cwh2 + rhw - olapR + wingOutX,
-      ty: ccY + wingTuckY + (rnd() - 0.5) * 6,
-      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 10),
+      ty: baseBottom - rhh + (rnd() - 0.5) * 3,
+      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 5),
     });
   }
 
   if (topC && core) {
     const { hh: thh } = _playFormShardHalfSize(topC);
-    const { hh: cchh } = _playFormShardHalfSize(core);
-    const overlapVert = 6 + rnd() * 7;
-    const rawTy = ccY - cchh - thh * 0.56 + overlapVert;
-    const ty = Phaser.Math.Clamp(rawTy, panelT + margin + thh * 0.42, ccY - cchh * 0.36);
+    const { hw: cwh, hh: cchh } = _playFormShardHalfSize(core);
+    const coreTop = ccY - cchh;
+    const topTrim = 2 + rnd() * 4;
+    const rawTy = coreTop + thh - topTrim;
+    const seamSide = rnd() < 0.5 ? -1 : 1;
+    const tx = ccX + seamSide * (cwh * 0.28 + rnd() * panelW * 0.035);
+    const ty = Phaser.Math.Clamp(rawTy, panelT + margin + thh, ccY - cchh * 0.08);
     targets.push({
       it: topC,
-      tx: ccX + (rnd() - 0.5) * panelW * 0.08,
+      tx,
       ty,
-      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 7),
+      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 4.8),
     });
   }
 
   if (botC && core) {
     const { hh: bhh } = _playFormShardHalfSize(botC);
-    const { hh: cchh2 } = _playFormShardHalfSize(core);
-    const overlapVertB = 6 + rnd() * 7;
-    const rawBy = ccY + cchh2 + bhh * 0.56 - overlapVertB;
-    const ty = Phaser.Math.Clamp(rawBy, ccY + cchh2 * 0.36, panelT + panelH - margin - bhh * 0.42);
+    const { hw: cwh2, hh: cchh2 } = _playFormShardHalfSize(core);
+    const coreBottom = ccY + cchh2;
+    const bottomDrift = (rnd() - 0.2) * 3;
+    const rawBy = coreBottom + bottomDrift - bhh;
+    const seamSide = rnd() < 0.5 ? -1 : 1;
+    const tx = ccX + seamSide * (cwh2 * 0.22 + rnd() * panelW * 0.03);
+    const ty = Phaser.Math.Clamp(rawBy, ccY + cchh2 * 0.08, panelT + panelH - margin - bhh);
     targets.push({
       it: botC,
-      tx: ccX + (rnd() - 0.5) * panelW * 0.08,
+      tx,
       ty,
-      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 7),
+      rot: Phaser.Math.DegToRad((rnd() - 0.5) * 4.4),
     });
   }
 
@@ -1468,7 +1501,8 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H, co
 
     const depthA = vis.shardDepthFade ? Phaser.Math.Linear(0.76, 1, it.depth01) : 1;
     const depthScale = vis.shardDepthFade ? Phaser.Math.Linear(0.982, 1.048, it.depth01) : 1;
-    it.container.setScale(depthScale);
+    const roleScale = it.playFormation ? _playFormRoleScale(it.playFormationRole) : { x: 1, y: 1 };
+    it.container.setScale(depthScale * roleScale.x, depthScale * roleScale.y);
 
     let lb = 1;
     if (vis.shardLighting) {
@@ -1485,34 +1519,25 @@ export function updateBootBgCollapseFragments(bootScene, collapseT, dt, W, H, co
       db = Phaser.Math.Linear(0.94, 1.02, it.depth01);
       dContr = Phaser.Math.Linear(0.97, 1, it.depth01);
     }
-    let roleLightMul = 1;
-    if (it.playFormation) {
-      const r = it.playFormationRole;
-      if (r === 'centerCore') roleLightMul = 1.045;
-      else if (r === 'leftWing' || r === 'rightWing') roleLightMul = 0.966;
-      else if (r === 'topCap' || r === 'bottomCap') roleLightMul = 0.925;
-    }
-    const comb = Phaser.Math.Clamp(lb * db * dContr * roleLightMul, 0.9, 1.055);
+    const roleLightMul = it.playFormation ? _playFormRoleLightMul(it.playFormationRole) : 1;
+    const comb = Phaser.Math.Clamp(lb * db * dContr * roleLightMul, 0.9, 1.075);
     const bi = Math.round(comb * 255);
     const tr = Phaser.Math.Clamp(Math.round(bi * 0.98), 0, 255);
     const tg = Phaser.Math.Clamp(Math.round(bi * 0.996), 0, 255);
     const tb = Phaser.Math.Clamp(Math.round(bi * 1.012), 0, 255);
     it.img.setTint((tr << 16) | (tg << 8) | tb);
 
-    const capAlphaMul =
-      it.playFormation && (it.playFormationRole === 'topCap' || it.playFormationRole === 'bottomCap')
-        ? 0.9
-        : 1;
+    const roleAlphaMul = it.playFormation ? _playFormRoleAlphaMul(it.playFormationRole) : 1;
 
     if (tune.solidAlpha) {
-      it.img.setAlpha(Phaser.Math.Clamp(depthA * capAlphaMul, 0.04, 1));
+      it.img.setAlpha(Phaser.Math.Clamp(depthA * roleAlphaMul, 0.04, 1));
     } else if (playFormationDebugSurfaceEnabled()) {
       const pulse = 0.82 + Math.sin(collapseT * 0.003) * 0.06;
-      it.img.setAlpha(Phaser.Math.Clamp(pulse * depthA * capAlphaMul, 0.04, 1));
+      it.img.setAlpha(Phaser.Math.Clamp(pulse * depthA * roleAlphaMul, 0.04, 1));
     } else {
       const minPieceA = Phaser.Math.Linear(0.62, 0.78, Phaser.Math.Clamp(uCrack * 1.25, 0, 1));
       const aPiece = Phaser.Math.Clamp(baseA, minPieceA, 1);
-      it.img.setAlpha(Phaser.Math.Clamp(aPiece * depthA * capAlphaMul, 0.04, 1));
+      it.img.setAlpha(Phaser.Math.Clamp(aPiece * depthA * roleAlphaMul, 0.04, 1));
     }
   }
 
@@ -1658,11 +1683,12 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
       it.container.setRotation(it.pr);
     }
 
+    const roleScale = _playFormRoleScale(it.playFormationRole);
+    it.container.setScale(roleScale.x, roleScale.y);
+
     if (tune.disableDefaultPlayPanel) {
       let shardA = Phaser.Math.Clamp(0.84 + 0.12 * easeInOutSine(cross * 0.42), 0.72, 0.97);
-      if (it.playFormationRole === 'topCap' || it.playFormationRole === 'bottomCap') {
-        shardA = Phaser.Math.Clamp(shardA * 0.92, 0.58, 0.86);
-      }
+      shardA = Phaser.Math.Clamp(shardA * _playFormRoleAlphaMul(it.playFormationRole), 0.58, 0.99);
       it.img.setAlpha(shardA);
     } else {
       const shardA = Phaser.Math.Clamp(0.94 * (1 - cross * 0.88), 0.04, 1);
