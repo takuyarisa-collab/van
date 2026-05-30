@@ -43,6 +43,10 @@ export function logPerfPlayFormSample(sample) {
  *   showFormationLock: boolean,
  *   highlightCenterCore: boolean,
  *   showPlayFormationRoles: boolean,
+ *   showPlayButtonMask: boolean,
+ *   showRepairPatches: boolean,
+ *   disableRepairMask: boolean,
+ *   disableRepairPatches: boolean,
  * }}
  */
 export function getPlayFormationPresentationTuning() {
@@ -59,6 +63,10 @@ export function getPlayFormationPresentationTuning() {
       showFormationLock: false,
       highlightCenterCore: false,
       showPlayFormationRoles: false,
+      showPlayButtonMask: false,
+      showRepairPatches: false,
+      disableRepairMask: false,
+      disableRepairPatches: false,
     };
   }
   const dbg = homeUrlDebugEnabled();
@@ -78,6 +86,10 @@ export function getPlayFormationPresentationTuning() {
   let playFormationOvershoot = false;
   let highlightCenterCore = false;
   let showPlayFormationRoles = false;
+  let showPlayButtonMask = false;
+  let showRepairPatches = false;
+  let disableRepairMask = false;
+  let disableRepairPatches = false;
   if (dbg) {
     showPlayFormation = getB('showPlayFormation', false);
     showFormationTargets =
@@ -86,6 +98,10 @@ export function getPlayFormationPresentationTuning() {
     playFormationOvershoot = getB('playFormationOvershoot', false);
     highlightCenterCore = getB('highlightCenterCore', true);
     showPlayFormationRoles = getB('showPlayFormationRoles', true);
+    showPlayButtonMask = getB('showPlayButtonMask', false);
+    showRepairPatches = getB('showRepairPatches', false);
+    disableRepairMask = getB('disableRepairMask', false);
+    disableRepairPatches = getB('disableRepairPatches', false);
   }
   return {
     playFormationSlow,
@@ -97,6 +113,10 @@ export function getPlayFormationPresentationTuning() {
     showFormationLock,
     highlightCenterCore,
     showPlayFormationRoles,
+    showPlayButtonMask,
+    showRepairPatches,
+    disableRepairMask,
+    disableRepairPatches,
   };
 }
 
@@ -122,6 +142,10 @@ export function logPlayFormationDebugParamsOnce(scene) {
     showFormationTargets: t.showFormationTargets ? 1 : 0,
     highlightCenterCore: t.highlightCenterCore ? 1 : 0,
     showPlayFormationRoles: t.showPlayFormationRoles ? 1 : 0,
+    showPlayButtonMask: t.showPlayButtonMask ? 1 : 0,
+    showRepairPatches: t.showRepairPatches ? 1 : 0,
+    disableRepairMask: t.disableRepairMask ? 1 : 0,
+    disableRepairPatches: t.disableRepairPatches ? 1 : 0,
     playFormationSlow: t.playFormationSlow,
     disableDefaultPlayPanel: t.disableDefaultPlayPanel,
   });
