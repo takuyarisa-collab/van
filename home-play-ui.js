@@ -223,7 +223,7 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
   const shardPlayBg =
     pf.disableDefaultPlayPanel !== false &&
     (Boolean(scene._playFormationShardItems?.length) || Boolean(scene._playFormationShardBgActive));
-  const glyphReadMul = shardPlayBg ? 1.18 : 1;
+  const glyphReadMul = shardPlayBg ? 1.28 : 1;
   let alphaPlay = Math.min(
     1,
     lrPanel * flashMul * sf.alpha * rBase * bgPr * formMul,
@@ -283,6 +283,7 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
     const extraRot = applyFrameRot ? sf.rotation : 0;
     img.setRotation(Phaser.Math.DegToRad(rotDeg + extraRot));
     img.setAlpha(alpha);
+    img.setTint(shardPlayBg ? 0xfff3e8 : 0xffffff);
   };
 
   let xCursor = textCx - totalW * 0.5;
@@ -300,7 +301,8 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
     playCy + (scene._startYBaselineOffset ?? 0),
   );
   const yGlyphBase = scene._startYGlyphAlpha ?? 1;
-  const yAlphaExtra = shardPlayBg ? 1.16 : 1;
+  const yAlphaExtra = shardPlayBg ? 1.22 : 1;
+  scene._startY.setColor(shardPlayBg ? '#ff7470' : '#ff5a5a');
   scene._startY.setAlpha(alphaY * yGlyphBase * yAlphaExtra);
 
   placeGlyph(scene._startV, triCx, triCy, gS, gSy, -90, 0x492210, alphaV, false);

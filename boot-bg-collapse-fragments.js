@@ -640,11 +640,11 @@ function _shardDisplayArea(it) {
 }
 
 const PLAY_FORM_ROLE_SCALE = Object.freeze({
-  centerCore: { x: 1.14, y: 0.96 },
-  leftWing: { x: 1.05, y: 0.88 },
-  rightWing: { x: 1.05, y: 0.88 },
-  topCap: { x: 1.08, y: 0.7 },
-  bottomCap: { x: 1.12, y: 0.72 },
+  centerCore: { x: 2.08, y: 1.28 },
+  leftWing: { x: 1.34, y: 1.04 },
+  rightWing: { x: 1.34, y: 1.04 },
+  topCap: { x: 1.24, y: 0.82 },
+  bottomCap: { x: 1.28, y: 0.84 },
 });
 
 function _playFormRoleScale(role) {
@@ -652,21 +652,21 @@ function _playFormRoleScale(role) {
 }
 
 function _playFormRoleLightMul(role) {
-  if (role === 'centerCore') return 1.072;
-  if (role === 'leftWing' || role === 'rightWing') return 0.948;
-  if (role === 'topCap' || role === 'bottomCap') return 0.91;
+  if (role === 'centerCore') return 1.09;
+  if (role === 'leftWing' || role === 'rightWing') return 0.968;
+  if (role === 'topCap' || role === 'bottomCap') return 0.928;
   return 1;
 }
 
 function _playFormRoleAlphaMul(role) {
-  if (role === 'centerCore') return 1.035;
-  if (role === 'leftWing' || role === 'rightWing') return 0.94;
-  if (role === 'topCap' || role === 'bottomCap') return 0.88;
+  if (role === 'centerCore') return 1.08;
+  if (role === 'leftWing' || role === 'rightWing') return 0.968;
+  if (role === 'topCap' || role === 'bottomCap') return 0.9;
   return 1;
 }
 
 /** centerCore に極細長を割り当てない下限 */
-const PLAY_FORM_CORE_COMPACT_MIN = 0.14;
+const PLAY_FORM_CORE_COMPACT_MIN = 0.18;
 
 /**
  * PLAY 行外接幅（totalW）の 50〜70% 付近を覆える横長シャードを主面に選ぶ
@@ -816,10 +816,10 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
   const topC = form.find((x) => x.playFormationRole === 'topCap');
   const botC = form.find((x) => x.playFormationRole === 'bottomCap');
 
-  const olap = Phaser.Math.Clamp(26 + rnd() * 18, 26, 44);
-  const olapR = Phaser.Math.Clamp(26 + rnd() * 18, 26, 44);
-  /** 補修板を主面へ噛ませつつ、外周は横長ボタン寄りに広げる。 */
-  const wingOutX = 8 + rnd() * 8;
+  const olap = Phaser.Math.Clamp(70 + rnd() * 28, 70, 98);
+  const olapR = Phaser.Math.Clamp(70 + rnd() * 28, 70, 98);
+  /** 補修板は主面に深く重ね、端だけを横長ボタン外周の欠けとして使う。 */
+  const wingOutX = 2 + rnd() * 5;
 
   let ccX = textCx + (rnd() - 0.5) * 6;
   let ccY = playCy + (rnd() - 0.5) * 3;
@@ -839,11 +839,11 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
   if (leftW && core) {
     const { hw: lhw, hh: lhh } = _playFormShardHalfSize(leftW);
     const { hw: cwh, hh: cchh } = _playFormShardHalfSize(core);
-    const baseBottom = ccY + cchh;
+    const wingOverlap = Math.min(cwh * 0.64, olap);
     targets.push({
       it: leftW,
-      tx: ccX - cwh - lhw + olap - wingOutX,
-      ty: baseBottom - lhh + (rnd() - 0.5) * 3,
+      tx: ccX - cwh - lhw + wingOverlap - wingOutX,
+      ty: ccY + cchh * 0.08 + (rnd() - 0.5) * Math.min(7, lhh * 0.18),
       rot: Phaser.Math.DegToRad((rnd() - 0.5) * 5),
     });
   }
@@ -851,11 +851,11 @@ function ensurePlayFormationTargetsAssigned(bootScene, items, layout, rnd) {
   if (rightW && core) {
     const { hw: rhw, hh: rhh } = _playFormShardHalfSize(rightW);
     const { hw: cwh2, hh: cchh2 } = _playFormShardHalfSize(core);
-    const baseBottom = ccY + cchh2;
+    const wingOverlap = Math.min(cwh2 * 0.64, olapR);
     targets.push({
       it: rightW,
-      tx: ccX + cwh2 + rhw - olapR + wingOutX,
-      ty: baseBottom - rhh + (rnd() - 0.5) * 3,
+      tx: ccX + cwh2 + rhw - wingOverlap + wingOutX,
+      ty: ccY + cchh2 * 0.08 + (rnd() - 0.5) * Math.min(7, rhh * 0.18),
       rot: Phaser.Math.DegToRad((rnd() - 0.5) * 5),
     });
   }
