@@ -223,7 +223,7 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
   const shardPlayBg =
     pf.disableDefaultPlayPanel !== false &&
     (Boolean(scene._playFormationShardItems?.length) || Boolean(scene._playFormationShardBgActive));
-  const glyphReadMul = shardPlayBg ? 1.1 : 1;
+  const glyphReadMul = shardPlayBg ? 1.18 : 1;
   let alphaPlay = Math.min(
     1,
     lrPanel * flashMul * sf.alpha * rBase * bgPr * formMul,
@@ -300,13 +300,13 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
     playCy + (scene._startYBaselineOffset ?? 0),
   );
   const yGlyphBase = scene._startYGlyphAlpha ?? 1;
-  const yAlphaExtra = shardPlayBg ? 1.1 : 1;
+  const yAlphaExtra = shardPlayBg ? 1.16 : 1;
   scene._startY.setAlpha(alphaY * yGlyphBase * yAlphaExtra);
 
   placeGlyph(scene._startV, triCx, triCy, gS, gSy, -90, 0x492210, alphaV, false);
 
-  const zGlyphRow = shardPlayBg ? 11.42 : 11;
-  const zTriGlyph = shardPlayBg ? 12.24 : 12;
+  const zGlyphRow = shardPlayBg ? 11.86 : 11;
+  const zTriGlyph = shardPlayBg ? 12.48 : 12;
   scene._startP.setDepth(zGlyphRow);
   scene._startL.setDepth(zGlyphRow);
   scene._startA.setDepth(zGlyphRow);

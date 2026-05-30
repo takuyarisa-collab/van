@@ -15,6 +15,10 @@ import {
   computePlayPanelLayoutForShardFormation,
   HOME_PLAY_NEUTRAL_START_FRAME,
 } from './home-play-ui.js';
+import {
+  destroyPlayRepairButton,
+  syncPlayRepairButton,
+} from './home-play-repair.js';
 import { getHomeLayout } from './home-layout.js';
 import { getHomeUrlBgDisplayOverrides } from './home-bg-panels.js';
 
@@ -1196,7 +1200,9 @@ function playFormationDebugOverlayFlagsActive(fd) {
     fd.showFormationTargets ||
       fd.showFormationLock ||
       fd.highlightCenterCore ||
-      fd.showPlayFormationRoles,
+      fd.showPlayFormationRoles ||
+      fd.showPlayButtonMask ||
+      fd.showRepairPatches,
   );
 }
 
@@ -1616,6 +1622,7 @@ export function extractPlayFormationShardsToHome(bootScene, homeScene) {
 export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
   const items = homeScene._playFormationShardItems;
   if (!items?.length) {
+    destroyPlayRepairButton(homeScene);
     try {
       homeScene._playFormHomeDebugGfx?.destroy?.();
     } catch (_) {
@@ -1732,9 +1739,32 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
     typeof homeScene._playFormationAllLockedAt === 'number' &&
     wallMs - homeScene._playFormationAllLockedAt >= settleHoldMs;
 
+  const repairStartMs =
+    typeof homeScene._playFormationAllLockedAt === 'number'
+      ? homeScene._playFormationAllLockedAt + Math.max(0, settleHoldMs - 40)
+      : Infinity;
+  const repairStrength = tune.disableDefaultPlayPanel
+    ? smoothstep01((wallMs - repairStartMs) / 220)
+    : cross;
+
+  let repairLayout = null;
+  if (tune.disableDefaultPlayPanel) {
+    const W = homeScene.scale?.width ?? homeScene.sys?.game?.config?.width ?? 800;
+    const H = homeScene.scale?.height ?? homeScene.sys?.game?.config?.height ?? 600;
+    const L = getHomeLayout(W, H);
+    const disp = getHomeUrlBgDisplayOverrides();
+    repairLayout = computePlayPanelLayoutForShardFormation(
+      homeScene,
+      L,
+      disp,
+      HOME_PLAY_NEUTRAL_START_FRAME,
+    );
+    syncPlayRepairButton(homeScene, repairLayout, items, repairStrength, tune);
+  }
+
   let done = false;
   if (tune.disableDefaultPlayPanel) {
-    done = allLocked && lockedLong && nWall >= 0.4;
+    done = allLocked && lockedLong && nWall >= 0.4 && repairStrength >= 0.985;
   } else {
     done = nWall >= 1.12 || (nWall >= 0.96 && maxErr < 16);
   }
@@ -1742,6 +1772,7 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
   if (done && tune.disableDefaultPlayPanel && !homeScene._playFormationTailFinalized) {
     homeScene._playFormationTailFinalized = true;
     homeScene._playFormationPanelRevealMul = 0.09;
+    if (repairLayout) syncPlayRepairButton(homeScene, repairLayout, items, 1, tune);
   }
 
   if (done) {

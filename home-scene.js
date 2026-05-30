@@ -17,6 +17,7 @@ import {
   runBootToHomeOverlapRebuild,
 } from './home-overlap-rebuild.js';
 import { updatePlayFormationShardTail } from './boot-bg-collapse-fragments.js';
+import { destroyPlayRepairButton } from './home-play-repair.js';
 
 /**
  * @param {number} WORLD_W
@@ -330,6 +331,7 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this._playFormationPhysicsDoneWall = undefined;
         this._playFormationTailFinalized = false;
         this._playFormationAllLockedAt = undefined;
+        destroyPlayRepairButton(this);
         try {
           this._playFormHomeDebugGfx?.destroy?.();
         } catch (_) {
