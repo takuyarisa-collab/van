@@ -16,6 +16,7 @@ import {
   HOME_PLAY_NEUTRAL_START_FRAME,
 } from './home-play-ui.js';
 import {
+  computePlayRepairButtonRect,
   destroyPlayRepairButton,
   syncPlayRepairButton,
 } from './home-play-repair.js';
@@ -1202,7 +1203,9 @@ function playFormationDebugOverlayFlagsActive(fd) {
       fd.highlightCenterCore ||
       fd.showPlayFormationRoles ||
       fd.showPlayButtonMask ||
-      fd.showRepairPatches,
+      fd.showRepairPatches ||
+      fd.showRepairProcessing ||
+      fd.showEdgeCracks,
   );
 }
 
@@ -1612,6 +1615,68 @@ export function extractPlayFormationShardsToHome(bootScene, homeScene) {
   bootScene._bootBgCollapseFragItems = items.filter((it) => !it.extractedToHome);
 }
 
+function repairPhaseMsFromItems(items, dur) {
+  const b = typeof items?.[0]?.bandBias === 'number' ? items[0].bandBias : 0.41;
+  const n = Math.abs(Math.sin(b * 19.37 + dur * 0.0013));
+  return 180 + n * 140;
+}
+
+function repairProgress01(wallMs, startMs, spanMs) {
+  if (typeof startMs !== 'number' || !Number.isFinite(startMs)) return 0;
+  return Phaser.Math.Clamp((wallMs - startMs) / Math.max(1, spanMs), 0, 1);
+}
+
+function repairCrackReveal01(wallMs, startMs, spanMs) {
+  if (typeof startMs !== 'number' || !Number.isFinite(startMs)) return 0;
+  return smoothstep01((wallMs - (startMs + spanMs)) / 170);
+}
+
+function ensurePlayRepairNudgeTargets(homeScene, items, rect) {
+  if (!homeScene || !items?.length || !rect) return;
+  const key = [
+    Math.round(rect.cx),
+    Math.round(rect.cy),
+    Math.round(rect.w),
+    Math.round(rect.h),
+    items.length,
+  ].join(':');
+  if (homeScene._playRepairNudgeKey === key) return;
+  homeScene._playRepairNudgeKey = key;
+  const roles = ['centerCore', 'leftWing', 'rightWing', 'topCap', 'bottomCap'];
+  for (const it of items) {
+    if (typeof it.playTargetX !== 'number' || typeof it.playTargetY !== 'number') continue;
+    const roleIdx = Math.max(0, roles.indexOf(it.playFormationRole));
+    const seed =
+      (roleIdx + 1) * 17.13 +
+      (typeof it.bandBias === 'number' ? it.bandBias * 31 : 0) +
+      (typeof it.restX === 'number' ? it.restX * 0.003 : 0);
+    const rnd = Math.abs(Math.sin(seed * 12.9898 + 78.233));
+    const amount = 1 + (rnd - Math.floor(rnd)) * 3;
+    const dx = it.playTargetX - rect.cx;
+    const dy = it.playTargetY - rect.cy;
+    const ax = Math.abs(dx) / Math.max(1, rect.w * 0.5);
+    const ay = Math.abs(dy) / Math.max(1, rect.h * 0.5);
+    const inwardX = ax > 0.28 ? -Math.sign(dx) * amount : (rnd - 0.5) * 1.2;
+    const inwardY = ay > 0.24 ? -Math.sign(dy) * amount * 0.72 : (0.5 - rnd) * 0.9;
+    it.playRepairTargetX = it.playTargetX + inwardX;
+    it.playRepairTargetY = it.playTargetY + inwardY;
+    it.playRepairTargetRot =
+      it.playTargetRot + Phaser.Math.DegToRad((0.5 - rnd) * (it.playFormationRole === 'centerCore' ? 0.8 : 1.6));
+  }
+}
+
+function getPlayRepairTarget(it, repairShift01) {
+  const u = easeInOutSine(Phaser.Math.Clamp(repairShift01, 0, 1));
+  const rx = typeof it.playRepairTargetX === 'number' ? it.playRepairTargetX : it.playTargetX;
+  const ry = typeof it.playRepairTargetY === 'number' ? it.playRepairTargetY : it.playTargetY;
+  const rr = typeof it.playRepairTargetRot === 'number' ? it.playRepairTargetRot : it.playTargetRot;
+  return {
+    x: Phaser.Math.Linear(it.playTargetX, rx, u),
+    y: Phaser.Math.Linear(it.playTargetY, ry, u),
+    rot: Phaser.Math.Linear(it.playTargetRot, rr, u),
+  };
+}
+
 /**
  * Home overlap 経過時間で PLAY 形成シャードを微収束させ、パネルへクロスフェードする。
  * @param {Phaser.Scene} homeScene
@@ -1644,30 +1709,85 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
   const lockDistPx = tune.playFormationOvershoot ? 10 : 8;
   const lockSpdPxPerMs = tune.playFormationOvershoot ? 0.09 : 0.068;
 
+  const bias =
+    typeof items[0]?.bandBias === 'number' && Number.isFinite(items[0].bandBias)
+      ? items[0].bandBias
+      : 0.35;
+  const settleHoldMs = 120 + Math.abs(Math.sin(bias * 11.7 + dur * 0.0007)) * 98;
+  const repairSpanMs = repairPhaseMsFromItems(items, dur);
+  const repairStartMs =
+    typeof homeScene._playFormationAllLockedAt === 'number'
+      ? homeScene._playFormationAllLockedAt + Math.max(0, settleHoldMs - 40)
+      : Infinity;
+  const repairLinear = tune.disableRepairProcessing
+    ? 1
+    : repairProgress01(wallMs, repairStartMs, repairSpanMs);
+  const repairStrength = tune.disableDefaultPlayPanel
+    ? tune.disableRepairProcessing
+      ? 1
+      : smoothstep01(repairLinear)
+    : cross;
+  const repairActive =
+    tune.disableDefaultPlayPanel &&
+    !tune.disableRepairProcessing &&
+    typeof repairStartMs === 'number' &&
+    Number.isFinite(repairStartMs) &&
+    wallMs >= repairStartMs &&
+    repairLinear < 1;
+  const repairPulse = repairActive ? Math.sin(Math.PI * repairLinear) : 0;
+  const repairShift01 =
+    tune.disableDefaultPlayPanel && !tune.disableRepairProcessing
+      ? smoothstep01((repairLinear - 0.18) / 0.64)
+      : 0;
+  const repairCrackReveal =
+    tune.disableDefaultPlayPanel && !tune.disableRepairProcessing
+      ? repairCrackReveal01(wallMs, repairStartMs, repairSpanMs)
+      : 0;
+
+  let repairLayout = null;
+  let repairRect = null;
+  if (tune.disableDefaultPlayPanel) {
+    const W = homeScene.scale?.width ?? homeScene.sys?.game?.config?.width ?? 800;
+    const H = homeScene.scale?.height ?? homeScene.sys?.game?.config?.height ?? 600;
+    const L = getHomeLayout(W, H);
+    const disp = getHomeUrlBgDisplayOverrides();
+    repairLayout = computePlayPanelLayoutForShardFormation(
+      homeScene,
+      L,
+      disp,
+      HOME_PLAY_NEUTRAL_START_FRAME,
+    );
+    repairRect = computePlayRepairButtonRect(repairLayout);
+    if (!tune.disableRepairProcessing) {
+      ensurePlayRepairNudgeTargets(homeScene, items, repairRect);
+    }
+  }
+
   let maxErr = 0;
   for (const it of items) {
     if (!it.container || it.container.destroyed || !it.img || it.img.destroyed) continue;
     if (typeof it.playTargetX !== 'number') continue;
+    const repairTarget = getPlayRepairTarget(it, repairShift01);
 
     if (it.playFormationLocked) {
       it.vx = 0;
       it.vy = 0;
       it.vr = 0;
-      it.px = it.playTargetX;
-      it.py = it.playTargetY;
-      it.pr = it.playTargetRot;
+      it.px = repairTarget.x;
+      it.py = repairTarget.y;
+      it.pr = repairTarget.rot;
       it.container.setPosition(it.px, it.py);
       it.container.setRotation(it.pr);
     } else {
-      const dx = it.playTargetX - it.px;
-      const dy = it.playTargetY - it.py;
+      const dx = repairTarget.x - it.px;
+      const dy = repairTarget.y - it.py;
       const dist = Math.hypot(dx, dy);
       maxErr = Math.max(maxErr, dist);
       const k = 0.000024 * (0.18 + 0.82 * settleEase);
       const cd = 1.36 * Math.sqrt(Math.max(k, 1e-12));
       it.vx += (dx * k - it.vx * cd) * dt;
       it.vy += (dy * k * 0.96 - it.vy * cd) * dt;
-      const dr = it.playTargetRot - it.pr;
+      const dr = repairTarget.rot - it.pr;
       const kR = 0.00002 * (0.18 + 0.82 * settleEase);
       it.vr += (dr * kR - it.vr * cd * 0.78) * dt;
       it.vx *= Math.pow(0.991, dt / 16.67);
@@ -1679,9 +1799,9 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
       const sp = Math.hypot(it.vx, it.vy);
       if (dist < lockDistPx && sp < lockSpdPxPerMs) {
         it.playFormationLocked = true;
-        it.px = it.playTargetX;
-        it.py = it.playTargetY;
-        it.pr = it.playTargetRot;
+        it.px = repairTarget.x;
+        it.py = repairTarget.y;
+        it.pr = repairTarget.rot;
         it.vx = 0;
         it.vy = 0;
         it.vr = 0;
@@ -1695,8 +1815,16 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
 
     if (tune.disableDefaultPlayPanel) {
       let shardA = Phaser.Math.Clamp(0.84 + 0.12 * easeInOutSine(cross * 0.42), 0.72, 0.97);
+      if (!tune.disableRepairProcessing) {
+        shardA *= 1 - repairPulse * 0.035;
+        shardA *= Phaser.Math.Linear(1, 1.018, repairShift01);
+      }
       shardA = Phaser.Math.Clamp(shardA * _playFormRoleAlphaMul(it.playFormationRole), 0.58, 0.99);
       it.img.setAlpha(shardA);
+      if (!tune.disableRepairProcessing && repairShift01 > 0.02) {
+        const tint = repairActive ? 0xe8eaec : 0xf0f1ef;
+        it.img.setTint(tint);
+      }
     } else {
       const shardA = Phaser.Math.Clamp(0.94 * (1 - cross * 0.88), 0.04, 1);
       it.img.setAlpha(shardA);
@@ -1729,42 +1857,32 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
     homeScene._playFormationPanelRevealMul = Phaser.Math.Linear(0.05, 1, cross);
   }
 
-  const bias =
-    typeof items[0]?.bandBias === 'number' && Number.isFinite(items[0].bandBias)
-      ? items[0].bandBias
-      : 0.35;
-  const settleHoldMs = 120 + Math.abs(Math.sin(bias * 11.7 + dur * 0.0007)) * 98;
-
   const lockedLong =
     typeof homeScene._playFormationAllLockedAt === 'number' &&
     wallMs - homeScene._playFormationAllLockedAt >= settleHoldMs;
 
-  const repairStartMs =
-    typeof homeScene._playFormationAllLockedAt === 'number'
-      ? homeScene._playFormationAllLockedAt + Math.max(0, settleHoldMs - 40)
-      : Infinity;
-  const repairStrength = tune.disableDefaultPlayPanel
-    ? smoothstep01((wallMs - repairStartMs) / 220)
-    : cross;
-
-  let repairLayout = null;
   if (tune.disableDefaultPlayPanel) {
-    const W = homeScene.scale?.width ?? homeScene.sys?.game?.config?.width ?? 800;
-    const H = homeScene.scale?.height ?? homeScene.sys?.game?.config?.height ?? 600;
-    const L = getHomeLayout(W, H);
-    const disp = getHomeUrlBgDisplayOverrides();
-    repairLayout = computePlayPanelLayoutForShardFormation(
-      homeScene,
-      L,
-      disp,
-      HOME_PLAY_NEUTRAL_START_FRAME,
-    );
-    syncPlayRepairButton(homeScene, repairLayout, items, repairStrength, tune);
+    homeScene._playRepairGlyphContrastMul = tune.disableRepairProcessing
+      ? 1
+      : Phaser.Math.Linear(1, 1.055, repairShift01);
+    syncPlayRepairButton(homeScene, repairLayout, items, repairStrength, tune, {
+      active: repairActive,
+      progress: repairLinear,
+      processingPulse: repairPulse,
+      crackReveal: repairCrackReveal,
+    });
+  } else {
+    homeScene._playRepairGlyphContrastMul = 1;
   }
 
   let done = false;
   if (tune.disableDefaultPlayPanel) {
-    done = allLocked && lockedLong && nWall >= 0.4 && repairStrength >= 0.985;
+    done =
+      allLocked &&
+      lockedLong &&
+      nWall >= 0.4 &&
+      repairStrength >= 0.985 &&
+      (tune.disableRepairProcessing || repairCrackReveal >= 0.985);
   } else {
     done = nWall >= 1.12 || (nWall >= 0.96 && maxErr < 16);
   }
@@ -1772,7 +1890,15 @@ export function updatePlayFormationShardTail(homeScene, wallMs, dt) {
   if (done && tune.disableDefaultPlayPanel && !homeScene._playFormationTailFinalized) {
     homeScene._playFormationTailFinalized = true;
     homeScene._playFormationPanelRevealMul = 0.09;
-    if (repairLayout) syncPlayRepairButton(homeScene, repairLayout, items, 1, tune);
+    homeScene._playRepairGlyphContrastMul = tune.disableRepairProcessing ? 1 : 1.055;
+    if (repairLayout) {
+      syncPlayRepairButton(homeScene, repairLayout, items, 1, tune, {
+        active: false,
+        progress: 1,
+        processingPulse: 0,
+        crackReveal: tune.disableRepairProcessing ? 0 : 1,
+      });
+    }
   }
 
   if (done) {

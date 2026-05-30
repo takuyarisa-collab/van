@@ -1,6 +1,9 @@
 import { HOME_BG_PANEL_CROPS } from './home-bg-panel-crops.js';
 
 const PLAY_REPAIR_PATCH_DEPTH = 10.0;
+const PLAY_REPAIR_PROCESS_DEPTH = 11.18;
+const PLAY_REPAIR_DUST_DEPTH = 11.2;
+const PLAY_REPAIR_CRACK_DEPTH = 11.26;
 const PLAY_REPAIR_MASK_DEBUG_DEPTH = 12020;
 const PLAY_REPAIR_DEBUG_DEPTH = 12021;
 
@@ -12,6 +15,15 @@ function clamp01(v) {
 function easeRepair(t) {
   const u = clamp01(t);
   return u * u * (3 - 2 * u);
+}
+
+function repairHash01(seed) {
+  const n = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+function segmentProgress01(t, start, end) {
+  return clamp01((t - start) / Math.max(0.001, end - start));
 }
 
 function computePlayGlyphRowCenterY(layout) {
@@ -52,17 +64,19 @@ export function computePlayRepairButtonRect(layout) {
   };
 }
 
-function buildPlayRepairMaskPoints(rect, repairStrength) {
+function buildPlayRepairMaskPoints(rect, repairStrength, processingPulse = 0) {
   const s = easeRepair(repairStrength);
+  const p = easeRepair(processingPulse);
   const expand = Phaser.Math.Linear(24, 4, s);
-  const l = rect.left - expand * 0.74;
-  const r = rect.right + expand * 0.64;
-  const t = rect.top - expand * 0.22;
-  const b = rect.bottom + expand * 0.2;
+  const cut = Phaser.Math.Linear(3.6, 1.6, s) * p;
+  const l = rect.left - expand * 0.74 + cut * 0.82;
+  const r = rect.right + expand * 0.64 - cut * 0.7;
+  const t = rect.top - expand * 0.22 + cut * 0.28;
+  const b = rect.bottom + expand * 0.2 - cut * 0.24;
   const w = r - l;
   const h = b - t;
-  const bite = Phaser.Math.Linear(5, 13, s);
-  const sag = Phaser.Math.Linear(3, 8, s);
+  const bite = Phaser.Math.Linear(5, 13, s) + cut * 0.8;
+  const sag = Phaser.Math.Linear(3, 8, s) + cut * 0.42;
 
   return [
     { x: l + w * 0.018 + bite * 0.35, y: t + h * 0.2 },
@@ -83,9 +97,9 @@ function buildPlayRepairMaskPoints(rect, repairStrength) {
   ];
 }
 
-function drawMaskGraphics(g, rect, repairStrength) {
+function drawMaskGraphics(g, rect, repairStrength, processingPulse = 0) {
   if (!g || g.destroyed) return null;
-  const pts = buildPlayRepairMaskPoints(rect, repairStrength);
+  const pts = buildPlayRepairMaskPoints(rect, repairStrength, processingPulse);
   g.clear();
   g.fillStyle(0xffffff, 1);
   g.fillPoints(pts, true, true);
@@ -230,11 +244,177 @@ function syncPatchLayout(scene, rect, repairStrength, tuning, mask) {
   });
 }
 
-function syncRepairDebug(scene, rect, maskPts, repairStrength, tuning) {
+function syncRepairProcessingMask(scene, rect, phase, tuning) {
+  const disabled = Boolean(tuning.disableRepairProcessing);
+  const active = Boolean(phase?.active && !disabled);
+  const showDebug = Boolean(tuning.showRepairProcessing);
+  let g = scene._playRepairProcessingGfx;
+  if (!active && !showDebug) {
+    g?.clear?.();
+    return;
+  }
+  if (!g || g.destroyed) {
+    g = scene.add.graphics().setDepth(PLAY_REPAIR_PROCESS_DEPTH).setScrollFactor(0);
+    scene._playRepairProcessingGfx = g;
+  }
+  g.clear();
+
+  const t = clamp01(phase?.progress ?? 0);
+  const pulse = Math.sin(Math.PI * t);
+  if (active) {
+    const sweepX = Phaser.Math.Linear(rect.left - 16, rect.right + 16, t);
+    const bandW = Phaser.Math.Linear(68, 116, pulse);
+    const topY = rect.top + 2 + Math.sin(t * Math.PI * 2.1) * 1.2;
+    const botY = rect.bottom - 3 + Math.cos(t * Math.PI * 1.7) * 1.1;
+    const a = 0.08 + pulse * 0.08;
+
+    g.fillStyle(0xd2d7dc, a);
+    g.fillRect(sweepX - bandW * 0.5, topY, bandW, 1.4);
+    g.fillRect(sweepX - bandW * 0.42, botY, bandW * 0.86, 1.2);
+
+    g.fillStyle(0x080b11, 0.08 + pulse * 0.07);
+    g.fillRect(sweepX - bandW * 0.38, topY + 2.2, bandW * 0.58, 1);
+    g.fillRect(sweepX - bandW * 0.18, botY - 2.4, bandW * 0.5, 1);
+
+    g.lineStyle(1, 0xc7cbd0, 0.09 + pulse * 0.1);
+    g.lineBetween(sweepX, rect.top + rect.h * 0.18, sweepX - 5, rect.top + rect.h * 0.36);
+    g.lineBetween(sweepX + 4, rect.bottom - rect.h * 0.32, sweepX - 2, rect.bottom - rect.h * 0.16);
+  }
+
+  if (showDebug) {
+    const dbgA = active ? 0.32 : 0.16;
+    g.lineStyle(1, 0x7fb7c6, dbgA);
+    g.strokeRect(rect.left, rect.top, rect.w, rect.h);
+    g.lineStyle(1, 0xe1e6ea, dbgA * 0.8);
+    const x = Phaser.Math.Linear(rect.left, rect.right, t);
+    g.lineBetween(x, rect.top - 4, x, rect.bottom + 4);
+  }
+}
+
+function syncRepairDust(scene, rect, phase, tuning) {
+  const active = Boolean(phase?.active && !tuning.disableRepairProcessing);
+  let g = scene._playRepairDustGfx;
+  if (!active) {
+    g?.clear?.();
+    return;
+  }
+  if (!g || g.destroyed) {
+    g = scene.add.graphics().setDepth(PLAY_REPAIR_DUST_DEPTH).setScrollFactor(0);
+    scene._playRepairDustGfx = g;
+  }
+  g.clear();
+
+  const t = clamp01(phase?.progress ?? 0);
+  const dustT = segmentProgress01(t, 0.2, 0.62);
+  if (dustT <= 0 || dustT >= 1) return;
+  const fade = Math.sin(Math.PI * dustT);
+  const sweepX = Phaser.Math.Linear(rect.left + rect.w * 0.08, rect.right - rect.w * 0.06, t);
+  const count = 6;
+  for (let i = 0; i < count; i += 1) {
+    const r = repairHash01(19 + i * 7.13);
+    const side = i % 2 === 0 ? -1 : 1;
+    const x = sweepX + (r - 0.5) * 42 + side * (8 + repairHash01(i + 3) * 16);
+    const y0 = i % 3 === 0 ? rect.top + 4 : rect.bottom - 7;
+    const y = y0 + dustT * (5 + repairHash01(i + 9) * 8);
+    const sz = 0.9 + repairHash01(i + 13) * 1.2;
+    g.fillStyle(0xb6b0a5, (0.09 + repairHash01(i + 17) * 0.09) * fade);
+    g.fillRect(x, y, sz, sz);
+  }
+}
+
+function ensureEdgeCrackSegments(scene, rect) {
+  const key = [
+    Math.round(rect.left),
+    Math.round(rect.top),
+    Math.round(rect.w),
+    Math.round(rect.h),
+  ].join(':');
+  if (scene._playRepairEdgeCrackKey === key && scene._playRepairEdgeCracks?.length) {
+    return scene._playRepairEdgeCracks;
+  }
+  const cracks = [];
+  const count = 5;
+  for (let i = 0; i < count; i += 1) {
+    const r0 = repairHash01(97 + i * 11.31);
+    const r1 = repairHash01(113 + i * 5.71);
+    const len = 5 + repairHash01(131 + i * 4.17) * 13;
+    const alpha = 0.12 + repairHash01(149 + i * 6.23) * 0.08;
+    let x;
+    let y;
+    let ang;
+    if (i === 0) {
+      x = rect.left + rect.w * (0.2 + r0 * 0.18);
+      y = rect.top + 5 + r1 * 3;
+      ang = Phaser.Math.DegToRad(-8 + r1 * 18);
+    } else if (i === 1) {
+      x = rect.right - rect.w * (0.18 + r0 * 0.2);
+      y = rect.bottom - 6 - r1 * 4;
+      ang = Phaser.Math.DegToRad(174 + r1 * 16);
+    } else if (i === 2) {
+      x = rect.left + 7 + r0 * 5;
+      y = rect.top + rect.h * (0.38 + r1 * 0.28);
+      ang = Phaser.Math.DegToRad(78 + r0 * 22);
+    } else if (i === 3) {
+      x = rect.right - 8 - r0 * 5;
+      y = rect.top + rect.h * (0.28 + r1 * 0.32);
+      ang = Phaser.Math.DegToRad(96 + r1 * 20);
+    } else {
+      x = rect.left + rect.w * (0.48 + (r0 - 0.5) * 0.16);
+      y = rect.top + rect.h * (0.5 + (r1 - 0.5) * 0.26);
+      ang = Phaser.Math.DegToRad(-18 + r0 * 36);
+    }
+    cracks.push({
+      x,
+      y,
+      x2: x + Math.cos(ang) * len,
+      y2: y + Math.sin(ang) * len,
+      alpha,
+    });
+  }
+  scene._playRepairEdgeCrackKey = key;
+  scene._playRepairEdgeCracks = cracks;
+  return cracks;
+}
+
+function syncEdgeCracks(scene, rect, phase, tuning) {
+  const disabled = Boolean(tuning.disableRepairProcessing);
+  const showDebug = Boolean(tuning.showEdgeCracks);
+  const reveal = disabled ? 0 : clamp01(phase?.crackReveal ?? 0);
+  let g = scene._playRepairEdgeCrackGfx;
+  if (reveal <= 0 && !showDebug) {
+    g?.clear?.();
+    return;
+  }
+  if (!g || g.destroyed) {
+    g = scene.add.graphics().setDepth(PLAY_REPAIR_CRACK_DEPTH).setScrollFactor(0);
+    scene._playRepairEdgeCrackGfx = g;
+  }
+  g.clear();
+
+  const cracks = ensureEdgeCrackSegments(scene, rect);
+  cracks.forEach((c, i) => {
+    const local = easeRepair(segmentProgress01(reveal, i * 0.12, i * 0.12 + 0.34));
+    if (local <= 0 && !showDebug) return;
+    const x2 = Phaser.Math.Linear(c.x, c.x2, Math.max(local, showDebug ? 1 : 0));
+    const y2 = Phaser.Math.Linear(c.y, c.y2, Math.max(local, showDebug ? 1 : 0));
+    g.lineStyle(1, 0x111721, c.alpha * local);
+    g.lineBetween(c.x, c.y, x2, y2);
+    g.lineStyle(1, 0xd8d6cf, c.alpha * 0.28 * local);
+    g.lineBetween(c.x + 0.6, c.y - 0.4, x2 + 0.6, y2 - 0.4);
+    if (showDebug) {
+      g.lineStyle(1, 0xffaa66, 0.28);
+      g.strokeCircle(c.x, c.y, 2.2);
+    }
+  });
+}
+
+function syncRepairDebug(scene, rect, maskPts, repairStrength, tuning, phase) {
   let g = scene._playRepairDebugGfx;
   const wantMask = Boolean(tuning.showPlayButtonMask);
   const wantPatch = Boolean(tuning.showRepairPatches);
-  if (!wantMask && !wantPatch) {
+  const wantProcessing = Boolean(tuning.showRepairProcessing);
+  const wantCracks = Boolean(tuning.showEdgeCracks);
+  if (!wantMask && !wantPatch && !wantProcessing && !wantCracks) {
     g?.clear?.();
     return;
   }
@@ -265,6 +445,18 @@ function syncRepairDebug(scene, rect, maskPts, repairStrength, tuning) {
       );
     }
   }
+  if (wantProcessing) {
+    const t = clamp01(phase?.progress ?? 0);
+    g.lineStyle(1, 0x7fb7c6, 0.32);
+    const x = Phaser.Math.Linear(rect.left, rect.right, t);
+    g.lineBetween(x, rect.top - 8, x, rect.bottom + 8);
+  }
+  if (wantCracks) {
+    g.lineStyle(1, 0xffaa66, 0.28);
+    for (const c of ensureEdgeCrackSegments(scene, rect)) {
+      g.strokeCircle(c.x, c.y, 3.2);
+    }
+  }
 }
 
 export function createPlayRepairMask(scene) {
@@ -277,17 +469,21 @@ export function createPlayRepairMask(scene) {
   return scene._playRepairMask;
 }
 
-export function syncPlayRepairButton(scene, layout, items, repairStrength, tuning) {
+export function syncPlayRepairButton(scene, layout, items, repairStrength, tuning, phase = null) {
   if (!scene || !layout || !items?.length) return;
   const rect = computePlayRepairButtonRect(layout);
   const mask = createPlayRepairMask(scene);
+  const processingPulse = tuning.disableRepairProcessing ? 0 : clamp01(phase?.processingPulse ?? 0);
   const maskPts = tuning.disableRepairMask
     ? null
-    : drawMaskGraphics(scene._playRepairMaskGfx, rect, repairStrength);
+    : drawMaskGraphics(scene._playRepairMaskGfx, rect, repairStrength, processingPulse);
   if (tuning.disableRepairMask) scene._playRepairMaskGfx?.clear?.();
   applyMaskToFormation(scene, items, mask, Boolean(tuning.disableRepairMask));
   syncPatchLayout(scene, rect, repairStrength, tuning, mask);
-  syncRepairDebug(scene, rect, maskPts, repairStrength, tuning);
+  syncRepairProcessingMask(scene, rect, phase, tuning);
+  syncRepairDust(scene, rect, phase, tuning);
+  syncEdgeCracks(scene, rect, phase, tuning);
+  syncRepairDebug(scene, rect, maskPts, repairStrength, tuning, phase);
 }
 
 export function destroyPlayRepairButton(scene) {
@@ -315,6 +511,28 @@ export function destroyPlayRepairButton(scene) {
     }
   });
   if (scene) scene._playRepairPatchItems = null;
+  try {
+    scene?._playRepairProcessingGfx?.destroy?.();
+  } catch (_) {
+    /* ignore */
+  }
+  try {
+    scene?._playRepairDustGfx?.destroy?.();
+  } catch (_) {
+    /* ignore */
+  }
+  try {
+    scene?._playRepairEdgeCrackGfx?.destroy?.();
+  } catch (_) {
+    /* ignore */
+  }
+  if (scene) {
+    scene._playRepairProcessingGfx = null;
+    scene._playRepairDustGfx = null;
+    scene._playRepairEdgeCrackGfx = null;
+    scene._playRepairEdgeCracks = null;
+    scene._playRepairEdgeCrackKey = null;
+  }
   try {
     scene?._playRepairDebugGfx?.destroy?.();
   } catch (_) {
