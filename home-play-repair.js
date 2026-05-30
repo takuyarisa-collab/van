@@ -22,15 +22,23 @@ function computePlayGlyphRowCenterY(layout) {
 
 export function computePlayRepairButtonRect(layout) {
   const rowCy = computePlayGlyphRowCenterY(layout);
+  const displayW =
+    typeof layout.playBgDispW === 'number' && Number.isFinite(layout.playBgDispW)
+      ? layout.playBgDispW
+      : layout.panelW * 1.7;
+  const minW = Math.max(layout.totalW * 1.68, layout.panelW * 1.46);
+  const maxW = Math.max(minW, Math.min(displayW * 1.02, layout.panelW * 1.88));
   const w = Phaser.Math.Clamp(
-    layout.totalW + layout.panelW * 0.16,
-    layout.totalW * 1.12,
-    layout.panelW * 0.9,
+    layout.totalW + layout.panelW * 0.86,
+    minW,
+    maxW,
   );
+  const minH = Math.max(layout.playRowDispH * 1.3, 104);
+  const maxH = Math.max(minH, Math.min(166, layout.panelH * 1.06));
   const h = Phaser.Math.Clamp(
-    layout.playRowDispH * 1.12 + 22,
-    84,
-    Math.min(138, layout.panelH * 0.62),
+    layout.playRowDispH * 1.36 + 34,
+    minH,
+    maxH,
   );
   return {
     cx: layout.textCx + 1,
@@ -46,19 +54,19 @@ export function computePlayRepairButtonRect(layout) {
 
 function buildPlayRepairMaskPoints(rect, repairStrength) {
   const s = easeRepair(repairStrength);
-  const expand = Phaser.Math.Linear(34, 0, s);
-  const l = rect.left - expand * 1.1;
-  const r = rect.right + expand * 0.92;
-  const t = rect.top - expand * 0.32;
-  const b = rect.bottom + expand * 0.26;
+  const expand = Phaser.Math.Linear(24, 4, s);
+  const l = rect.left - expand * 0.74;
+  const r = rect.right + expand * 0.64;
+  const t = rect.top - expand * 0.22;
+  const b = rect.bottom + expand * 0.2;
   const w = r - l;
   const h = b - t;
-  const bite = Phaser.Math.Linear(3, 10, s);
-  const sag = Phaser.Math.Linear(2, 7, s);
+  const bite = Phaser.Math.Linear(5, 13, s);
+  const sag = Phaser.Math.Linear(3, 8, s);
 
   return [
-    { x: l + w * 0.025 + bite * 0.4, y: t + h * 0.18 },
-    { x: l + w * 0.12, y: t + h * 0.05 + sag * 0.25 },
+    { x: l + w * 0.018 + bite * 0.35, y: t + h * 0.2 },
+    { x: l + w * 0.115, y: t + h * 0.045 + sag * 0.25 },
     { x: l + w * 0.31, y: t + h * 0.08 },
     { x: l + w * 0.42, y: t + bite * 0.2 },
     { x: l + w * 0.57, y: t + h * 0.07 },
@@ -88,8 +96,8 @@ function makePatchTexture(scene, idx, src, crop) {
   const key = `play_repair_patch_${idx}`;
   if (scene.textures.exists(key)) return key;
   const c = document.createElement('canvas');
-  const w = [188, 156, 120][idx] ?? 128;
-  const h = [76, 64, 56][idx] ?? 60;
+  const w = [260, 190, 178][idx] ?? 160;
+  const h = [92, 78, 66][idx] ?? 64;
   c.width = w;
   c.height = h;
   const ctx = c.getContext('2d');
@@ -158,9 +166,9 @@ function ensurePlayRepairPatches(scene) {
   const src = scene.textures.get('home-bg-normal').getSourceImage();
   const crop = HOME_BG_PANEL_CROPS.PLAY_PANEL;
   const specs = [
-    { ox: -0.16, oy: -0.04, sw: 0.45, sh: 0.58, rot: -1.2, a: 0.62, depth: 0.05 },
-    { ox: 0.19, oy: 0.03, sw: 0.36, sh: 0.48, rot: 1.6, a: 0.5, depth: 0.02 },
-    { ox: 0.02, oy: 0.16, sw: 0.28, sh: 0.36, rot: -0.6, a: 0.42, depth: 0 },
+    { ox: -0.03, oy: -0.03, sw: 0.7, sh: 0.72, rot: -0.9, a: 0.68, depth: 0.07 },
+    { ox: -0.28, oy: 0.03, sw: 0.36, sh: 0.58, rot: 1.2, a: 0.52, depth: 0.03 },
+    { ox: 0.26, oy: 0.11, sw: 0.38, sh: 0.5, rot: -1.4, a: 0.48, depth: 0.01 },
   ];
   const patches = [];
   specs.forEach((spec, idx) => {
@@ -211,8 +219,8 @@ function syncPatchLayout(scene, rect, repairStrength, tuning, mask) {
     img.setPosition(rect.cx + rect.w * spec.ox, rect.cy + rect.h * spec.oy);
     img.setDisplaySize(rect.w * spec.sw, rect.h * spec.sh);
     img.setRotation(Phaser.Math.DegToRad(spec.rot * Phaser.Math.Linear(1.25, 1, s)));
-    img.setAlpha(Phaser.Math.Clamp(0.06 + spec.a * s, 0.04, 0.68));
-    img.setTint(0xf0f2f5);
+    img.setAlpha(Phaser.Math.Clamp(0.08 + spec.a * s, 0.05, 0.76));
+    img.setTint(0xf4f6f8);
     try {
       if (tuning.disableRepairMask || !mask) img.clearMask?.(false);
       else img.setMask(mask);
