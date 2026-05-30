@@ -45,8 +45,11 @@ export function logPerfPlayFormSample(sample) {
  *   showPlayFormationRoles: boolean,
  *   showPlayButtonMask: boolean,
  *   showRepairPatches: boolean,
+ *   showRepairProcessing: boolean,
+ *   showEdgeCracks: boolean,
  *   disableRepairMask: boolean,
  *   disableRepairPatches: boolean,
+ *   disableRepairProcessing: boolean,
  * }}
  */
 export function getPlayFormationPresentationTuning() {
@@ -65,8 +68,11 @@ export function getPlayFormationPresentationTuning() {
       showPlayFormationRoles: false,
       showPlayButtonMask: false,
       showRepairPatches: false,
+      showRepairProcessing: false,
+      showEdgeCracks: false,
       disableRepairMask: false,
       disableRepairPatches: false,
+      disableRepairProcessing: false,
     };
   }
   const dbg = homeUrlDebugEnabled();
@@ -88,8 +94,11 @@ export function getPlayFormationPresentationTuning() {
   let showPlayFormationRoles = false;
   let showPlayButtonMask = false;
   let showRepairPatches = false;
+  let showRepairProcessing = false;
+  let showEdgeCracks = false;
   let disableRepairMask = false;
   let disableRepairPatches = false;
+  let disableRepairProcessing = false;
   if (dbg) {
     showPlayFormation = getB('showPlayFormation', false);
     showFormationTargets =
@@ -100,8 +109,11 @@ export function getPlayFormationPresentationTuning() {
     showPlayFormationRoles = getB('showPlayFormationRoles', true);
     showPlayButtonMask = getB('showPlayButtonMask', false);
     showRepairPatches = getB('showRepairPatches', false);
+    showRepairProcessing = getB('showRepairProcessing', false);
+    showEdgeCracks = getB('showEdgeCracks', false);
     disableRepairMask = getB('disableRepairMask', false);
     disableRepairPatches = getB('disableRepairPatches', false);
+    disableRepairProcessing = getB('disableRepairProcessing', false);
   }
   return {
     playFormationSlow,
@@ -115,8 +127,11 @@ export function getPlayFormationPresentationTuning() {
     showPlayFormationRoles,
     showPlayButtonMask,
     showRepairPatches,
+    showRepairProcessing,
+    showEdgeCracks,
     disableRepairMask,
     disableRepairPatches,
+    disableRepairProcessing,
   };
 }
 
@@ -144,8 +159,11 @@ export function logPlayFormationDebugParamsOnce(scene) {
     showPlayFormationRoles: t.showPlayFormationRoles ? 1 : 0,
     showPlayButtonMask: t.showPlayButtonMask ? 1 : 0,
     showRepairPatches: t.showRepairPatches ? 1 : 0,
+    showRepairProcessing: t.showRepairProcessing ? 1 : 0,
+    showEdgeCracks: t.showEdgeCracks ? 1 : 0,
     disableRepairMask: t.disableRepairMask ? 1 : 0,
     disableRepairPatches: t.disableRepairPatches ? 1 : 0,
+    disableRepairProcessing: t.disableRepairProcessing ? 1 : 0,
     playFormationSlow: t.playFormationSlow,
     disableDefaultPlayPanel: t.disableDefaultPlayPanel,
   });

@@ -223,7 +223,11 @@ export function redrawHomePlayUI(scene, L, urlBgDisp, linkReveal = 1) {
   const shardPlayBg =
     pf.disableDefaultPlayPanel !== false &&
     (Boolean(scene._playFormationShardItems?.length) || Boolean(scene._playFormationShardBgActive));
-  const glyphReadMul = shardPlayBg ? 1.28 : 1;
+  const glyphRepairContrast =
+    typeof scene._playRepairGlyphContrastMul === 'number' && Number.isFinite(scene._playRepairGlyphContrastMul)
+      ? Phaser.Math.Clamp(scene._playRepairGlyphContrastMul, 0.96, 1.08)
+      : 1;
+  const glyphReadMul = shardPlayBg ? 1.28 * glyphRepairContrast : 1;
   let alphaPlay = Math.min(
     1,
     lrPanel * flashMul * sf.alpha * rBase * bgPr * formMul,

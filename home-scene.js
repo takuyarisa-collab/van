@@ -331,6 +331,8 @@ export function createHomeScene(WORLD_W, WORLD_H, createDebugHUD) {
         this._playFormationPhysicsDoneWall = undefined;
         this._playFormationTailFinalized = false;
         this._playFormationAllLockedAt = undefined;
+        this._playRepairGlyphContrastMul = undefined;
+        this._playRepairNudgeKey = undefined;
         destroyPlayRepairButton(this);
         try {
           this._playFormHomeDebugGfx?.destroy?.();
