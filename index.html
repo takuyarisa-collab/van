@@ -102,6 +102,7 @@
       triggerNearAttack,
       updateNearAttack,
     } from './near-attack.js';
+    import { BUILD_STAMP } from './build-info.js';
 
     (() => {
       const WORLD_W = 540;
@@ -193,11 +194,6 @@
         NEAR_MISS: 'near miss',
         FAIL: 'fail',
       };
-      const APP_VERSION = '0.1.9';
-      const BUILD_TIMESTAMP = '2026-05-30 04:45 UTC';
-
-      const BUILD_COMMIT_SHORT = 'local';
-      const BUILD_STAMP = `${APP_VERSION} / ${BUILD_TIMESTAMP}${BUILD_COMMIT_SHORT ? ` / ${BUILD_COMMIT_SHORT}` : ''}`;
       const BUILD_DIRECTION = {
         SNAP: 'snap',
         STABILITY: 'stability',
